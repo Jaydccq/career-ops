@@ -1,0 +1,208 @@
+# Career-Ops Profile Configuration
+# Copy this file to config/profile.yml and fill in your details.
+# This is the single source of truth for your personal data across all modes.
+
+candidate:
+  full_name: "Hongxi Chen"
+  email: "smyhc1@gmail.com"
+  phone: "+1-341-732-7552"
+  location: "Durham, NC"
+  linkedin: "linkedin.com/in/hongxi-chen-063721324"
+  portfolio_url: ""
+  github: "github.com/Jaydccq"
+  twitter: ""
+  # (Optional) Canva resume design ID for visual CV generation via /career-ops pdf.
+  # Find it in your Canva design URL: https://www.canva.com/design/DAxxxxxxx/...
+  # The ID starts with "D" and is 11 characters long.
+  # canva_resume_design_id: "DAxxxxxxxxx"
+
+target_roles:
+  primary:
+    - "Software Engineer"
+    - "Full-Stack Engineer"
+    - "AI Engineer"
+  archetypes:
+    - name: "Full-Stack Engineer"
+      level: "New Grad / Early Career / Level 1"
+      fit: "primary"
+    - name: "AI Engineer"
+      level: "New Grad / Early Career / Level 1"
+      fit: "primary"
+    - name: "Backend Engineer"
+      level: "New Grad / Early Career / Level 1"
+      fit: "primary"
+    - name: "Forward Deployed Engineer"
+      level: "New Grad / Early Career / Level 1"
+      fit: "secondary"
+
+narrative:
+  # Your professional headline (1 line)
+  headline: "Full-stack engineer building AI and distributed systems"
+  # Your exit story — what makes you unique
+  exit_story: "Master’s in Software Engineering at Duke building full-stack, AI-powered, and distributed systems from scratch with a strong focus on product ownership and real-world reliability."
+  # Your top 3-5 superpowers
+  superpowers:
+    - "Full-stack AI systems"
+    - "Distributed systems and backend engineering"
+    - "Fast prototyping with strong product sense"
+    - "API integrations and workflow automation"
+    - "AI-assisted development with strong engineering judgment"
+  # Proof points — projects, articles, case studies with measurable impact
+  proof_points:
+    - name: "FinSentinel"
+      url: "https://github.com/Jaydccq/FinSentinel"
+      hero_metric: "Built an AI-powered investment risk platform with retrieval, streaming, and agent-style workflows"
+    - name: "Mini-UPS / Amazon World Simulation"
+      url: "https://github.com/Jaydccq/mini-ups"
+      hero_metric: "Built a distributed logistics system with event-driven architecture and real-time workflows"
+    - name: "Battleship AI"
+      url: "https://github.com/Jaydccq/BattleShip"
+      hero_metric: "Designed and iterated on RL, Monte Carlo, and imitation-learning approaches for a custom game AI"
+
+  # Optional: dashboard/demo URL with credentials
+  # dashboard:
+  #   url: "https://janesmith.dev/demo"
+  #   password: "demo-2026"
+
+compensation:
+  target_range: "$120K-200K"     # Your target total comp
+  currency: "USD"
+  minimum: "$120K"               # Walk-away number
+  location_flexibility:  "Open to on-site, hybrid, or strong remote opportunities"
+
+
+location:
+  country: "United States"
+  city: "San Francisco"
+  timezone: "PST"
+  visa_status: "Requires sponsorship / work authorization support"  # For remote roles outside your country:
+  # onsite_availability: "1 week/month in any city"
+
+newgrad_scan:
+  role_keywords:
+    positive:
+      - "Software Engineer"
+      - "Full-Stack"
+      - "Full Stack"
+      - "Backend"
+      - "AI Engineer"
+      - "Platform Engineer"
+      - "Infrastructure Engineer"
+      - "Product Engineer"
+      - "Founding Engineer"
+      - "Forward Deployed"
+      - "Agent Engineer"
+      - "Applied AI"
+    weight: 3
+
+  skill_keywords:
+    terms:
+      # Languages & Frameworks
+      - "Java"
+      - "Python"
+      - "JavaScript"
+      - "TypeScript"
+      - "C/C++"
+      - "RIOS/Swift"
+      - "MATLAB"
+      - "Spring Boot"
+      - "Spring"
+      - "SpringMVC"
+      - "React"
+      - "Node.js"
+      - "ElementUI"
+      # Databases & Messaging
+      - "MySQL"
+      - "Postgres"
+      - "Redis"
+      - "RabbitMQ"
+      - "WebSocket"
+      # Infrastructure & DevOps
+      - "Docker"
+      - "AWS"
+      - "Kubernetes"
+      - "Linux"
+      - "Git"
+      - "GitHub Actions"
+      - "Nginx"
+      - "Prometheus"
+      - "Grafana"
+      - "Airflow"
+      - "Maven"
+      # AI / ML / Data
+      - "NumPy"
+      - "Pandas"
+      - "PySpark"
+      - "GeoPandas"
+      - "ETL"
+      - "agent"
+      - "RAG"
+      - "LLM"
+      - "AI"
+      - "Function Calling"
+      - "OpenAPI"
+      - "OpenRouter API"
+      # Architecture & Patterns
+      - "distributed systems"
+      - "microservices"
+      - "event-driven"
+      - "high-concurrency"
+      - "batch processing"
+      - "CI/CD"
+      - "API"
+      - "REST"
+      - "HTTP"
+      - "CORS"
+      - "CSRF"
+      - "data pipeline"
+      - "ETL pipeline"
+      - "cloud"
+      # Testing & Quality
+      - "JUnit"
+      - "automated testing"
+      - "performance benchmarking"
+      - "stress testing"
+      - "Valgrind"
+      # Security
+      - "OAuth2"
+      - "JWT"
+      - "RBAC"
+      - "rate limiting"
+      - "security"
+      # Systems & Algorithms
+      - "data structures"
+      - "algorithms"
+      - "database systems"
+      - "computer networks"
+      - "memory safety"
+      - "error handling"
+      # Domain-specific
+      - "geospatial"
+      - "ArcGIS"
+      - "PostGIS"
+      - "osm2pgsql"
+      - "real-time tracking"
+      - "mobile app"
+      # Patterns
+      - "transactional outbox"
+      - "write-behind caching"
+      - "heartbeat"
+      - "back-pressure"
+      - "unique ID generation"
+      - "STOMP"
+      - "CAS"
+      - "Shell"
+    weight: 1
+    max_score: 4
+
+  freshness:
+    within_24h: 2
+    within_3d: 1
+    older: 0
+
+  list_threshold: 3
+  pipeline_threshold: 5
+
+  detail_concurrent_tabs: 3
+  detail_delay_min_ms: 2000
+  detail_delay_max_ms: 5000
