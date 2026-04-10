@@ -50,6 +50,7 @@ import { basename, join, resolve } from "node:path";
 
 import { bridgeError } from "../runtime/errors.js";
 import { scoreAndFilter } from "./newgrad-scorer.js";
+import { pickPipelineEntryUrl } from "./newgrad-links.js";
 import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
 
 const LOCK_WAIT_MS = 5_000;
@@ -518,10 +519,10 @@ export function createClaudePipelineAdapter(
           continue;
         }
 
-        const entryUrl =
-          enrichedRow.detail.originalPostUrl ||
-          enrichedRow.detail.applyNowUrl ||
-          enrichedRow.row.row.applyUrl;
+        const entryUrl = pickPipelineEntryUrl(
+          enrichedRow.detail,
+          enrichedRow.row.row,
+        );
         if (existingPipelineUrls.has(entryUrl)) {
           skipped++;
           continue;

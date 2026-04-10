@@ -81,10 +81,42 @@ export interface NewGradDetail {
   industryExpMatch: number | null;
   /** Full job description text. */
   description: string;
+  /** Industry or category tags associated with the role/company. */
+  industries: readonly string[];
+  /** Visible recommendation or fit tags shown by Jobright. */
+  recommendationTags: readonly string[];
+  /** Responsibilities extracted from the page or embedded data. */
+  responsibilities: readonly string[];
+  /** Requirements or qualifications extracted from the page or embedded data. */
+  requiredQualifications: readonly string[];
+  /** Skill tags visible in the ATS / qualification sections. */
+  skillTags: readonly string[];
+  /** Job taxonomy labels from Jobright metadata. */
+  taxonomy: readonly string[];
+  /** Company website when available. */
+  companyWebsite: string | null;
+  /** Company summary/description from the page. */
+  companyDescription: string | null;
+  /** Company size string from detail metadata. */
+  companySize: string | null;
+  /** Company headquarters/location string. */
+  companyLocation: string | null;
+  /** Company founding year if displayed. */
+  companyFoundedYear: string | null;
+  /** Company category labels. */
+  companyCategories: readonly string[];
+  /** Whether the detail page signals likely H1B sponsorship. */
+  h1bSponsorLikely: boolean | null;
+  /** Historical H1B sponsorship counts by year. */
+  h1bSponsorshipHistory: readonly { year: string; count: number }[];
+  /** Count of visible insider connections on the page. */
+  insiderConnections: number | null;
   /** URL of the original listing on the source site. */
   originalPostUrl: string;
   /** Direct "Apply Now" URL from the detail page. */
   applyNowUrl: string;
+  /** URLs observed while probing the apply flow in a logged-in session. */
+  applyFlowUrls: readonly string[];
 }
 
 /* -------------------------------------------------------------------------- */

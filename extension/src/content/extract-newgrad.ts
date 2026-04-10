@@ -45,8 +45,24 @@ export interface NewGradDetail {
   skillMatch: number | null;
   industryExpMatch: number | null;
   description: string;
+  industries: string[];
+  recommendationTags: string[];
+  responsibilities: string[];
+  requiredQualifications: string[];
+  skillTags: string[];
+  taxonomy: string[];
+  companyWebsite: string | null;
+  companyDescription: string | null;
+  companySize: string | null;
+  companyLocation: string | null;
+  companyFoundedYear: string | null;
+  companyCategories: string[];
+  h1bSponsorLikely: boolean | null;
+  h1bSponsorshipHistory: { year: string; count: number }[];
+  insiderConnections: number | null;
   originalPostUrl: string;
   applyNowUrl: string;
+  applyFlowUrls: string[];
 }
 
 /* ========================================================================== */
@@ -369,6 +385,259 @@ export function extractNewGradDetail(): NewGradDetail {
     return "";
   }
 
+  function addCandidate(set: Set<string>, value: string | null | undefined): void {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    try {
+      const parsed = new URL(trimmed, window.location.href);
+      if (!/^https?:$/.test(parsed.protocol)) return;
+      parsed.hash = "";
+      set.add(parsed.toString());
+    } catch {
+      // Ignore malformed URLs
+    }
+  }
+
+  function scoreCandidate(candidate: string): number {
+    try {
+      const parsed = new URL(candidate);
+      const host = parsed.hostname.toLowerCase();
+      const path = parsed.pathname.toLowerCase();
+      const full = `${host}${path}${parsed.search.toLowerCase()}`;
+      const atsHosts = [
+        "greenhouse",
+        "ashbyhq.com",
+        "lever.co",
+        "workdayjobs.com",
+        "myworkdayjobs.com",
+        "smartrecruiters.com",
+        "jobvite.com",
+        "icims.com",
+      ];
+      const noiseHosts = [
+        "linkedin.com",
+        "crunchbase.com",
+        "glassdoor.com",
+        "facebook.com",
+        "instagram.com",
+        "x.com",
+        "twitter.com",
+        "youtube.com",
+        "marketbeat.com",
+        "media.licdn.com",
+      ];
+      const applyHints = [
+        "/apply",
+        "/job",
+        "/jobs",
+        "/career",
+        "/careers",
+        "/position",
+        "/positions",
+        "gh_jid",
+        "jobid",
+        "job_id",
+        "requisition",
+        "req_id",
+        "token=",
+        "lever-source",
+        "ashby_jid",
+      ];
+
+      if (noiseHosts.some((pattern) => host.includes(pattern))) return -100;
+
+      let score = 0;
+      if (atsHosts.some((pattern) => host.includes(pattern))) score += 100;
+      if (applyHints.some((pattern) => full.includes(pattern))) score += 24;
+      if (/\b(apply|job|jobs|career|careers|position|opening|opportunit)\b/.test(full)) {
+        score += 12;
+      }
+      if (host === "jobright.ai" || host.endsWith(".jobright.ai")) {
+        score -= 80;
+        if (path.startsWith("/jobs/info/")) score -= 30;
+      } else {
+        score += 40;
+      }
+
+      return score;
+    } catch {
+      return Number.NEGATIVE_INFINITY;
+    }
+  }
+
+  function pickBestUrl(candidates: Iterable<string>): string {
+    let best = "";
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const candidate of candidates) {
+      const score = scoreCandidate(candidate);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+
+    return best;
+  }
+
+  function collectScriptUrls(): string[] {
+    const urls = new Set<string>();
+    const inlineUrlPattern = /https?:\/\/[^\s"'<>]+/g;
+
+    function visit(value: unknown): void {
+      if (typeof value === "string") {
+        addCandidate(urls, value);
+        for (const match of value.match(inlineUrlPattern) ?? []) {
+          addCandidate(urls, match);
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (value && typeof value === "object") {
+        for (const entry of Object.values(value as Record<string, unknown>)) {
+          visit(entry);
+        }
+      }
+    }
+
+    const scripts = Array.from(
+      document.querySelectorAll(
+        "script#jobright-helper-job-detail-info, script#__NEXT_DATA__, script#job-posting, script[type='application/json'], script[type='application/ld+json']"
+      )
+    );
+    for (const script of scripts) {
+      const raw = script.textContent?.trim();
+      if (!raw) continue;
+      try {
+        visit(JSON.parse(raw));
+      } catch {
+        for (const match of raw.match(inlineUrlPattern) ?? []) {
+          addCandidate(urls, match);
+        }
+      }
+    }
+
+    return Array.from(urls);
+  }
+
+  function collectDomUrls(): string[] {
+    const urls = new Set<string>();
+    const elements = Array.from(
+      document.querySelectorAll(
+        "a[href], form[action], [data-url], [data-href], [data-apply-url], [data-link], button, [role='button']"
+      )
+    );
+
+    for (const element of elements) {
+      addCandidate(urls, href(element));
+
+      if (element instanceof HTMLFormElement) addCandidate(urls, element.action);
+      if (element instanceof HTMLElement) {
+        addCandidate(urls, element.dataset.url);
+        addCandidate(urls, element.dataset.href);
+        addCandidate(urls, element.dataset.applyUrl);
+        addCandidate(urls, element.dataset.link);
+      }
+
+      const text = txt(element).toLowerCase();
+      if (
+        element instanceof HTMLAnchorElement &&
+        (
+          text.includes("original") ||
+          text.includes("apply on employer site") ||
+          text.includes("apply now") ||
+          text.includes("join now") ||
+          text.includes("apply for")
+        )
+      ) {
+        addCandidate(urls, element.href);
+      }
+    }
+
+    return Array.from(urls);
+  }
+
+  function uniqueStrings(values: Array<string | null | undefined>): string[] {
+    const seen = new Set<string>();
+    for (const value of values) {
+      if (!value) continue;
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      seen.add(trimmed);
+    }
+    return Array.from(seen);
+  }
+
+  function splitValues(value: string | null | undefined): string[] {
+    if (!value) return [];
+    return value
+      .split(/[,|\n]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  function parseJobrightData(): {
+    jobResult?: Record<string, unknown>;
+    companyResult?: Record<string, unknown>;
+    jobPosting?: Record<string, unknown>;
+  } {
+    const result: {
+      jobResult?: Record<string, unknown>;
+      companyResult?: Record<string, unknown>;
+      jobPosting?: Record<string, unknown>;
+    } = {};
+
+    const helperRaw = document.querySelector("script#jobright-helper-job-detail-info")?.textContent?.trim();
+    if (helperRaw) {
+      try {
+        const parsed = JSON.parse(helperRaw) as {
+          jobResult?: Record<string, unknown>;
+          companyResult?: Record<string, unknown>;
+        };
+        if (parsed.jobResult) result.jobResult = parsed.jobResult;
+        if (parsed.companyResult) result.companyResult = parsed.companyResult;
+      } catch {
+        // Ignore malformed embedded JSON
+      }
+    }
+
+    const nextRaw = document.querySelector("script#__NEXT_DATA__")?.textContent?.trim();
+    if (nextRaw) {
+      try {
+        const parsed = JSON.parse(nextRaw) as {
+          props?: {
+            pageProps?: {
+              dataSource?: {
+                jobResult?: Record<string, unknown>;
+                companyResult?: Record<string, unknown>;
+              };
+            };
+          };
+        };
+        const dataSource = parsed.props?.pageProps?.dataSource;
+        if (!result.jobResult && dataSource?.jobResult) result.jobResult = dataSource.jobResult;
+        if (!result.companyResult && dataSource?.companyResult) result.companyResult = dataSource.companyResult;
+      } catch {
+        // Ignore malformed __NEXT_DATA__
+      }
+    }
+
+    const jobPostingRaw = document.querySelector("script#job-posting")?.textContent?.trim();
+    if (jobPostingRaw) {
+      try {
+        result.jobPosting = JSON.parse(jobPostingRaw) as Record<string, unknown>;
+      } catch {
+        // Ignore malformed ld+json
+      }
+    }
+
+    return result;
+  }
+
   /* ---- title ---- */
   const titleEl = first(
     document,
@@ -486,29 +755,132 @@ export function extractNewGradDetail(): NewGradDetail {
     .trim()
     .slice(0, MAX_DESC_CHARS);
 
-  /* ---- original post URL ---- */
+  const embedded = parseJobrightData();
+  const jobResult = embedded.jobResult ?? {};
+  const companyResult = embedded.companyResult ?? {};
+  const jobPosting = embedded.jobPosting ?? {};
+
+  const domSkillTags = Array.from(
+    document.querySelectorAll(".ant-tag, [class*='qualification-tag'], [class*='skill-tag'], [class*='tag']")
+  ).map((el) => txt(el));
+
+  const industries = uniqueStrings([
+    ...splitValues(String(companyResult.companyCategories ?? "")),
+    ...splitValues(String(jobPosting.industry ?? "")),
+    ...(Array.isArray(jobResult.jobTags) ? jobResult.jobTags.map((value) => String(value)) : []),
+  ]);
+  const recommendationTags = uniqueStrings(
+    Array.isArray(jobResult.recommendationTags)
+      ? jobResult.recommendationTags.map((value) => String(value))
+      : []
+  );
+  const responsibilities = uniqueStrings(
+    Array.isArray(jobResult.coreResponsibilities)
+      ? jobResult.coreResponsibilities.map((value) => String(value))
+      : []
+  );
+  const requiredQualifications = uniqueStrings([
+    ...(Array.isArray(jobResult.skillSummaries)
+      ? jobResult.skillSummaries.map((value) => String(value))
+      : []),
+    ...(
+      jobResult.qualifications &&
+      typeof jobResult.qualifications === "object" &&
+      Array.isArray((jobResult.qualifications as { mustHave?: unknown[] }).mustHave)
+        ? ((jobResult.qualifications as { mustHave?: unknown[] }).mustHave ?? []).map((value) => String(value))
+        : []
+    ),
+    ...(
+      jobResult.qualifications &&
+      typeof jobResult.qualifications === "object" &&
+      Array.isArray((jobResult.qualifications as { preferredHave?: unknown[] }).preferredHave)
+        ? ((jobResult.qualifications as { preferredHave?: unknown[] }).preferredHave ?? []).map((value) => String(value))
+        : []
+    ),
+  ]);
+  const skillTags = uniqueStrings([
+    ...(Array.isArray(jobResult.jdCoreSkills)
+      ? jobResult.jdCoreSkills
+          .map((value) =>
+            value && typeof value === "object" && "skill" in value
+              ? String((value as { skill?: unknown }).skill ?? "")
+              : ""
+          )
+      : []),
+    ...(Array.isArray(jobResult.skillMatchingScores)
+      ? jobResult.skillMatchingScores
+          .map((value) =>
+            value && typeof value === "object" && "displayName" in value
+              ? String((value as { displayName?: unknown }).displayName ?? "")
+              : ""
+          )
+      : []),
+    ...domSkillTags,
+  ]);
+  const taxonomy = uniqueStrings(
+    Array.isArray(jobResult.jobTaxonomyV3)
+      ? jobResult.jobTaxonomyV3.map((value) => String(value))
+      : []
+  );
+  const companyWebsite =
+    (typeof companyResult.companyURL === "string" ? companyResult.companyURL : null) ||
+    (
+      jobPosting.hiringOrganization &&
+      typeof jobPosting.hiringOrganization === "object" &&
+      typeof (jobPosting.hiringOrganization as { sameAs?: unknown }).sameAs === "string"
+        ? String((jobPosting.hiringOrganization as { sameAs?: unknown }).sameAs)
+        : null
+    );
+  const companyDescription =
+    typeof companyResult.companyDesc === "string" ? companyResult.companyDesc : null;
+  const companySize =
+    typeof companyResult.companySize === "string" ? companyResult.companySize : null;
+  const companyLocation =
+    typeof companyResult.companyLocation === "string" ? companyResult.companyLocation : null;
+  const companyFoundedYear =
+    typeof companyResult.companyFoundYear === "string" ? companyResult.companyFoundYear : null;
+  const companyCategories = uniqueStrings(
+    splitValues(typeof companyResult.companyCategories === "string" ? companyResult.companyCategories : "")
+  );
+  const h1bSponsorLikely =
+    typeof jobResult.isH1bSponsor === "boolean"
+      ? jobResult.isH1bSponsor
+      : bodyText.toLowerCase().includes("h1b sponsor likely")
+        ? true
+        : null;
+  const h1bSponsorshipHistory = Array.isArray(companyResult.h1bAnnualJobCount)
+    ? companyResult.h1bAnnualJobCount
+        .map((value) => {
+          if (!value || typeof value !== "object") return null;
+          const year = String((value as { year?: unknown }).year ?? "").trim();
+          const count = Number((value as { count?: unknown }).count ?? NaN);
+          if (!year || Number.isNaN(count)) return null;
+          return { year, count };
+        })
+        .filter((value): value is { year: string; count: number } => value !== null)
+    : [];
+  const insiderConnections = Array.isArray(jobResult.socialConnections)
+    ? jobResult.socialConnections.length
+    : null;
+
+  /* ---- original/apply URLs ---- */
   const origLink = first(
     document,
     "a[href*='original']",
     "a[class*='original']"
   );
-  let originalPostUrl = href(origLink);
-  if (!originalPostUrl) {
-    // Search link text for "Original Job Post" or similar
-    const allLinks = Array.from(document.querySelectorAll("a[href]"));
-    for (const a of allLinks) {
-      const linkText = txt(a).toLowerCase();
-      if (
-        linkText.includes("original") &&
-        (linkText.includes("post") || linkText.includes("job"))
-      ) {
-        originalPostUrl = href(a);
-        break;
-      }
+  const originalCandidates = new Set<string>();
+  addCandidate(originalCandidates, href(origLink));
+  for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+    const linkText = txt(a).toLowerCase();
+    if (
+      linkText.includes("original") &&
+      (linkText.includes("post") || linkText.includes("job"))
+    ) {
+      addCandidate(originalCandidates, href(a));
     }
   }
 
-  /* ---- apply now URL ---- */
   const applyLink = first(
     document,
     "a[href*='greenhouse']",
@@ -526,21 +898,33 @@ export function extractNewGradDetail(): NewGradDetail {
     "[class*='apply'] a",
     "a[class*='apply']"
   );
-  let applyNowUrl = href(applyLink);
-  if (!applyNowUrl) {
-    const allLinks = Array.from(document.querySelectorAll("a[href]"));
-    for (const a of allLinks) {
-      const linkText = txt(a).toLowerCase();
-      if (
-        linkText.includes("apply on employer site") ||
-        linkText.includes("apply now") ||
-        linkText.includes("apply for")
-      ) {
-        applyNowUrl = href(a);
-        break;
-      }
+  const applyCandidates = new Set<string>();
+  addCandidate(applyCandidates, href(applyLink));
+  for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+    const linkText = txt(a).toLowerCase();
+    if (
+      linkText.includes("apply on employer site") ||
+      linkText.includes("apply now") ||
+      linkText.includes("join now") ||
+      linkText.includes("apply for")
+    ) {
+      addCandidate(applyCandidates, href(a));
     }
   }
+
+  const domCandidates = collectDomUrls();
+  const scriptCandidates = collectScriptUrls();
+  for (const candidate of domCandidates) {
+    addCandidate(originalCandidates, candidate);
+    addCandidate(applyCandidates, candidate);
+  }
+  for (const candidate of scriptCandidates) {
+    addCandidate(originalCandidates, candidate);
+    addCandidate(applyCandidates, candidate);
+  }
+
+  const originalPostUrl = pickBestUrl(originalCandidates);
+  const applyNowUrl = pickBestUrl(applyCandidates);
 
   return {
     position: 0,
@@ -556,7 +940,23 @@ export function extractNewGradDetail(): NewGradDetail {
     skillMatch,
     industryExpMatch,
     description,
+    industries,
+    recommendationTags,
+    responsibilities,
+    requiredQualifications,
+    skillTags,
+    taxonomy,
+    companyWebsite,
+    companyDescription,
+    companySize,
+    companyLocation,
+    companyFoundedYear,
+    companyCategories,
+    h1bSponsorLikely,
+    h1bSponsorshipHistory,
+    insiderConnections,
     originalPostUrl,
     applyNowUrl,
+    applyFlowUrls: [],
   };
 }

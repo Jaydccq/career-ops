@@ -563,8 +563,29 @@ export function buildServer(args: BuildServerArgs) {
     skillMatch: z.number().nullable(),
     industryExpMatch: z.number().nullable(),
     description: z.string(),
+    industries: z.array(z.string()),
+    recommendationTags: z.array(z.string()),
+    responsibilities: z.array(z.string()),
+    requiredQualifications: z.array(z.string()),
+    skillTags: z.array(z.string()),
+    taxonomy: z.array(z.string()),
+    companyWebsite: z.string().nullable(),
+    companyDescription: z.string().nullable(),
+    companySize: z.string().nullable(),
+    companyLocation: z.string().nullable(),
+    companyFoundedYear: z.string().nullable(),
+    companyCategories: z.array(z.string()),
+    h1bSponsorLikely: z.boolean().nullable(),
+    h1bSponsorshipHistory: z.array(
+      z.object({
+        year: z.string(),
+        count: z.number().int(),
+      })
+    ),
+    insiderConnections: z.number().int().nullable(),
     originalPostUrl: z.string(),
     applyNowUrl: z.string(),
+    applyFlowUrls: z.array(z.string()),
   });
 
   const enrichedRowSchema = z.object({

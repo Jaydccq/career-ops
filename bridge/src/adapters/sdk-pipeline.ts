@@ -66,6 +66,7 @@ import { join } from "node:path";
 
 import { bridgeError } from "../runtime/errors.js";
 import { scoreAndFilter } from "./newgrad-scorer.js";
+import { pickPipelineEntryUrl } from "./newgrad-links.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Zod schema for structured evaluation output                                */
@@ -357,10 +358,10 @@ export function createSdkPipelineAdapter(
           continue;
         }
 
-        const entryUrl =
-          enrichedRow.detail.originalPostUrl ||
-          enrichedRow.detail.applyNowUrl ||
-          enrichedRow.row.row.applyUrl;
+        const entryUrl = pickPipelineEntryUrl(
+          enrichedRow.detail,
+          enrichedRow.row.row,
+        );
         if (existingPipelineUrls.has(entryUrl)) {
           skipped++;
           continue;
