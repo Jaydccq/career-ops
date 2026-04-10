@@ -18,3 +18,4 @@
 export * from "../../../bridge/src/contracts/envelope.js";
 export * from "../../../bridge/src/contracts/jobs.js";
 export * from "../../../bridge/src/contracts/api.js";
+export * from "../../../bridge/src/contracts/newgrad.js";

@@ -20,6 +20,8 @@ import {
   type LivenessResult,
   type ReportReadResult,
   type TrackerListResult,
+  type NewGradScoreResult,
+  type NewGradEnrichResult,
 } from "../contracts/bridge-wire.js";
 import {
   PROTOCOL_VERSION,
@@ -28,7 +30,7 @@ import {
   type Response as EnvelopedResponse,
   type SuccessResponse,
 } from "../contracts/bridge-wire.js";
-import type { EvaluationInput, JobEvent, JobId } from "../contracts/bridge-wire.js";
+import type { EvaluationInput, JobEvent, JobId, NewGradRow, EnrichedRow } from "../contracts/bridge-wire.js";
 import type { ExtensionState, MergeReport } from "../contracts/messages.js";
 
 export interface BridgeClientConfig {
@@ -48,6 +50,8 @@ export function bridgeClient(
   getTracker(limit: number): Promise<EnvelopedResponse<TrackerListResult>>;
   getReport(num: number): Promise<EnvelopedResponse<ReportReadResult>>;
   mergeTracker(dryRun: boolean): Promise<EnvelopedResponse<MergeReport>>;
+  scoreNewGradRows(rows: NewGradRow[]): Promise<EnvelopedResponse<NewGradScoreResult>>;
+  enrichNewGradRows(rows: EnrichedRow[]): Promise<EnvelopedResponse<NewGradEnrichResult>>;
   streamJob(
     jobId: JobId,
     onEvent: (event: JobEvent) => void,
@@ -211,6 +215,32 @@ export function bridgeClient(
           body: JSON.stringify(env),
         },
         env.requestId
+      );
+    },
+
+    async scoreNewGradRows(rows: NewGradRow[]) {
+      const env = envelope({ rows });
+      return jsonRequest<NewGradScoreResult>(
+        "/v1/newgrad-scan/score",
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(env),
+        },
+        env.requestId,
+      );
+    },
+
+    async enrichNewGradRows(rows: EnrichedRow[]) {
+      const env = envelope({ rows });
+      return jsonRequest<NewGradEnrichResult>(
+        "/v1/newgrad-scan/enrich",
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(env),
+        },
+        env.requestId,
       );
     },
 

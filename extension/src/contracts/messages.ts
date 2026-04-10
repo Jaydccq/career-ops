@@ -34,6 +34,13 @@ import type {
   LivenessResult,
 } from "./bridge-wire.js";
 import type { BridgeError } from "./bridge-wire.js";
+import type {
+  EnrichedRow,
+  NewGradRow,
+  NewGradScoreResult,
+  NewGradEnrichResult,
+  ScoredRow,
+} from "./bridge-wire.js";
 
 export interface MergeReport {
   added: number;
@@ -88,7 +95,15 @@ export type PopupRequest =
   /** Ask background to read a single evaluation report by number. */
   | { kind: "readReport"; reportNum: number }
   /** Ask background to merge tracker additions via the bridge. */
-  | { kind: "mergeTracker"; dryRun?: boolean };
+  | { kind: "mergeTracker"; dryRun?: boolean }
+  /** Trigger list page extraction on the active newgrad-jobs.com tab. */
+  | { kind: "newgradExtractList" }
+  /** Send extracted rows to bridge for scoring. */
+  | { kind: "newgradScore"; rows: NewGradRow[] }
+  /** Open detail pages for promoted rows in background tabs with throttling. */
+  | { kind: "newgradEnrichDetails"; promotedRows: ScoredRow[]; config: { concurrent: number; delayMinMs: number; delayMaxMs: number } }
+  /** Send enriched rows to bridge for re-scoring and pipeline write. */
+  | { kind: "newgradEnrich"; rows: EnrichedRow[] };
 
 /**
  * popup <- background responses. Each one corresponds by `kind` to a
@@ -127,7 +142,15 @@ export type PopupResponse =
   | { kind: "readReport"; ok: true; result: ReportReadResult }
   | { kind: "readReport"; ok: false; error: BridgeError }
   | { kind: "mergeTracker"; ok: true; result: MergeReport }
-  | { kind: "mergeTracker"; ok: false; error: BridgeError };
+  | { kind: "mergeTracker"; ok: false; error: BridgeError }
+  | { kind: "newgradExtractList"; ok: true; result: { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } } }
+  | { kind: "newgradExtractList"; ok: false; error: BridgeError }
+  | { kind: "newgradScore"; ok: true; result: NewGradScoreResult }
+  | { kind: "newgradScore"; ok: false; error: BridgeError }
+  | { kind: "newgradEnrichDetails"; ok: true; result: { enrichedRows: EnrichedRow[]; failed: number } }
+  | { kind: "newgradEnrichDetails"; ok: false; error: BridgeError }
+  | { kind: "newgradEnrich"; ok: true; result: NewGradEnrichResult }
+  | { kind: "newgradEnrich"; ok: false; error: BridgeError };
 
 /**
  * Long-lived port messages pushed from background to popup for an

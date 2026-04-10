@@ -26,8 +26,12 @@ import type {
 } from "../contracts/messages.js";
 import type {
   BridgeError,
+  EnrichedRow,
   JobEvent,
   JobId,
+  NewGradDetail,
+  NewGradRow,
+  ScoredRow,
 } from "../contracts/bridge-wire.js";
 
 import { loadState, patchState } from "./state.js";
@@ -115,6 +119,14 @@ async function handleRequest(req: PopupRequest): Promise<PopupResponse> {
         return await handleReadReport(req.reportNum);
       case "mergeTracker":
         return await handleMergeTracker(req.dryRun);
+      case "newgradExtractList":
+        return await handleNewGradExtractList();
+      case "newgradScore":
+        return await handleNewGradScore(req.rows);
+      case "newgradEnrichDetails":
+        return await handleNewGradEnrichDetails(req.promotedRows, req.config);
+      case "newgradEnrich":
+        return await handleNewGradEnrich(req.rows);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -407,6 +419,529 @@ async function handleMergeTracker(dryRun?: boolean): Promise<PopupResponse> {
   const res = await client.mergeTracker(dryRun ?? false);
   if (res.ok) return { kind: "mergeTracker", ok: true, result: res.result };
   return { kind: "mergeTracker", ok: false, error: res.error };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Newgrad-scan handlers                                                     */
+/* -------------------------------------------------------------------------- */
+
+async function handleNewGradExtractList(): Promise<PopupResponse> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || tab.id === undefined || !tab.url) {
+    return {
+      kind: "newgradExtractList",
+      ok: false,
+      error: { code: "NOT_FOUND", message: "no active tab" },
+    };
+  }
+  if (!tab.url.includes("newgrad-jobs.com")) {
+    return {
+      kind: "newgradExtractList",
+      ok: false,
+      error: {
+        code: "BAD_REQUEST",
+        message: `active tab is not on newgrad-jobs.com: ${tab.url}`,
+      },
+    };
+  }
+  const tabId = tab.id;
+
+  // The injected function must be FULLY self-contained — every constant,
+  // helper, and type must live inside the function body. chrome.scripting
+  // serializes only this function; module-level closures do not travel.
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      /* ---- helpers (inlined — no closures) ---- */
+      function txt(el: Element | null | undefined): string {
+        if (!el) return "";
+        return (
+          (el as HTMLElement).innerText ?? el.textContent ?? ""
+        ).trim();
+      }
+
+      function href(el: Element | null | undefined): string {
+        if (!el) return "";
+        return (el as HTMLAnchorElement).href ?? el.getAttribute("href") ?? "";
+      }
+
+      function first(parent: Element, ...selectors: string[]): Element | null {
+        for (const sel of selectors) {
+          const found = parent.querySelector(sel);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      function allCells(row: Element): Element[] {
+        let cells = Array.from(row.querySelectorAll("td"));
+        if (cells.length === 0)
+          cells = Array.from(
+            row.querySelectorAll("[class*='cell'], [class*='col'], [class*='field']")
+          );
+        return cells;
+      }
+
+      /* ---- locate rows ---- */
+      let rows = Array.from(document.querySelectorAll("table tbody tr"));
+      if (rows.length === 0) {
+        rows = Array.from(
+          document.querySelectorAll(
+            "[class*='job-row'], [class*='listing-row'], [class*='job'] tr, [class*='listing'] tr"
+          )
+        );
+      }
+      if (rows.length === 0) {
+        rows = Array.from(
+          document.querySelectorAll(
+            "[class*='job-card'], [class*='job-item'], [class*='listing-item']"
+          )
+        );
+      }
+
+      const results: {
+        position: number;
+        title: string;
+        postedAgo: string;
+        applyUrl: string;
+        detailUrl: string;
+        workModel: string;
+        location: string;
+        company: string;
+        salary: string;
+        companySize: string;
+        industry: string;
+        qualifications: string;
+        h1bSponsored: string;
+        isNewGrad: string;
+      }[] = [];
+
+      for (const [i, row] of rows.entries()) {
+        const cells = allCells(row);
+
+        const applyLink = first(
+          row,
+          "a[href*='apply']",
+          "a[href*='Apply']",
+          "a[class*='apply']",
+          "a[data-action*='apply']"
+        );
+
+        const allLinks = Array.from(row.querySelectorAll("a[href]"));
+        const detailLink = allLinks.find(
+          (a) =>
+            a !== applyLink &&
+            !href(a).toLowerCase().includes("apply") &&
+            href(a).startsWith("/")
+        ) ?? allLinks.find(
+          (a) =>
+            a !== applyLink &&
+            !href(a).toLowerCase().includes("apply") &&
+            href(a).includes("newgrad-jobs.com")
+        ) ?? allLinks[0] ?? null;
+
+        const titleEl = first(
+          row,
+          "[class*='title']",
+          "[class*='position']",
+          "[data-field='title']",
+          "a[href]:not([href*='apply'])"
+        );
+
+        const companyEl = first(row, "[class*='company']", "[data-field='company']");
+        const locationEl = first(row, "[class*='location']", "[data-field='location']");
+        const salaryEl = first(row, "[class*='salary']", "[class*='compensation']", "[data-field='salary']");
+        const postedEl = first(row, "[class*='posted']", "[class*='date']", "[class*='time']", "[data-field='posted']", "time");
+        const workModelEl = first(row, "[class*='work-model']", "[class*='remote']", "[class*='onsite']", "[class*='hybrid']", "[data-field='workModel']");
+        const companySizeEl = first(row, "[class*='size']", "[class*='company-size']", "[data-field='companySize']");
+        const industryEl = first(row, "[class*='industry']", "[data-field='industry']");
+        const qualsEl = first(row, "[class*='qual']", "[class*='requirement']", "[data-field='qualifications']");
+        const h1bEl = first(row, "[class*='h1b']", "[class*='sponsor']", "[class*='visa']", "[data-field='h1b']");
+        const newGradEl = first(row, "[class*='new-grad']", "[class*='newgrad']", "[class*='entry-level']", "[data-field='isNewGrad']");
+
+        const titleText = txt(titleEl) || (cells[0] ? txt(cells[0]) : "");
+        const postedText = txt(postedEl) || (cells[1] ? txt(cells[1]) : "");
+        const workModelText = txt(workModelEl) || (cells[3] ? txt(cells[3]) : "");
+        const locationText = txt(locationEl) || (cells[4] ? txt(cells[4]) : "");
+        const companyText = txt(companyEl) || (cells[5] ? txt(cells[5]) : "");
+        const salaryText = txt(salaryEl) || (cells[6] ? txt(cells[6]) : "");
+        const companySizeText = txt(companySizeEl) || (cells[7] ? txt(cells[7]) : "");
+        const industryText = txt(industryEl) || (cells[8] ? txt(cells[8]) : "");
+        const qualsText = txt(qualsEl) || (cells[9] ? txt(cells[9]) : "");
+        const h1bText = txt(h1bEl) || (cells[10] ? txt(cells[10]) : "");
+        const newGradText = txt(newGradEl) || (cells[11] ? txt(cells[11]) : "");
+
+        if (!titleText && !companyText) continue;
+
+        results.push({
+          position: i + 1,
+          title: titleText,
+          postedAgo: postedText,
+          applyUrl: href(applyLink),
+          detailUrl: href(detailLink),
+          workModel: workModelText,
+          location: locationText,
+          company: companyText,
+          salary: salaryText,
+          companySize: companySizeText,
+          industry: industryText,
+          qualifications: qualsText.slice(0, 500),
+          h1bSponsored: h1bText,
+          isNewGrad: newGradText,
+        });
+      }
+
+      // Try to extract current page number from pagination
+      let currentPage = 1;
+      const pageEl = document.querySelector(
+        "[class*='pagination'] [class*='active'], [class*='pagination'] [aria-current='page']"
+      );
+      if (pageEl) {
+        const num = parseInt(txt(pageEl), 10);
+        if (!Number.isNaN(num)) currentPage = num;
+      }
+
+      return { rows: results, pageInfo: { currentPage, totalRows: results.length } };
+    },
+  });
+
+  const extracted = results[0]?.result as
+    | { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } }
+    | undefined;
+
+  if (!extracted) {
+    return {
+      kind: "newgradExtractList",
+      ok: false,
+      error: { code: "INTERNAL", message: "content script returned no result" },
+    };
+  }
+
+  return { kind: "newgradExtractList", ok: true, result: extracted };
+}
+
+async function handleNewGradScore(rows: NewGradRow[]): Promise<PopupResponse> {
+  const state = await loadState();
+  if (!state.bridgeToken) {
+    return {
+      kind: "newgradScore",
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "bridge token not configured" },
+    };
+  }
+  const client = bridgeClientFromState(state);
+  const res = await client.scoreNewGradRows(rows);
+  if (res.ok) return { kind: "newgradScore", ok: true, result: res.result };
+  return { kind: "newgradScore", ok: false, error: res.error };
+}
+
+async function handleNewGradEnrichDetails(
+  promotedRows: ScoredRow[],
+  config: { concurrent: number; delayMinMs: number; delayMaxMs: number }
+): Promise<PopupResponse> {
+  const enrichedRows: EnrichedRow[] = [];
+  let failed = 0;
+  const queue = [...promotedRows];
+
+  while (queue.length > 0) {
+    const batch = queue.splice(0, config.concurrent);
+    const results = await Promise.all(batch.map(async (scored) => {
+      try {
+        // Open background tab
+        const tab = await chrome.tabs.create({ url: scored.row.detailUrl, active: false });
+        if (!tab.id) return null;
+
+        // Wait for page load
+        await new Promise<void>((resolve) => {
+          const listener = (tabId: number, info: chrome.tabs.TabChangeInfo) => {
+            if (tabId === tab.id && info.status === "complete") {
+              chrome.tabs.onUpdated.removeListener(listener);
+              resolve();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+          // Timeout after 15s
+          setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
+        });
+
+        // Inject detail extractor — FULLY self-contained inline function.
+        const scriptResults = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const MAX_DESC_CHARS = 20000;
+
+            /* ---- helpers (inlined — no closures) ---- */
+            function txt(el: Element | null | undefined): string {
+              if (!el) return "";
+              return (
+                (el as HTMLElement).innerText ?? el.textContent ?? ""
+              ).trim();
+            }
+
+            function href(el: Element | null | undefined): string {
+              if (!el) return "";
+              return (el as HTMLAnchorElement).href ?? el.getAttribute("href") ?? "";
+            }
+
+            function first(root: Document | Element, ...selectors: string[]): Element | null {
+              for (const sel of selectors) {
+                try {
+                  const found = root.querySelector(sel);
+                  if (found) return found;
+                } catch {
+                  // Invalid selector — skip
+                }
+              }
+              return null;
+            }
+
+            function labelledValue(label: string): string {
+              const allEls = Array.from(
+                document.querySelectorAll(
+                  "dt, th, label, strong, b, [class*='label'], [class*='key'], [class*='field-name']"
+                )
+              );
+              const lower = label.toLowerCase();
+              for (const el of allEls) {
+                const elText = txt(el).toLowerCase();
+                if (elText.includes(lower)) {
+                  const next = el.nextElementSibling;
+                  if (next) {
+                    const val = txt(next);
+                    if (val) return val;
+                  }
+                  const parentNext = el.parentElement?.nextElementSibling;
+                  if (parentNext) {
+                    const val = txt(parentNext);
+                    if (val) return val;
+                  }
+                  const parentText = txt(el.parentElement);
+                  const idx = parentText.toLowerCase().indexOf(lower);
+                  if (idx >= 0) {
+                    const afterLabel = parentText.slice(idx + label.length).replace(/^[:\s]+/, "").trim();
+                    if (afterLabel) return afterLabel;
+                  }
+                }
+              }
+              return "";
+            }
+
+            /* ---- title ---- */
+            const titleEl = first(
+              document,
+              "h1[class*='title']",
+              "h1[class*='job']",
+              "[class*='job-title']",
+              "[class*='position-title']",
+              "h1"
+            );
+            const title = txt(titleEl);
+
+            /* ---- company ---- */
+            const companyEl = first(
+              document,
+              "[class*='company-name']",
+              "[class*='company'] h2",
+              "[class*='company'] a",
+              "[class*='employer']"
+            );
+            const company = txt(companyEl) || labelledValue("company");
+
+            /* ---- location ---- */
+            const locationEl = first(
+              document,
+              "[class*='location']",
+              "[class*='job-location']"
+            );
+            const location = txt(locationEl) || labelledValue("location");
+
+            /* ---- employment type ---- */
+            const employmentType =
+              labelledValue("employment type") ||
+              labelledValue("job type") ||
+              labelledValue("type");
+
+            /* ---- work model ---- */
+            const workModelEl = first(
+              document,
+              "[class*='work-model']",
+              "[class*='remote']",
+              "[class*='workplace']"
+            );
+            const workModel =
+              txt(workModelEl) ||
+              labelledValue("work model") ||
+              labelledValue("workplace type") ||
+              labelledValue("remote");
+
+            /* ---- seniority level ---- */
+            const seniorityLevel =
+              labelledValue("seniority") ||
+              labelledValue("experience level") ||
+              labelledValue("level");
+
+            /* ---- salary range ---- */
+            const salaryEl = first(
+              document,
+              "[class*='salary']",
+              "[class*='compensation']",
+              "[class*='pay']"
+            );
+            const salaryRange =
+              txt(salaryEl) ||
+              labelledValue("salary") ||
+              labelledValue("compensation") ||
+              labelledValue("pay range");
+
+            /* ---- Jobright match scores ---- */
+            const bodyText = document.body?.innerText ?? "";
+
+            function extractPercentage(pattern: RegExp): number | null {
+              const m = bodyText.match(pattern);
+              if (m && m[1]) {
+                const n = parseInt(m[1], 10);
+                return Number.isNaN(n) ? null : n;
+              }
+              return null;
+            }
+
+            const matchScore = extractPercentage(
+              /(\d+)\s*%\s*(?:GOOD\s+MATCH|GREAT\s+MATCH|MATCH)/i
+            );
+            const expLevelMatch = extractPercentage(
+              /experience\s+level\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+            );
+            const skillMatch = extractPercentage(
+              /skills?\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+            );
+            const industryExpMatch = extractPercentage(
+              /industry\s*(?:experience)?\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+            );
+
+            /* ---- description ---- */
+            const descEl = first(
+              document,
+              "[class*='description']",
+              "[class*='job-details']",
+              "[class*='job-body']",
+              "[class*='jd-content']",
+              "article",
+              "main [class*='content']",
+              "main"
+            );
+            const rawDesc = txt(descEl) || txt(document.querySelector("main")) || "";
+            const description = rawDesc
+              .replace(/\s+\n/g, "\n")
+              .replace(/[ \t]+/g, " ")
+              .trim()
+              .slice(0, MAX_DESC_CHARS);
+
+            /* ---- original post URL ---- */
+            const origLink = first(
+              document,
+              "a[href*='original']",
+              "a[class*='original']"
+            );
+            let originalPostUrl = href(origLink);
+            if (!originalPostUrl) {
+              const allLinks = Array.from(document.querySelectorAll("a[href]"));
+              for (const a of allLinks) {
+                const linkText = txt(a).toLowerCase();
+                if (
+                  linkText.includes("original") &&
+                  (linkText.includes("post") || linkText.includes("job"))
+                ) {
+                  originalPostUrl = href(a);
+                  break;
+                }
+              }
+            }
+
+            /* ---- apply now URL ---- */
+            const applyLink = first(
+              document,
+              "a[href*='apply'][class*='btn']",
+              "a[href*='apply'][class*='button']",
+              "a[href*='apply']",
+              "button[class*='apply']",
+              "[class*='apply'] a",
+              "a[class*='apply']"
+            );
+            let applyNowUrl = href(applyLink);
+            if (!applyNowUrl) {
+              const allLinks = Array.from(document.querySelectorAll("a[href]"));
+              for (const a of allLinks) {
+                const linkText = txt(a).toLowerCase();
+                if (linkText.includes("apply now") || linkText.includes("apply for")) {
+                  applyNowUrl = href(a);
+                  break;
+                }
+              }
+            }
+
+            return {
+              position: 0,
+              title,
+              company,
+              location,
+              employmentType,
+              workModel,
+              seniorityLevel,
+              salaryRange,
+              matchScore,
+              expLevelMatch,
+              skillMatch,
+              industryExpMatch,
+              description,
+              originalPostUrl,
+              applyNowUrl,
+            };
+          },
+        });
+
+        // Close tab
+        await chrome.tabs.remove(tab.id);
+
+        const detail = scriptResults[0]?.result as NewGradDetail | undefined;
+        if (!detail) return null;
+
+        return {
+          row: scored,
+          detail: { ...detail, position: scored.row.position },
+        } as EnrichedRow;
+      } catch {
+        return null;
+      }
+    }));
+
+    for (const r of results) {
+      if (r) enrichedRows.push(r);
+      else failed++;
+    }
+
+    // Random delay between batches
+    if (queue.length > 0) {
+      const delay = config.delayMinMs + Math.random() * (config.delayMaxMs - config.delayMinMs);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  return { kind: "newgradEnrichDetails", ok: true, result: { enrichedRows, failed } };
+}
+
+async function handleNewGradEnrich(rows: EnrichedRow[]): Promise<PopupResponse> {
+  const state = await loadState();
+  if (!state.bridgeToken) {
+    return {
+      kind: "newgradEnrich",
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "bridge token not configured" },
+    };
+  }
+  const client = bridgeClientFromState(state);
+  const res = await client.enrichNewGradRows(rows);
+  if (res.ok) return { kind: "newgradEnrich", ok: true, result: res.result };
+  return { kind: "newgradEnrich", ok: false, error: res.error };
 }
 
 /* -------------------------------------------------------------------------- */
