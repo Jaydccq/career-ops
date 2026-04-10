@@ -32,7 +32,6 @@ import type {
 
 import { loadState, patchState } from "./state.js";
 import { bridgeClientFromState } from "./bridge-client.js";
-import { capturePage } from "../content/extract.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Subscription registry                                                     */
@@ -170,10 +169,11 @@ async function handleCapture(): Promise<PopupResponse> {
   const tabId = tab.id;
   const results = await chrome.scripting.executeScript({
     target: { tabId },
-    func: capturePage,
-    args: [tabId],
+    files: ["content.js"],
   });
-  const captured = results[0]?.result as CapturedTab | undefined;
+  const rawResult = results[0]?.result as CapturedTab | undefined;
+  // Fill in the tabId that the content script doesn't know
+  const captured = rawResult ? { ...rawResult, tabId } : undefined;
   if (!captured) {
     return {
       kind: "captureActiveTab",

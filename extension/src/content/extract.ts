@@ -9,15 +9,30 @@
  * favors "yes this is a job posting" signals over strict exclusion.
  */
 
-import type {
-  CapturedTab,
-  EXTRACT_MAX_CHARS as _EXTRACT_MAX_CHARS_,
-} from "../contracts/messages.js";
-import type { PageDetection } from "../contracts/bridge-wire.js";
+/**
+ * When injected via chrome.scripting.executeScript({ files: ["content.js"] }),
+ * this file runs as a self-contained IIFE in the page context. All
+ * dependencies must be inlined — no imports from other modules.
+ *
+ * The result is returned via the script's return value, which Chrome
+ * surfaces as results[0].result in the background worker.
+ */
 
-// Repeat the literal to avoid pulling the runtime const from messages.ts
-// into the content script bundle. Content scripts run in the page world
-// and should stay small.
+interface PageDetection {
+  label: "job_posting" | "likely_job_posting" | "not_job_posting";
+  confidence: number;
+  signals: readonly string[];
+}
+
+interface CapturedTab {
+  tabId: number;
+  url: string;
+  title: string;
+  pageText: string;
+  detection: PageDetection;
+  capturedAt: string;
+}
+
 const EXTRACT_MAX_CHARS = 20_000;
 
 const POSITIVE_KEYWORDS: readonly string[] = [
@@ -115,26 +130,22 @@ function extractBodyText(doc: Document): string {
 }
 
 /**
- * Extract a CapturedTab from the current document. Called via
- * chrome.scripting.executeScript from the background worker.
- *
- * `tabId` is injected by the caller, not obtained here.
+ * Self-executing capture. When this file is injected via
+ * chrome.scripting.executeScript({ files: ["content.js"] }),
+ * Chrome uses the last expression's value as results[0].result.
  */
-export function capturePage(tabId: number): CapturedTab {
+(() => {
   const url = location.href;
   const title = document.title;
   const pageText = extractBodyText(document);
   const detection = detect(location.hostname, pageText);
-  return {
-    tabId,
+  const result: CapturedTab = {
+    tabId: -1, // filled by background after return
     url,
     title,
     pageText,
     detection,
     capturedAt: new Date().toISOString(),
   };
-}
-
-// Hint: the unused import exists only so the compiler verifies the name
-// still lives in the shared messages.ts contract.
-void (0 as unknown as typeof _EXTRACT_MAX_CHARS_);
+  return result;
+})();

@@ -2,19 +2,18 @@
  * build.mjs — esbuild entrypoint for the career-ops Chrome extension.
  *
  * Bundles three entry points into dist/:
- *   • background.js  (service worker)
- *   • popup.js       (popup controller)
- *   • content.js     (unused at runtime; see note below)
+ *   • background.js  (service worker, ESM)
+ *   • popup.js       (popup controller, ESM)
+ *   • content.js     (injected content script, IIFE — self-contained)
  *
  * Copies:
  *   • public/manifest.json  → dist/manifest.json
  *   • public/popup.html     → dist/popup.html
  *   • public/popup.css      → dist/popup.css
  *
- * Note on content.js: the popup uses chrome.scripting.executeScript with
- * the `func` field to inject `capturePage` directly from the background
- * bundle. esbuild bundles the function via the background entry, so we
- * do NOT register a persistent content script in the manifest.
+ * content.js is bundled as IIFE (not ESM) because it runs via
+ * chrome.scripting.executeScript({ files: ["content.js"] }) in the
+ * page's isolated world. The IIFE's return value is the capture result.
  */
 
 import { build } from "esbuild";
@@ -31,6 +30,7 @@ async function main() {
   await rm(DIST, { recursive: true, force: true });
   await mkdir(DIST, { recursive: true });
 
+  // Background + popup: ESM modules
   await build({
     entryPoints: {
       background: join(SRC, "background/index.ts"),
@@ -38,6 +38,20 @@ async function main() {
     },
     bundle: true,
     format: "esm",
+    target: "es2022",
+    outdir: DIST,
+    sourcemap: "linked",
+    minify: false,
+    logLevel: "info",
+  });
+
+  // Content script: IIFE (runs in page context, must be self-contained)
+  await build({
+    entryPoints: {
+      content: join(SRC, "content/extract.ts"),
+    },
+    bundle: true,
+    format: "iife",
     target: "es2022",
     outdir: DIST,
     sourcemap: "linked",
