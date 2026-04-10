@@ -167,12 +167,61 @@ async function handleCapture(): Promise<PopupResponse> {
     };
   }
   const tabId = tab.id;
+  // The injected function must be FULLY self-contained — every constant,
+  // helper, and type must live inside the function body. chrome.scripting
+  // serializes only this function; module-level closures do not travel.
   const results = await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["content.js"],
+    func: () => {
+      const EXTRACT_MAX_CHARS = 20000;
+      const POSITIVE_KEYWORDS = [
+        "responsibilities", "requirements", "qualifications",
+        "about the role", "about this role", "we're looking for",
+        "what you'll do", "what you will do", "what we're looking for",
+        "nice to have", "apply for this job", "apply now",
+        "submit application", "years of experience",
+      ];
+      const JOB_BOARD_HOSTS = [
+        "boards.greenhouse.io", "jobs.ashbyhq.com", "jobs.lever.co",
+        "wellfound.com", "angel.co", "linkedin.com", "workable.com",
+        "jobs.smartrecruiters.com", "workday", "remote.com", "remotefront",
+        "fujitsu.com", "icims.com", "myworkdayjobs.com",
+      ];
+
+      const lower = (document.body?.innerText ?? "").toLowerCase();
+      const hits: string[] = [];
+      let score = 0;
+      for (const kw of POSITIVE_KEYWORDS) {
+        if (lower.includes(kw)) { hits.push("keyword:" + kw); score += 1; }
+      }
+      const host = location.hostname.toLowerCase();
+      for (const h of JOB_BOARD_HOSTS) {
+        if (host.includes(h)) { hits.push("host:" + h); score += 3; break; }
+      }
+
+      let label: "job_posting" | "likely_job_posting" | "not_job_posting";
+      let confidence: number;
+      if (score >= 6) { label = "job_posting"; confidence = Math.min(0.95, 0.5 + score * 0.05); }
+      else if (score >= 2) { label = "likely_job_posting"; confidence = Math.min(0.75, 0.3 + score * 0.05); }
+      else { label = "not_job_posting"; confidence = Math.max(0.1, 0.3 - score * 0.05); }
+
+      const main = document.querySelector("main")
+        ?? document.querySelector("article")
+        ?? document.body;
+      const rawText = (main as HTMLElement)?.innerText ?? "";
+      const pageText = rawText.replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ").trim().slice(0, EXTRACT_MAX_CHARS);
+
+      return {
+        tabId: -1,
+        url: location.href,
+        title: document.title,
+        pageText,
+        detection: { label, confidence, signals: hits },
+        capturedAt: new Date().toISOString(),
+      };
+    },
   });
   const rawResult = results[0]?.result as CapturedTab | undefined;
-  // Fill in the tabId that the content script doesn't know
   const captured = rawResult ? { ...rawResult, tabId } : undefined;
   if (!captured) {
     return {
