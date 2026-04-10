@@ -21,7 +21,7 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import { resolve, dirname, basename } from 'path';
+import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 
@@ -96,6 +96,32 @@ function selectJdQuotesAndProofs(jdText, proofPoints) {
 }
 
 /**
+ * Validate that a parsed content object has all required fields.
+ * Throws clear, specific errors instead of the cryptic TypeErrors that
+ * surface when an agent produces malformed JSON.
+ */
+function validateContent(content) {
+  if (!content.candidate) {
+    throw new Error('content.candidate is required (see examples/sample-cover-letter.json for the expected shape)');
+  }
+  if (!content.letter) {
+    throw new Error('content.letter is required (see examples/sample-cover-letter.json for the expected shape)');
+  }
+  const requiredCandidateFields = ['name', 'email', 'linkedin_url', 'linkedin_display', 'location'];
+  for (const k of requiredCandidateFields) {
+    if (!content.candidate[k]) {
+      throw new Error(`content.candidate.${k} is required`);
+    }
+  }
+  const requiredLetterFields = ['company', 'role', 'date', 'salutation', 'closing', 'paragraphs'];
+  for (const k of requiredLetterFields) {
+    if (content.letter[k] === undefined) {
+      throw new Error(`content.letter.${k} is required`);
+    }
+  }
+}
+
+/**
  * Substitute {{PLACEHOLDER}} tokens in the template with values from content.
  * Mirrors the convention in modes/pdf.md (placeholder table).
  */
@@ -105,7 +131,7 @@ function fillTemplate(template, content) {
 
   const replacements = {
     LANG: content.lang || 'en',
-    PAGE_WIDTH: content.page_width || '8.5in',
+    PAGE_WIDTH: content.page_width,
     NAME: escapeHtml(c.name),
     EMAIL: escapeHtml(c.email),
     LINKEDIN_URL: escapeHtml(c.linkedin_url),
@@ -135,7 +161,10 @@ function fillTemplate(template, content) {
 
 async function main() {
   const args = process.argv.slice(2);
-  let inputJson, outputPdf, format = 'letter';
+  let inputJson, outputPdf;
+  // Default to 'letter' (not 'a4' like generate-pdf.mjs) because US cover letters
+  // almost always target letter-size paper. Override with --format=a4 for EU/world.
+  let format = 'letter';
 
   for (const arg of args) {
     if (arg.startsWith('--format=')) {
@@ -161,6 +190,7 @@ async function main() {
 
   // Read content + template
   const content = JSON.parse(await readFile(inputJson, 'utf-8'));
+  validateContent(content);
   const templatePath = resolve(__dirname, 'templates/cover-letter-template.html');
   const template = await readFile(templatePath, 'utf-8');
 
@@ -183,6 +213,11 @@ async function main() {
   const result = spawnSync('node', [renderer, tmpHtml, outputPdf, `--format=${format}`], {
     stdio: 'inherit',
   });
+
+  if (result.error) {
+    console.error(`❌ Failed to spawn generate-pdf.mjs: ${result.error.message}`);
+    process.exit(1);
+  }
 
   if (result.status !== 0) {
     console.error(`❌ generate-pdf.mjs exited with status ${result.status}`);
