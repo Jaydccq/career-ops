@@ -252,6 +252,25 @@ function buildHTML(): string {
       <div class="error-message" id="error-message"></div>
       <button class="cta" id="retry-btn">Try again</button>
     </div>
+    <div id="newgrad-scan" class="section hidden">
+      <div class="section-title">newgrad-jobs.com Scanner</div>
+      <div id="ng-status" style="font-size:12px;color:#8f8f94;margin-bottom:6px;"></div>
+      <button class="cta primary" id="ng-scan-btn">Scan & Score</button>
+      <div id="ng-results" class="hidden" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+        <div id="ng-promoted" style="font-size:12px;color:#4ecb71;"></div>
+        <div id="ng-filtered" style="font-size:12px;color:#8f8f94;"></div>
+        <div id="ng-deduped" style="font-size:12px;color:#8f8f94;"></div>
+        <button class="cta primary" id="ng-enrich-btn" style="margin-top:4px;">Enrich detail pages</button>
+      </div>
+      <div id="ng-enrich-progress" class="hidden" style="font-size:12px;color:#8f8f94;margin-top:8px;"></div>
+      <div id="ng-enrich-results" class="hidden" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+        <div id="ng-added" style="font-size:12px;color:#4ecb71;"></div>
+        <div id="ng-skipped" style="font-size:12px;color:#8f8f94;"></div>
+        <div style="font-size:11px;color:#8f8f94;margin-top:6px;">
+          Run <code style="color:#7aa7ff;">/career-ops pipeline</code> to start full evaluations.
+        </div>
+      </div>
+    </div>
     <div id="recent" class="section">
       <div class="section-title">Recent evaluations</div>
       <div class="recent-list" id="recent-list">
@@ -302,6 +321,18 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const errorMessageEl = $("error-message");
   const retryBtn = $("retry-btn") as HTMLButtonElement;
   const recentListEl = $("recent-list");
+  const newgradScanEl = $("newgrad-scan");
+  const ngStatusEl = $("ng-status");
+  const ngScanBtn = $("ng-scan-btn") as HTMLButtonElement;
+  const ngResultsEl = $("ng-results");
+  const ngPromotedEl = $("ng-promoted");
+  const ngFilteredEl = $("ng-filtered");
+  const ngDedupedEl = $("ng-deduped");
+  const ngEnrichBtn = $("ng-enrich-btn") as HTMLButtonElement;
+  const ngEnrichProgressEl = $("ng-enrich-progress");
+  const ngEnrichResultsEl = $("ng-enrich-results");
+  const ngAddedEl = $("ng-added");
+  const ngSkippedEl = $("ng-skipped");
 
   // --- Drag logic ---
   let isDragging = false;
@@ -349,7 +380,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   });
 
   // --- State machine ---
-  type UiState = "idle" | "setup" | "captured" | "notDetected" | "running" | "done" | "error";
+  type UiState = "idle" | "setup" | "captured" | "notDetected" | "running" | "done" | "error" | "newgradScan";
   let capturedData: { url: string; title: string; pageText: string; detection: any } | null = null;
   let currentJobId: string | null = null;
   let currentResult: any = null;
@@ -375,6 +406,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     runningEl.classList.toggle("hidden", state !== "running");
     doneEl.classList.toggle("hidden", state !== "done");
     errorEl.classList.toggle("hidden", state !== "error");
+    newgradScanEl.classList.toggle("hidden", state !== "newgradScan");
   }
 
   function setHealth(state: string, label: string): void {
@@ -631,7 +663,100 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     } catch { /* silent */ }
   }
 
+  // --- Newgrad scan logic ---
+  let storedPromotedRows: any[] = [];
+
+  async function onScanClick(): Promise<void> {
+    ngScanBtn.disabled = true;
+    ngScanBtn.textContent = "Scanning...";
+    ngResultsEl.classList.add("hidden");
+    ngEnrichResultsEl.classList.add("hidden");
+    ngEnrichProgressEl.classList.add("hidden");
+
+    // Step 1: Extract listing rows from the page
+    const extractRes = await sendMsg({ kind: "newgradExtractList" });
+    if (!extractRes?.ok) {
+      renderError(extractRes?.error?.code ?? "INTERNAL", extractRes?.error?.message ?? "extract failed");
+      ngScanBtn.disabled = false;
+      ngScanBtn.textContent = "Scan & Score";
+      return;
+    }
+    const rows = extractRes.result.rows;
+    ngStatusEl.textContent = "Found " + rows.length + " listings on this page";
+
+    // Step 2: Score the rows
+    const scoreRes = await sendMsg({ kind: "newgradScore", rows });
+    if (!scoreRes?.ok) {
+      renderError(scoreRes?.error?.code ?? "INTERNAL", scoreRes?.error?.message ?? "scoring failed");
+      ngScanBtn.disabled = false;
+      ngScanBtn.textContent = "Scan & Score";
+      return;
+    }
+
+    const promoted = (scoreRes.result.rows ?? []).filter((r: any) => r.promoted);
+    const filtered = (scoreRes.result.rows ?? []).filter((r: any) => !r.promoted && r.reason !== "already_tracked");
+    const deduped = (scoreRes.result.rows ?? []).filter((r: any) => r.reason === "already_tracked");
+
+    ngPromotedEl.textContent = "\u2713 " + promoted.length + " passed filter (score \u2265 threshold)";
+    ngFilteredEl.textContent = "\u2717 " + filtered.length + " filtered out";
+    ngDedupedEl.textContent = "\u2717 " + deduped.length + " already in tracker";
+    ngResultsEl.classList.remove("hidden");
+
+    storedPromotedRows = promoted;
+
+    if (promoted.length === 0) {
+      ngEnrichBtn.classList.add("hidden");
+    } else {
+      ngEnrichBtn.classList.remove("hidden");
+    }
+
+    ngScanBtn.disabled = false;
+    ngScanBtn.textContent = "Scan & Score";
+  }
+
+  async function onEnrichClick(): Promise<void> {
+    ngEnrichBtn.disabled = true;
+    ngEnrichBtn.textContent = "Enriching...";
+    ngEnrichProgressEl.textContent = "Opening detail pages (0/" + storedPromotedRows.length + ")...";
+    ngEnrichProgressEl.classList.remove("hidden");
+    ngEnrichResultsEl.classList.add("hidden");
+
+    // Step 1: Enrich detail pages
+    const detailRes = await sendMsg({
+      kind: "newgradEnrichDetails",
+      promotedRows: storedPromotedRows,
+      config: { concurrent: 3, delayMinMs: 2000, delayMaxMs: 5000 },
+    });
+    if (!detailRes?.ok) {
+      renderError(detailRes?.error?.code ?? "INTERNAL", detailRes?.error?.message ?? "enrich details failed");
+      ngEnrichBtn.disabled = false;
+      ngEnrichBtn.textContent = "Enrich detail pages";
+      ngEnrichProgressEl.classList.add("hidden");
+      return;
+    }
+
+    // Step 2: Write enriched rows to pipeline
+    const enrichRes = await sendMsg({ kind: "newgradEnrich", rows: detailRes.result.enrichedRows });
+    if (!enrichRes?.ok) {
+      renderError(enrichRes?.error?.code ?? "INTERNAL", enrichRes?.error?.message ?? "enrich failed");
+      ngEnrichBtn.disabled = false;
+      ngEnrichBtn.textContent = "Enrich detail pages";
+      ngEnrichProgressEl.classList.add("hidden");
+      return;
+    }
+
+    const added = enrichRes.result.added ?? 0;
+    const skipped = enrichRes.result.skipped ?? 0;
+    ngAddedEl.textContent = "\u2713 " + added + " added to pipeline.md";
+    ngSkippedEl.textContent = "\u2717 " + skipped + " below threshold";
+    ngEnrichResultsEl.classList.remove("hidden");
+    ngEnrichProgressEl.classList.add("hidden");
+    ngEnrichBtn.classList.add("hidden");
+  }
+
   // Wire events
+  ngScanBtn.addEventListener("click", () => void onScanClick());
+  ngEnrichBtn.addEventListener("click", () => void onEnrichClick());
   evaluateBtn.addEventListener("click", () => void onEvaluateClick());
   openReportBtn.addEventListener("click", () => {
     if (currentResult) void sendMsg({ kind: "openPath", absolutePath: currentResult.reportPath });
@@ -674,6 +799,17 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     }
     void refreshHealth();
     await runCapture();
+
+    // Detect newgrad-jobs.com and show scan UI instead of single-JD flow
+    try {
+      const currentHost = new URL(capturedData?.url ?? "").hostname;
+      if (currentHost.includes("newgrad-jobs.com")) {
+        show("newgradScan");
+        void loadRecentJobs();
+        return;
+      }
+    } catch { /* invalid URL, proceed normally */ }
+
     void loadRecentJobs();
   })();
 }
