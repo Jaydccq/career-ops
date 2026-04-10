@@ -3,7 +3,7 @@ name: career-ops
 description: AI job search command center -- evaluate offers, generate CVs, scan portals, track applications
 user_invocable: true
 args: mode
-argument-hint: "[scan | deep | pdf | cover-letter | newgrad-scan | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
+argument-hint: "[scan | deep | pdf | cover-letter | newgrad-scan | followup | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
 ---
 
 # career-ops -- Router
@@ -31,6 +31,7 @@ Determine the mode from `{{mode}}`:
 | `patterns` | `patterns` |
 | `cover-letter` / `cover` / `cl` | `cover-letter` |
 | `newgrad-scan` / `newgrad` | `newgrad-scan` |
+| `followup` | `followup` |
 
 **Auto-pipeline detection:** If `{{mode}}` is not a known sub-command AND contains JD text (keywords: "responsibilities", "requirements", "qualifications", "about the role", "we're looking for", company name + role) or a URL to a JD, execute `auto-pipeline`.
 
@@ -62,6 +63,7 @@ Available commands:
   /career-ops patterns  → Analyze rejection patterns and improve targeting
   /career-ops cover-letter → Generate single-page cover letter PDF (matches CV design)
   /career-ops newgrad-scan → Scan newgrad-jobs.com via Chrome extension + bridge
+  /career-ops followup  → Follow-up cadence tracker: flag overdue, generate drafts
 
 Inbox: add URLs to data/pipeline.md → /career-ops pipeline
 Or paste a JD directly to run the full pipeline.
@@ -81,7 +83,7 @@ Applies to: `auto-pipeline`, `oferta`, `ofertas`, `pdf`, `cover-letter`, `contac
 ### Standalone modes (only their mode file):
 Read `modes/{mode}.md`
 
-Applies to: `tracker`, `deep`, `training`, `project`, `patterns`
+Applies to: `tracker`, `deep`, `training`, `project`, `patterns`, `followup`
 
 ### Modes delegated to subagent:
 For `scan`, `apply` (with Playwright), and `pipeline` (3+ URLs): launch as Agent with the content of `_shared.md` + `modes/{mode}.md` injected into the subagent prompt.
