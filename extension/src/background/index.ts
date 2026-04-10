@@ -49,6 +49,31 @@ interface Subscription {
 const subscriptions = new Map<JobId, Subscription>();
 
 /* -------------------------------------------------------------------------- */
+/*  Toolbar icon click → toggle panel in active tab                           */
+/* -------------------------------------------------------------------------- */
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { kind: "togglePanel" });
+  } catch {
+    // Content script not yet loaded — inject it first, then toggle
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["panel.js"],
+      });
+      // Give it a moment to register the listener
+      setTimeout(() => {
+        if (tab.id) chrome.tabs.sendMessage(tab.id, { kind: "togglePanel" });
+      }, 100);
+    } catch {
+      // Can't inject (chrome:// page, etc.) — ignore
+    }
+  }
+});
+
+/* -------------------------------------------------------------------------- */
 /*  Message router                                                            */
 /* -------------------------------------------------------------------------- */
 

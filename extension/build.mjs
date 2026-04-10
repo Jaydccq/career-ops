@@ -45,9 +45,10 @@ async function main() {
     logLevel: "info",
   });
 
-  // Content script: IIFE (runs in page context, must be self-contained)
+  // Panel content script: IIFE (injected into pages, must be self-contained)
   await build({
     entryPoints: {
+      panel: join(SRC, "panel/inject.ts"),
       content: join(SRC, "content/extract.ts"),
     },
     bundle: true,
