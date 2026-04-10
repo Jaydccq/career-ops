@@ -65,17 +65,16 @@ narrative:
   #   password: "demo-2026"
 
 compensation:
-  target_range: "$120K-200K"     # Your target total comp
+  target_range: "$120K-200K" # Your target total comp
   currency: "USD"
-  minimum: "$120K"               # Walk-away number
-  location_flexibility:  "Open to on-site, hybrid, or strong remote opportunities"
-
+  minimum: "$120K" # Walk-away number
+  location_flexibility: "Open to on-site, hybrid, or strong remote opportunities"
 
 location:
   country: "United States"
   city: "San Francisco"
   timezone: "PST"
-  visa_status: "Requires sponsorship / work authorization support"  # For remote roles outside your country:
+  visa_status: "Requires sponsorship / work authorization support" # For remote roles outside your country:
   # onsite_availability: "1 week/month in any city"
 
 newgrad_scan:
@@ -93,6 +92,8 @@ newgrad_scan:
       - "Forward Deployed"
       - "Agent Engineer"
       - "Applied AI"
+      - "Machine Learning Engineer"
+
     weight: 3
 
   skill_keywords:
@@ -192,6 +193,15 @@ newgrad_scan:
       - "STOMP"
       - "CAS"
       - "Shell"
+      - "PyTorch"
+      - "TensorFlow"
+      - "Transformers"
+      - "LangChain"
+      - "vector database"
+      - "inference"
+      - "fine-tuning"
+      - "retrieval"
+      - "prompt engineering"
     weight: 1
     max_score: 4
 

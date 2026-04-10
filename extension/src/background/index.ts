@@ -206,8 +206,43 @@ async function handleGetHealth(): Promise<PopupResponse> {
   return { kind: "getHealth", ok: false, error: res.error };
 }
 
+async function getActiveHttpTab(): Promise<chrome.tabs.Tab | null> {
+  const candidates = [
+    await chrome.tabs.query({ active: true, currentWindow: true }),
+    await chrome.tabs.query({ active: true, lastFocusedWindow: true }),
+  ];
+
+  for (const tabs of candidates) {
+    const tab = tabs[0];
+    if (tab && tab.id !== undefined && tab.url) {
+      return tab;
+    }
+  }
+
+  return null;
+}
+
+async function waitForTabComplete(
+  tabId: number,
+  timeoutMs = 15000,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const listener = (updatedTabId: number, info: chrome.tabs.TabChangeInfo) => {
+      if (updatedTabId === tabId && info.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, timeoutMs);
+  });
+}
+
 async function handleCapture(): Promise<PopupResponse> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await getActiveHttpTab();
   if (!tab || tab.id === undefined || !tab.url) {
     return {
       kind: "captureActiveTab",
@@ -426,7 +461,7 @@ async function handleMergeTracker(dryRun?: boolean): Promise<PopupResponse> {
 /* -------------------------------------------------------------------------- */
 
 async function handleNewGradExtractList(): Promise<PopupResponse> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await getActiveHttpTab();
   if (!tab || tab.id === undefined || !tab.url) {
     return {
       kind: "newgradExtractList",
@@ -434,190 +469,241 @@ async function handleNewGradExtractList(): Promise<PopupResponse> {
       error: { code: "NOT_FOUND", message: "no active tab" },
     };
   }
-  if (!tab.url.includes("newgrad-jobs.com")) {
+  if (
+    !tab.url.includes("newgrad-jobs.com") &&
+    !tab.url.includes("jobright.ai/minisites-jobs")
+  ) {
     return {
       kind: "newgradExtractList",
       ok: false,
       error: {
         code: "BAD_REQUEST",
-        message: `active tab is not on newgrad-jobs.com: ${tab.url}`,
+        message: `active tab is not on the supported newgrad scan source: ${tab.url}`,
       },
     };
   }
-  const tabId = tab.id;
+  let sourceTabId = tab.id;
+  let closeSourceTab = false;
 
-  // The injected function must be FULLY self-contained — every constant,
-  // helper, and type must live inside the function body. chrome.scripting
-  // serializes only this function; module-level closures do not travel.
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      /* ---- helpers (inlined — no closures) ---- */
-      function txt(el: Element | null | undefined): string {
-        if (!el) return "";
-        return (
-          (el as HTMLElement).innerText ?? el.textContent ?? ""
-        ).trim();
-      }
+  if (tab.url.includes("newgrad-jobs.com")) {
+    const iframeResults = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const preferred = Array.from(document.querySelectorAll("iframe[src]"))
+          .map((iframe) => (iframe as HTMLIFrameElement).src)
+          .find((src) => src.includes("jobright.ai/minisites-jobs/newgrad/us/swe"));
+        if (preferred) return preferred;
 
-      function href(el: Element | null | undefined): string {
-        if (!el) return "";
-        return (el as HTMLAnchorElement).href ?? el.getAttribute("href") ?? "";
-      }
+        const fallback = Array.from(document.querySelectorAll("iframe[src]"))
+          .map((iframe) => (iframe as HTMLIFrameElement).src)
+          .find((src) => src.includes("jobright.ai/minisites-jobs"));
+        if (fallback) return fallback;
 
-      function first(parent: Element, ...selectors: string[]): Element | null {
-        for (const sel of selectors) {
-          const found = parent.querySelector(sel);
-          if (found) return found;
-        }
-        return null;
-      }
+        return "https://jobright.ai/minisites-jobs/newgrad/us/swe?embed=true";
+      },
+    });
 
-      function allCells(row: Element): Element[] {
-        let cells = Array.from(row.querySelectorAll("td"));
-        if (cells.length === 0)
-          cells = Array.from(
-            row.querySelectorAll("[class*='cell'], [class*='col'], [class*='field']")
-          );
-        return cells;
-      }
+    const sourceUrl = iframeResults[0]?.result as string | undefined;
+    if (!sourceUrl) {
+      return {
+        kind: "newgradExtractList",
+        ok: false,
+        error: { code: "NOT_FOUND", message: "could not find the embedded Jobright scan source" },
+      };
+    }
 
-      /* ---- locate rows ---- */
-      let rows = Array.from(document.querySelectorAll("table tbody tr"));
-      if (rows.length === 0) {
-        rows = Array.from(
-          document.querySelectorAll(
-            "[class*='job-row'], [class*='listing-row'], [class*='job'] tr, [class*='listing'] tr"
-          )
-        );
-      }
-      if (rows.length === 0) {
-        rows = Array.from(
-          document.querySelectorAll(
-            "[class*='job-card'], [class*='job-item'], [class*='listing-item']"
-          )
-        );
-      }
+    const sourceTab = await chrome.tabs.create({ url: sourceUrl, active: false });
+    if (!sourceTab.id) {
+      return {
+        kind: "newgradExtractList",
+        ok: false,
+        error: { code: "INTERNAL", message: "failed to open the Jobright scan source tab" },
+      };
+    }
 
-      const results: {
-        position: number;
-        title: string;
-        postedAgo: string;
-        applyUrl: string;
-        detailUrl: string;
-        workModel: string;
-        location: string;
-        company: string;
-        salary: string;
-        companySize: string;
-        industry: string;
-        qualifications: string;
-        h1bSponsored: string;
-        isNewGrad: string;
-      }[] = [];
-
-      for (const [i, row] of rows.entries()) {
-        const cells = allCells(row);
-
-        const applyLink = first(
-          row,
-          "a[href*='apply']",
-          "a[href*='Apply']",
-          "a[class*='apply']",
-          "a[data-action*='apply']"
-        );
-
-        const allLinks = Array.from(row.querySelectorAll("a[href]"));
-        const detailLink = allLinks.find(
-          (a) =>
-            a !== applyLink &&
-            !href(a).toLowerCase().includes("apply") &&
-            href(a).startsWith("/")
-        ) ?? allLinks.find(
-          (a) =>
-            a !== applyLink &&
-            !href(a).toLowerCase().includes("apply") &&
-            href(a).includes("newgrad-jobs.com")
-        ) ?? allLinks[0] ?? null;
-
-        const titleEl = first(
-          row,
-          "[class*='title']",
-          "[class*='position']",
-          "[data-field='title']",
-          "a[href]:not([href*='apply'])"
-        );
-
-        const companyEl = first(row, "[class*='company']", "[data-field='company']");
-        const locationEl = first(row, "[class*='location']", "[data-field='location']");
-        const salaryEl = first(row, "[class*='salary']", "[class*='compensation']", "[data-field='salary']");
-        const postedEl = first(row, "[class*='posted']", "[class*='date']", "[class*='time']", "[data-field='posted']", "time");
-        const workModelEl = first(row, "[class*='work-model']", "[class*='remote']", "[class*='onsite']", "[class*='hybrid']", "[data-field='workModel']");
-        const companySizeEl = first(row, "[class*='size']", "[class*='company-size']", "[data-field='companySize']");
-        const industryEl = first(row, "[class*='industry']", "[data-field='industry']");
-        const qualsEl = first(row, "[class*='qual']", "[class*='requirement']", "[data-field='qualifications']");
-        const h1bEl = first(row, "[class*='h1b']", "[class*='sponsor']", "[class*='visa']", "[data-field='h1b']");
-        const newGradEl = first(row, "[class*='new-grad']", "[class*='newgrad']", "[class*='entry-level']", "[data-field='isNewGrad']");
-
-        const titleText = txt(titleEl) || (cells[0] ? txt(cells[0]) : "");
-        const postedText = txt(postedEl) || (cells[1] ? txt(cells[1]) : "");
-        const workModelText = txt(workModelEl) || (cells[3] ? txt(cells[3]) : "");
-        const locationText = txt(locationEl) || (cells[4] ? txt(cells[4]) : "");
-        const companyText = txt(companyEl) || (cells[5] ? txt(cells[5]) : "");
-        const salaryText = txt(salaryEl) || (cells[6] ? txt(cells[6]) : "");
-        const companySizeText = txt(companySizeEl) || (cells[7] ? txt(cells[7]) : "");
-        const industryText = txt(industryEl) || (cells[8] ? txt(cells[8]) : "");
-        const qualsText = txt(qualsEl) || (cells[9] ? txt(cells[9]) : "");
-        const h1bText = txt(h1bEl) || (cells[10] ? txt(cells[10]) : "");
-        const newGradText = txt(newGradEl) || (cells[11] ? txt(cells[11]) : "");
-
-        if (!titleText && !companyText) continue;
-
-        results.push({
-          position: i + 1,
-          title: titleText,
-          postedAgo: postedText,
-          applyUrl: href(applyLink),
-          detailUrl: href(detailLink),
-          workModel: workModelText,
-          location: locationText,
-          company: companyText,
-          salary: salaryText,
-          companySize: companySizeText,
-          industry: industryText,
-          qualifications: qualsText.slice(0, 500),
-          h1bSponsored: h1bText,
-          isNewGrad: newGradText,
-        });
-      }
-
-      // Try to extract current page number from pagination
-      let currentPage = 1;
-      const pageEl = document.querySelector(
-        "[class*='pagination'] [class*='active'], [class*='pagination'] [aria-current='page']"
-      );
-      if (pageEl) {
-        const num = parseInt(txt(pageEl), 10);
-        if (!Number.isNaN(num)) currentPage = num;
-      }
-
-      return { rows: results, pageInfo: { currentPage, totalRows: results.length } };
-    },
-  });
-
-  const extracted = results[0]?.result as
-    | { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } }
-    | undefined;
-
-  if (!extracted) {
-    return {
-      kind: "newgradExtractList",
-      ok: false,
-      error: { code: "INTERNAL", message: "content script returned no result" },
-    };
+    sourceTabId = sourceTab.id;
+    closeSourceTab = true;
+    await waitForTabComplete(sourceTabId);
   }
 
-  return { kind: "newgradExtractList", ok: true, result: extracted };
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: sourceTabId },
+      func: () => {
+        const MAX_AGE_MINUTES = 24 * 60;
+
+        function txt(el: Element | null | undefined): string {
+          if (!el) return "";
+          return (
+            (el as HTMLElement).innerText ?? el.textContent ?? ""
+          ).trim();
+        }
+
+        function href(el: Element | null | undefined): string {
+          if (!el) return "";
+          return (el as HTMLAnchorElement).href ?? el.getAttribute("href") ?? "";
+        }
+
+        function first(parent: Element, ...selectors: string[]): Element | null {
+          for (const sel of selectors) {
+            const found = parent.querySelector(sel);
+            if (found) return found;
+          }
+          return null;
+        }
+
+        function allCells(row: Element): Element[] {
+          let cells = Array.from(row.querySelectorAll("td"));
+          if (cells.length === 0)
+            cells = Array.from(
+              row.querySelectorAll("[class*='cell'], [class*='col'], [class*='field']")
+            );
+          return cells;
+        }
+
+        function parseBooleanText(text: string): boolean {
+          const normalized = text.trim().toLowerCase();
+          if (!normalized) return false;
+          if (/\b(no|false|not sure|unknown|n\/a)\b/.test(normalized)) return false;
+          if (/\b(yes|true)\b/.test(normalized)) return true;
+          return /\b(sponsor(?:ed)?|visa|new[\s-]?grad|entry[\s-]?level)\b/.test(normalized);
+        }
+
+        function parsePostedAgoMinutes(text: string): number {
+          const normalized = text.trim().toLowerCase();
+          const longMatch = /^(\d+)\s+([a-z]+)\s+ago$/.exec(normalized);
+          if (longMatch) {
+            const value = Number(longMatch[1]);
+            const unit = longMatch[2];
+            if (unit?.startsWith("minute")) return value;
+            if (unit?.startsWith("hour")) return value * 60;
+            if (unit?.startsWith("day")) return value * 1440;
+            if (unit?.startsWith("week")) return value * 10080;
+          }
+
+          const shortMatch = /^(\d+)([mhdw])\s+ago$/.exec(normalized);
+          if (shortMatch) {
+            const value = Number(shortMatch[1]);
+            const unit = shortMatch[2];
+            if (unit === "m") return value;
+            if (unit === "h") return value * 60;
+            if (unit === "d") return value * 1440;
+            if (unit === "w") return value * 10080;
+          }
+
+          return Number.POSITIVE_INFINITY;
+        }
+
+        let rows = Array.from(document.querySelectorAll("table tbody tr"));
+        if (rows.length === 0) {
+          rows = Array.from(
+            document.querySelectorAll(
+              "[class*='job-row'], [class*='listing-row'], [class*='job'] tr, [class*='listing'] tr"
+            )
+          );
+        }
+        if (rows.length === 0) {
+          rows = Array.from(
+            document.querySelectorAll(
+              "[class*='job-card'], [class*='job-item'], [class*='listing-item']"
+            )
+          );
+        }
+
+        const extractedRows: {
+          position: number;
+          title: string;
+          postedAgo: string;
+          applyUrl: string;
+          detailUrl: string;
+          workModel: string;
+          location: string;
+          company: string;
+          salary: string;
+          companySize: string;
+          industry: string;
+          qualifications: string;
+          h1bSponsored: boolean;
+          isNewGrad: boolean;
+        }[] = [];
+
+        for (const [i, row] of rows.entries()) {
+          const cells = allCells(row);
+          const applyLink = first(
+            row,
+            "a[href*='jobs/info/']",
+            "a[href*='apply']",
+            "a[href*='Apply']",
+            "a[class*='apply']",
+            "a[data-action*='apply']"
+          );
+          const rowHref = href(applyLink);
+          const titleEl = first(
+            row,
+            "[class*='positionTitle']",
+            "[class*='title']",
+            "[class*='position']",
+            "[data-field='title']"
+          );
+
+          const titleText = txt(titleEl) || (cells[1] ? txt(cells[1]) : "");
+          const postedText = cells[2] ? txt(cells[2]) : "";
+          const workModelText = cells[4] ? txt(cells[4]) : "";
+          const locationText = cells[5] ? txt(cells[5]) : "";
+          const companyText = cells[6] ? txt(cells[6]) : "";
+          const salaryText = cells[7] ? txt(cells[7]) : "";
+          const companySizeText = cells[8] ? txt(cells[8]) : "";
+          const industryText = cells[9] ? txt(cells[9]) : "";
+          const qualsText = cells[10] ? txt(cells[10]) : "";
+          const h1bText = cells[11] ? txt(cells[11]) : "";
+          const newGradText = cells[12] ? txt(cells[12]) : "";
+
+          if (!titleText || !companyText || !rowHref) continue;
+          if (parsePostedAgoMinutes(postedText) > MAX_AGE_MINUTES) continue;
+
+          extractedRows.push({
+            position: i + 1,
+            title: titleText,
+            postedAgo: postedText,
+            applyUrl: rowHref,
+            detailUrl: rowHref,
+            workModel: workModelText,
+            location: locationText,
+            company: companyText,
+            salary: salaryText,
+            companySize: companySizeText,
+            industry: industryText,
+            qualifications: qualsText.slice(0, 2000),
+            h1bSponsored: parseBooleanText(h1bText),
+            isNewGrad: parseBooleanText(newGradText),
+          });
+        }
+
+        return {
+          rows: extractedRows,
+          pageInfo: { currentPage: 1, totalRows: extractedRows.length },
+        };
+      },
+    });
+
+    const extracted = results[0]?.result as
+      | { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } }
+      | undefined;
+
+    if (!extracted) {
+      return {
+        kind: "newgradExtractList",
+        ok: false,
+        error: { code: "INTERNAL", message: "content script returned no result" },
+      };
+    }
+
+    return { kind: "newgradExtractList", ok: true, result: extracted };
+  } finally {
+    if (closeSourceTab) {
+      await chrome.tabs.remove(sourceTabId).catch(() => undefined);
+    }
+  }
 }
 
 async function handleNewGradScore(rows: NewGradRow[]): Promise<PopupResponse> {
@@ -651,18 +737,7 @@ async function handleNewGradEnrichDetails(
         const tab = await chrome.tabs.create({ url: scored.row.detailUrl, active: false });
         if (!tab.id) return null;
 
-        // Wait for page load
-        await new Promise<void>((resolve) => {
-          const listener = (tabId: number, info: chrome.tabs.TabChangeInfo) => {
-            if (tabId === tab.id && info.status === "complete") {
-              chrome.tabs.onUpdated.removeListener(listener);
-              resolve();
-            }
-          };
-          chrome.tabs.onUpdated.addListener(listener);
-          // Timeout after 15s
-          setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
-        });
+        await waitForTabComplete(tab.id);
 
         // Inject detail extractor — FULLY self-contained inline function.
         const scriptResults = await chrome.scripting.executeScript({
@@ -860,6 +935,14 @@ async function handleNewGradEnrichDetails(
             /* ---- apply now URL ---- */
             const applyLink = first(
               document,
+              "a[href*='greenhouse']",
+              "a[href*='ashby']",
+              "a[href*='lever.co']",
+              "a[href*='workdayjobs']",
+              "a[href*='myworkdayjobs']",
+              "a[href*='smartrecruiters']",
+              "a[href*='jobvite']",
+              "a[href*='icims']",
               "a[href*='apply'][class*='btn']",
               "a[href*='apply'][class*='button']",
               "a[href*='apply']",
@@ -872,7 +955,11 @@ async function handleNewGradEnrichDetails(
               const allLinks = Array.from(document.querySelectorAll("a[href]"));
               for (const a of allLinks) {
                 const linkText = txt(a).toLowerCase();
-                if (linkText.includes("apply now") || linkText.includes("apply for")) {
+                if (
+                  linkText.includes("apply on employer site") ||
+                  linkText.includes("apply now") ||
+                  linkText.includes("apply for")
+                ) {
                   applyNowUrl = href(a);
                   break;
                 }

@@ -27,8 +27,8 @@ export interface NewGradRow {
   companySize: string;
   industry: string;
   qualifications: string;
-  h1bSponsored: string;
-  isNewGrad: string;
+  h1bSponsored: boolean;
+  isNewGrad: boolean;
 }
 
 export interface NewGradDetail {
@@ -58,6 +58,8 @@ export interface NewGradDetail {
  * Must be completely self-contained for chrome.scripting.executeScript.
  */
 export function extractNewGradList(): NewGradRow[] {
+  const MAX_AGE_MINUTES = 24 * 60;
+
   /* ---- helpers (inlined — no closures) ---- */
   function txt(el: Element | null | undefined): string {
     if (!el) return "";
@@ -88,6 +90,39 @@ export function extractNewGradList(): NewGradRow[] {
     return cells;
   }
 
+  function parseBooleanText(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return false;
+    if (/\b(no|false|not sure|unknown|n\/a)\b/.test(normalized)) return false;
+    if (/\b(yes|true)\b/.test(normalized)) return true;
+    return /\b(sponsor(?:ed)?|visa|new[\s-]?grad|entry[\s-]?level)\b/.test(normalized);
+  }
+
+  function parsePostedAgoMinutes(text: string): number {
+    const normalized = text.trim().toLowerCase();
+    const longMatch = /^(\d+)\s+([a-z]+)\s+ago$/.exec(normalized);
+    if (longMatch) {
+      const value = Number(longMatch[1]);
+      const unit = longMatch[2];
+      if (unit?.startsWith("minute")) return value;
+      if (unit?.startsWith("hour")) return value * 60;
+      if (unit?.startsWith("day")) return value * 1440;
+      if (unit?.startsWith("week")) return value * 10080;
+    }
+
+    const shortMatch = /^(\d+)([mhdw])\s+ago$/.exec(normalized);
+    if (shortMatch) {
+      const value = Number(shortMatch[1]);
+      const unit = shortMatch[2];
+      if (unit === "m") return value;
+      if (unit === "h") return value * 60;
+      if (unit === "d") return value * 1440;
+      if (unit === "w") return value * 10080;
+    }
+
+    return Number.POSITIVE_INFINITY;
+  }
+
   /* ---- locate rows ---- */
   let rows = Array.from(document.querySelectorAll("table tbody tr"));
   if (rows.length === 0) {
@@ -114,6 +149,7 @@ export function extractNewGradList(): NewGradRow[] {
     // Try to find an apply link anywhere in the row
     const applyLink = first(
       row,
+      "a[href*='jobs/info/']",
       "a[href*='apply']",
       "a[href*='Apply']",
       "a[class*='apply']",
@@ -216,27 +252,23 @@ export function extractNewGradList(): NewGradRow[] {
       "[data-field='isNewGrad']"
     );
 
-    // Build the row from element-based extraction. For cells that were not
-    // found via class selectors, fall back to positional cell index. The
-    // mapping below reflects the most common table layout on newgrad-jobs.com:
-    //   0: title  1: posted  2: apply  3: workModel  4: location
-    //   5: company  6: salary  7: companySize  8: industry  9: quals
-    //   10: h1b  11: newGrad
-    const titleText = txt(titleEl) || (cells[0] ? txt(cells[0]) : "");
-    const postedText = txt(postedEl) || (cells[1] ? txt(cells[1]) : "");
-    const workModelText = txt(workModelEl) || (cells[3] ? txt(cells[3]) : "");
-    const locationText = txt(locationEl) || (cells[4] ? txt(cells[4]) : "");
-    const companyText = txt(companyEl) || (cells[5] ? txt(cells[5]) : "");
-    const salaryText = txt(salaryEl) || (cells[6] ? txt(cells[6]) : "");
+    // The live Jobright table currently includes a sticky index column at 0.
+    const titleText = txt(titleEl) || (cells[1] ? txt(cells[1]) : "");
+    const postedText = txt(postedEl) || (cells[2] ? txt(cells[2]) : "");
+    const workModelText = txt(workModelEl) || (cells[4] ? txt(cells[4]) : "");
+    const locationText = txt(locationEl) || (cells[5] ? txt(cells[5]) : "");
+    const companyText = txt(companyEl) || (cells[6] ? txt(cells[6]) : "");
+    const salaryText = txt(salaryEl) || (cells[7] ? txt(cells[7]) : "");
     const companySizeText =
-      txt(companySizeEl) || (cells[7] ? txt(cells[7]) : "");
-    const industryText = txt(industryEl) || (cells[8] ? txt(cells[8]) : "");
-    const qualsText = txt(qualsEl) || (cells[9] ? txt(cells[9]) : "");
-    const h1bText = txt(h1bEl) || (cells[10] ? txt(cells[10]) : "");
-    const newGradText = txt(newGradEl) || (cells[11] ? txt(cells[11]) : "");
+      txt(companySizeEl) || (cells[8] ? txt(cells[8]) : "");
+    const industryText = txt(industryEl) || (cells[9] ? txt(cells[9]) : "");
+    const qualsText = txt(qualsEl) || (cells[10] ? txt(cells[10]) : "");
+    const h1bText = txt(h1bEl) || (cells[11] ? txt(cells[11]) : "");
+    const newGradText = txt(newGradEl) || (cells[12] ? txt(cells[12]) : "");
 
     // Skip completely empty rows (header, separator, etc.)
     if (!titleText && !companyText) continue;
+    if (parsePostedAgoMinutes(postedText) > MAX_AGE_MINUTES) continue;
 
     results.push({
       position: i + 1,
@@ -251,8 +283,8 @@ export function extractNewGradList(): NewGradRow[] {
       companySize: companySizeText,
       industry: industryText,
       qualifications: qualsText.slice(0, 500),
-      h1bSponsored: h1bText,
-      isNewGrad: newGradText,
+      h1bSponsored: parseBooleanText(h1bText),
+      isNewGrad: parseBooleanText(newGradText),
     });
   }
 
@@ -479,6 +511,14 @@ export function extractNewGradDetail(): NewGradDetail {
   /* ---- apply now URL ---- */
   const applyLink = first(
     document,
+    "a[href*='greenhouse']",
+    "a[href*='ashby']",
+    "a[href*='lever.co']",
+    "a[href*='workdayjobs']",
+    "a[href*='myworkdayjobs']",
+    "a[href*='smartrecruiters']",
+    "a[href*='jobvite']",
+    "a[href*='icims']",
     "a[href*='apply'][class*='btn']",
     "a[href*='apply'][class*='button']",
     "a[href*='apply']",
@@ -491,7 +531,11 @@ export function extractNewGradDetail(): NewGradDetail {
     const allLinks = Array.from(document.querySelectorAll("a[href]"));
     for (const a of allLinks) {
       const linkText = txt(a).toLowerCase();
-      if (linkText.includes("apply now") || linkText.includes("apply for")) {
+      if (
+        linkText.includes("apply on employer site") ||
+        linkText.includes("apply now") ||
+        linkText.includes("apply for")
+      ) {
         applyNowUrl = href(a);
         break;
       }

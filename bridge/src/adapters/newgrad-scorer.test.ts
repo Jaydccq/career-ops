@@ -9,26 +9,44 @@ import {
 
 import type { NewGradRow, NewGradScanConfig } from "../contracts/newgrad.js";
 
+type ConfigOverrides = Omit<
+  Partial<NewGradScanConfig>,
+  "role_keywords" | "skill_keywords" | "freshness"
+> & {
+  role_keywords?: Partial<NewGradScanConfig["role_keywords"]>;
+  skill_keywords?: Partial<NewGradScanConfig["skill_keywords"]>;
+  freshness?: Partial<NewGradScanConfig["freshness"]>;
+};
+
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function makeConfig(overrides?: Partial<NewGradScanConfig>): NewGradScanConfig {
+function makeConfig(overrides?: ConfigOverrides): NewGradScanConfig {
   const base: NewGradScanConfig = {
-    role_keywords: ["software engineer", "swe", "backend"],
-    skill_keywords: ["typescript", "python", "react", "node", "aws"],
-    freshness: { max_points: 3, max_days: 7 },
-    thresholds: { min_score: 2, min_ratio: 0.2 },
-    throttling: { delay_ms: 500, max_enrichments: 10 },
+    role_keywords: {
+      positive: ["software engineer", "swe", "backend"],
+      weight: 3,
+    },
+    skill_keywords: {
+      terms: ["typescript", "python", "react", "node", "aws"],
+      weight: 1,
+      max_score: 4,
+    },
+    freshness: { within_24h: 2, within_3d: 1, older: 0 },
+    list_threshold: 3,
+    pipeline_threshold: 5,
+    detail_concurrent_tabs: 3,
+    detail_delay_min_ms: 2000,
+    detail_delay_max_ms: 5000,
   };
-  if (!overrides) return base;
-  for (const key of Object.keys(overrides) as Array<keyof NewGradScanConfig>) {
-    if (key in overrides) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      (base as any)[key] = (overrides as any)[key];
-    }
-  }
-  return base;
+  return {
+    ...base,
+    ...overrides,
+    role_keywords: { ...base.role_keywords, ...overrides?.role_keywords },
+    skill_keywords: { ...base.skill_keywords, ...overrides?.skill_keywords },
+    freshness: { ...base.freshness, ...overrides?.freshness },
+  };
 }
 
 function makeRow(overrides?: Partial<NewGradRow>): NewGradRow {
@@ -128,48 +146,34 @@ describe("parsePostedAgo", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("parseFreshness", () => {
-  const freshConfig = { max_points: 3, max_days: 7 };
+  const freshConfig = { within_24h: 2, within_3d: 1, older: 0 };
 
-  test("very recent post (< 1 hour) gets near-full freshness points", () => {
-    const score = parseFreshness(30, freshConfig);
-    // 30 min out of 10080 max → very close to max_points
-    expect(score).toBeGreaterThan(2.9);
-    expect(score).toBeLessThanOrEqual(3);
+  test("very recent post gets within_24h freshness points", () => {
+    expect(parseFreshness(30, freshConfig)).toBe(2);
   });
 
-  test("zero minutes gets exactly full freshness points", () => {
-    expect(parseFreshness(0, freshConfig)).toBe(3);
+  test("zero minutes gets within_24h freshness points", () => {
+    expect(parseFreshness(0, freshConfig)).toBe(2);
   });
 
-  test("post from 12 hours ago gets partial freshness (within 24h)", () => {
-    const score = parseFreshness(12 * 60, freshConfig);
-    expect(score).toBeGreaterThan(0);
-    expect(score).toBeLessThanOrEqual(3);
+  test("post from 12 hours ago stays in the within_24h bucket", () => {
+    expect(parseFreshness(12 * 60, freshConfig)).toBe(2);
   });
 
-  test("post from 3 days ago gets lower freshness", () => {
-    const score = parseFreshness(3 * 24 * 60, freshConfig);
-    expect(score).toBeGreaterThan(0);
-    expect(score).toBeLessThan(parseFreshness(30, freshConfig));
+  test("post from 2 days ago gets within_3d freshness", () => {
+    expect(parseFreshness(2 * 24 * 60, freshConfig)).toBe(1);
   });
 
-  test("post older than max_days gets 0 freshness", () => {
-    expect(parseFreshness(8 * 24 * 60, freshConfig)).toBe(0);
+  test("post older than 3 days gets older freshness", () => {
+    expect(parseFreshness(5 * 24 * 60, freshConfig)).toBe(0);
   });
 
-  test("post exactly at max_days boundary gets 0 freshness", () => {
-    expect(parseFreshness(7 * 24 * 60, freshConfig)).toBe(0);
+  test("post exactly at 24 hours moves to the within_3d bucket", () => {
+    expect(parseFreshness(24 * 60, freshConfig)).toBe(1);
   });
 
-  test("Infinity minutes returns 0 freshness", () => {
+  test("Infinity minutes returns older freshness", () => {
     expect(parseFreshness(Infinity, freshConfig)).toBe(0);
-  });
-
-  test("linear decay: halfway through max_days gets ~half points", () => {
-    const halfwayMinutes = (7 / 2) * 24 * 60;
-    const score = parseFreshness(halfwayMinutes, freshConfig);
-    // With linear decay, halfway should be approximately half of max_points
-    expect(score).toBeCloseTo(1.5, 0);
   });
 });
 
@@ -204,9 +208,9 @@ describe("scoreRow", () => {
     expect(scored.score).toBe(scored.breakdown.freshness);
   });
 
-  test("skill score is capped at skill_keywords.length (max possible)", () => {
+  test("skill score is capped at skill_keywords.max_score", () => {
     const config = makeConfig({
-      skill_keywords: ["typescript", "python"],
+      skill_keywords: { terms: ["typescript", "python"], weight: 2, max_score: 3 },
     });
     const row = makeRow({
       qualifications: "TypeScript, Python, TypeScript again, Python again",
@@ -214,9 +218,7 @@ describe("scoreRow", () => {
     const scored = scoreRow(row, config);
 
     // Skill hits should be capped at number of unique skill keywords
-    expect(scored.breakdown.skillHits).toBeLessThanOrEqual(
-      config.skill_keywords.length,
-    );
+    expect(scored.breakdown.skillHits).toBeLessThanOrEqual(config.skill_keywords.max_score);
   });
 
   test("matched keywords are recorded in breakdown", () => {
@@ -232,7 +234,7 @@ describe("scoreRow", () => {
   });
 
   test("role match is case-insensitive", () => {
-    const config = makeConfig({ role_keywords: ["backend"] });
+    const config = makeConfig({ role_keywords: { positive: ["backend"] } });
     const row = makeRow({ title: "BACKEND Engineer" });
     const scored = scoreRow(row, config);
 
@@ -240,7 +242,7 @@ describe("scoreRow", () => {
   });
 
   test("skill match is case-insensitive", () => {
-    const config = makeConfig({ skill_keywords: ["typescript"] });
+    const config = makeConfig({ skill_keywords: { terms: ["typescript"] } });
     const row = makeRow({ qualifications: "TYPESCRIPT experience required" });
     const scored = scoreRow(row, config);
 
@@ -257,13 +259,14 @@ describe("scoreRow", () => {
     expect(scored.breakdown.skillKeywordsMatched).toEqual([]);
   });
 
-  test("maxScore equals role_weight + skill_max + freshness max_points", () => {
+  test("maxScore equals role weight + skill max + top freshness bucket", () => {
     const config = makeConfig();
     const scored = scoreRow(makeRow(), config);
 
-    // maxScore = 1 (role) + skill_keywords.length (skills) + freshness.max_points
     const expectedMax =
-      1 + config.skill_keywords.length + config.freshness.max_points;
+      config.role_keywords.weight +
+      config.skill_keywords.max_score +
+      config.freshness.within_24h;
     expect(scored.maxScore).toBe(expectedMax);
   });
 });
@@ -312,7 +315,7 @@ describe("scoreAndFilter", () => {
   });
 
   test("score below threshold is filtered with reason 'below_threshold'", () => {
-    const config = makeConfig({ thresholds: { min_score: 100, min_ratio: 0 } });
+    const config = makeConfig({ list_threshold: 100 });
     const rows = [makeRow()];
     const negativeKeywords: string[] = [];
     const tracked = new Set<string>();
@@ -324,10 +327,8 @@ describe("scoreAndFilter", () => {
     expect(result.filtered[0]!.reason).toBe("below_threshold");
   });
 
-  test("score below min_ratio threshold is filtered with reason 'below_threshold'", () => {
-    const config = makeConfig({
-      thresholds: { min_score: 0, min_ratio: 0.99 },
-    });
+  test("score below configured list threshold is filtered with reason 'below_threshold'", () => {
+    const config = makeConfig({ list_threshold: 3 });
     const rows = [
       makeRow({
         title: "Marketing Manager",
@@ -346,7 +347,7 @@ describe("scoreAndFilter", () => {
   });
 
   test("promoted rows are sorted by score descending", () => {
-    const config = makeConfig({ thresholds: { min_score: 0, min_ratio: 0 } });
+    const config = makeConfig({ list_threshold: 0 });
     const rows = [
       makeRow({
         position: 1,
@@ -383,7 +384,7 @@ describe("scoreAndFilter", () => {
   test("hard filters take priority over soft filters", () => {
     // A row that matches a negative keyword AND would be below threshold
     // should be filtered as "negative_title", not "below_threshold"
-    const config = makeConfig({ thresholds: { min_score: 100, min_ratio: 0 } });
+    const config = makeConfig({ list_threshold: 100 });
     const rows = [makeRow({ title: "Intern Designer" })];
     const negativeKeywords = ["intern"];
     const tracked = new Set<string>();

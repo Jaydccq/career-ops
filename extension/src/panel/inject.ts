@@ -682,7 +682,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       return;
     }
     const rows = extractRes.result.rows;
-    ngStatusEl.textContent = "Found " + rows.length + " listings on this page";
+    ngStatusEl.textContent = "Found " + rows.length + " Software Engineering listings from the last 24h";
 
     // Step 2: Score the rows
     const scoreRes = await sendMsg({ kind: "newgradScore", rows });
@@ -693,9 +693,13 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       return;
     }
 
-    const promoted = (scoreRes.result.rows ?? []).filter((r: any) => r.promoted);
-    const filtered = (scoreRes.result.rows ?? []).filter((r: any) => !r.promoted && r.reason !== "already_tracked");
-    const deduped = (scoreRes.result.rows ?? []).filter((r: any) => r.reason === "already_tracked");
+    const promoted = scoreRes.result.promoted ?? [];
+    const filtered = (scoreRes.result.filtered ?? []).filter(
+      (r: any) => r.reason !== "already_tracked",
+    );
+    const deduped = (scoreRes.result.filtered ?? []).filter(
+      (r: any) => r.reason === "already_tracked",
+    );
 
     ngPromotedEl.textContent = "\u2713 " + promoted.length + " passed filter (score \u2265 threshold)";
     ngFilteredEl.textContent = "\u2717 " + filtered.length + " filtered out";
@@ -748,7 +752,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     const added = enrichRes.result.added ?? 0;
     const skipped = enrichRes.result.skipped ?? 0;
     ngAddedEl.textContent = "\u2713 " + added + " added to pipeline.md";
-    ngSkippedEl.textContent = "\u2717 " + skipped + " below threshold";
+    ngSkippedEl.textContent = "\u2717 " + skipped + " skipped (below threshold or duplicate)";
     ngEnrichResultsEl.classList.remove("hidden");
     ngEnrichProgressEl.classList.add("hidden");
     ngEnrichBtn.classList.add("hidden");

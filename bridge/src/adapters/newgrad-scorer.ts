@@ -2,9 +2,9 @@
  * newgrad-scorer.ts — Deterministic scoring engine for newgrad-jobs.com rows.
  *
  * Pure functions, no I/O. Scores rows along three dimensions:
- *   1. Role match    — does the title contain a target role keyword?
- *   2. Skill keywords — how many skill terms appear in qualifications?
- *   3. Freshness      — how recently was the listing posted?
+ *   1. Role match     — does the title contain a target role keyword?
+ *   2. Skill keywords — how many configured skill terms appear in qualifications?
+ *   3. Freshness      — bucketed score based on posting recency.
  *
  * All scoring is config-driven via NewGradScanConfig from the contracts.
  */
@@ -16,13 +16,6 @@ import type {
   ScoreBreakdown,
   ScoredRow,
 } from "../contracts/newgrad.js";
-
-/* -------------------------------------------------------------------------- */
-/*  Constants                                                                  */
-/* -------------------------------------------------------------------------- */
-
-/** Weight awarded for a matching role keyword in the title. */
-const ROLE_MATCH_WEIGHT = 1;
 
 /* -------------------------------------------------------------------------- */
 /*  Parsing helpers                                                            */
@@ -88,29 +81,17 @@ export function parsePostedAgo(text: string): number {
 /*  Freshness scoring                                                          */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Convert minutes-since-posted into a freshness score using linear decay.
- *
- * Returns `max_points` for brand-new posts, decaying linearly to 0 at
- * `max_days` days old. Posts older than `max_days` (or with Infinity age)
- * score 0.
- *
- * @param minutesAgo  — Minutes since the listing was posted.
- * @param config      — Freshness config with `max_points` and `max_days`.
- * @returns Freshness score in [0, max_points].
- */
+/** Convert minutes-since-posted into a bucketed freshness score. */
 export function parseFreshness(
   minutesAgo: number,
   config: NewGradScanConfig["freshness"],
 ): number {
-  if (!isFinite(minutesAgo) || minutesAgo < 0) return 0;
+  if (!isFinite(minutesAgo) || minutesAgo < 0) return config.older;
 
-  const maxMinutes = config.max_days * 24 * 60;
-  if (minutesAgo >= maxMinutes) return 0;
-
-  // Linear decay: full points at 0 minutes, 0 points at maxMinutes
-  const ratio = 1 - minutesAgo / maxMinutes;
-  return Math.round(ratio * config.max_points * 100) / 100;
+  const hoursAgo = minutesAgo / 60;
+  if (hoursAgo < 24) return config.within_24h;
+  if (hoursAgo < 72) return config.within_3d;
+  return config.older;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -120,17 +101,16 @@ export function parseFreshness(
 /**
  * Score a single listing row across three dimensions.
  *
- * **Role match (0 or ROLE_MATCH_WEIGHT):**
- *   If the title contains any keyword from `config.role_keywords`
- *   (case-insensitive), the row earns ROLE_MATCH_WEIGHT points.
+ * **Role match (0 or config.role_keywords.weight):**
+ *   If the title contains any configured positive role keyword
+ *   (case-insensitive), the row earns that configured weight.
  *
- * **Skill keywords (0 to skill_keywords.length):**
- *   Count of unique `config.skill_keywords` terms found in the
- *   qualifications text (case-insensitive). Each match = 1 point,
- *   capped at the total number of skill keywords.
+ * **Skill keywords (0 to config.skill_keywords.max_score):**
+ *   Count of matching configured terms found in the qualifications text,
+ *   multiplied by the configured skill weight and capped at `max_score`.
  *
- * **Freshness (0 to config.freshness.max_points):**
- *   Linear decay from max_points (brand new) to 0 (at max_days).
+ * **Freshness:**
+ *   Bucketed score from the configured freshness bands.
  *
  * @returns ScoredRow with total score, maxScore, and breakdown.
  */
@@ -139,19 +119,22 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
   const qualsLower = (row.qualifications ?? "").toLowerCase();
 
   // --- Role match ---
-  const roleMatched = config.role_keywords.some((kw) =>
+  const roleMatched = config.role_keywords.positive.some((kw) =>
     titleLower.includes(kw.toLowerCase()),
   );
-  const roleScore = roleMatched ? ROLE_MATCH_WEIGHT : 0;
+  const roleScore = roleMatched ? config.role_keywords.weight : 0;
 
   // --- Skill keywords ---
   const matchedSkills: string[] = [];
-  for (const term of config.skill_keywords) {
+  for (const term of config.skill_keywords.terms) {
     if (qualsLower.includes(term.toLowerCase())) {
-      matchedSkills.push(term.toLowerCase());
+      matchedSkills.push(term);
     }
   }
-  const skillScore = matchedSkills.length;
+  const skillScore = Math.min(
+    matchedSkills.length * config.skill_keywords.weight,
+    config.skill_keywords.max_score,
+  );
 
   // --- Freshness ---
   const minutesAgo = parsePostedAgo(row.postedAgo);
@@ -160,11 +143,13 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
   // --- Totals ---
   const score = roleScore + skillScore + freshnessScore;
   const maxScore =
-    ROLE_MATCH_WEIGHT + config.skill_keywords.length + config.freshness.max_points;
+    config.role_keywords.weight +
+    config.skill_keywords.max_score +
+    config.freshness.within_24h;
 
   const breakdown: ScoreBreakdown = {
     roleMatch: roleScore,
-    skillHits: matchedSkills.length,
+    skillHits: skillScore,
     skillKeywordsMatched: matchedSkills,
     freshness: freshnessScore,
   };
@@ -184,7 +169,7 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
  *   2. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
  *
  * **Soft filter:**
- *   3. `below_threshold` — score < min_score OR score/maxScore < min_ratio
+ *   3. `below_threshold` — score < list_threshold
  *
  * Promoted rows are sorted by score descending (highest first).
  *
@@ -233,13 +218,12 @@ export function scoreAndFilter(
     // Score the row
     const scored = scoreRow(row, config);
 
-    // Soft filter: below threshold (absolute or ratio)
-    const ratio = scored.maxScore > 0 ? scored.score / scored.maxScore : 0;
-    if (scored.score < config.thresholds.min_score || ratio < config.thresholds.min_ratio) {
+    // Soft filter: below list threshold
+    if (scored.score < config.list_threshold) {
       filtered.push({
         row,
         reason: "below_threshold",
-        detail: `Score ${scored.score.toFixed(2)}/${scored.maxScore} (ratio ${(ratio * 100).toFixed(1)}%) below threshold`,
+        detail: `Score ${scored.score}/${scored.maxScore} below threshold ${config.list_threshold}`,
       });
       continue;
     }

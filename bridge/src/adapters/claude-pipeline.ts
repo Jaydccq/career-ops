@@ -485,6 +485,7 @@ export function createClaudePipelineAdapter(
       const scanConfig = loadNewGradScanConfig(config.repoRoot);
       const negativeKeywords = loadNegativeKeywords(config.repoRoot);
       const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
+      const existingPipelineUrls = loadPipelineUrls(config.repoRoot);
 
       const entries: PipelineEntry[] = [];
       let skipped = 0;
@@ -512,20 +513,38 @@ export function createClaudePipelineAdapter(
         }
 
         const scored = promoted[0]!;
+        if (scored.score < scanConfig.pipeline_threshold) {
+          skipped++;
+          continue;
+        }
+
+        const entryUrl =
+          enrichedRow.detail.originalPostUrl ||
+          enrichedRow.detail.applyNowUrl ||
+          enrichedRow.row.row.applyUrl;
+        if (existingPipelineUrls.has(entryUrl)) {
+          skipped++;
+          continue;
+        }
+
         const entry: PipelineEntry = {
-          url: enrichedRow.detail.applyNowUrl || enrichedRow.row.row.applyUrl,
+          url: entryUrl,
           company: enrichedRow.row.row.company,
           role: enrichedRow.row.row.title,
           score: scored.score,
           source: "newgrad-jobs.com",
         };
         entries.push(entry);
+        existingPipelineUrls.add(entryUrl);
       }
 
       // Append survivors to data/pipeline.md
       if (entries.length > 0) {
         const pipelinePath = join(config.repoRoot, "data/pipeline.md");
-        const maxScore = scanConfig.skill_keywords.length + scanConfig.freshness.max_points + 1;
+        const maxScore =
+          scanConfig.role_keywords.weight +
+          scanConfig.skill_keywords.max_score +
+          scanConfig.freshness.within_24h;
         const lines = entries.map(
           (e) =>
             `- [ ] ${e.url} — ${e.company} | ${e.role} (via newgrad-scan, score: ${e.score}/${maxScore})`,
@@ -550,54 +569,138 @@ export function createClaudePipelineAdapter(
 function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
   const profilePath = join(repoRoot, "config/profile.yml");
   const defaults: NewGradScanConfig = {
-    role_keywords: ["engineer", "developer", "software"],
-    skill_keywords: ["typescript", "react", "node", "python"],
-    freshness: { max_points: 2, max_days: 14 },
-    thresholds: { min_score: 2, min_ratio: 0.3 },
-    throttling: { delay_ms: 1000, max_enrichments: 20 },
+    role_keywords: {
+      positive: ["engineer", "developer", "software"],
+      weight: 3,
+    },
+    skill_keywords: {
+      terms: ["typescript", "react", "node", "python"],
+      weight: 1,
+      max_score: 4,
+    },
+    freshness: { within_24h: 2, within_3d: 1, older: 0 },
+    list_threshold: 3,
+    pipeline_threshold: 5,
+    detail_concurrent_tabs: 3,
+    detail_delay_min_ms: 2000,
+    detail_delay_max_ms: 5000,
   };
 
   if (!existsSync(profilePath)) return defaults;
 
   try {
-    const content = readFileSync(profilePath, "utf-8");
-    // Simple YAML extraction for newgrad_scan section
-    const sectionMatch = /newgrad_scan:\s*\n((?:[ \t]+.+\n?)*)/m.exec(content);
-    if (!sectionMatch) return defaults;
+    const lines = readFileSync(profilePath, "utf-8").split(/\r?\n/);
+    const section = extractYamlBlock(lines, "newgrad_scan", 0);
+    if (section.length === 0) return defaults;
 
-    const section = sectionMatch[1]!;
-    const extractArray = (key: string): string[] => {
-      const blockMatch = new RegExp(`${key}:\\s*\\n((?:\\s+-\\s+.+\\n?)*)`, "m").exec(section);
-      if (!blockMatch) return [];
-      return [...blockMatch[1]!.matchAll(/^\s+-\s+(.+)$/gm)].map(m => m[1]!.trim().replace(/^["']|["']$/g, ""));
-    };
-    const extractNumber = (key: string, fallback: number): number => {
-      const m = new RegExp(`${key}:\\s*(\\d+(?:\\.\\d+)?)`, "m").exec(section);
-      return m ? Number(m[1]) : fallback;
-    };
+    const roleBlock = extractYamlBlock(section, "role_keywords", 2);
+    const skillBlock = extractYamlBlock(section, "skill_keywords", 2);
+    const freshnessBlock = extractYamlBlock(section, "freshness", 2);
 
-    const roleKw = extractArray("role_keywords");
-    const skillKw = extractArray("skill_keywords");
+    const rolePositive = extractYamlArray(roleBlock, "positive", 4);
+    const skillTerms = extractYamlArray(skillBlock, "terms", 4);
 
     return {
-      role_keywords: roleKw.length > 0 ? roleKw : defaults.role_keywords,
-      skill_keywords: skillKw.length > 0 ? skillKw : defaults.skill_keywords,
+      role_keywords: {
+        positive: rolePositive.length > 0 ? rolePositive : defaults.role_keywords.positive,
+        weight: extractYamlNumber(roleBlock, "weight", 4, defaults.role_keywords.weight),
+      },
+      skill_keywords: {
+        terms: skillTerms.length > 0 ? skillTerms : defaults.skill_keywords.terms,
+        weight: extractYamlNumber(skillBlock, "weight", 4, defaults.skill_keywords.weight),
+        max_score: extractYamlNumber(skillBlock, "max_score", 4, defaults.skill_keywords.max_score),
+      },
       freshness: {
-        max_points: extractNumber("max_points", defaults.freshness.max_points),
-        max_days: extractNumber("max_days", defaults.freshness.max_days),
+        within_24h: extractYamlNumber(
+          freshnessBlock,
+          "within_24h",
+          4,
+          defaults.freshness.within_24h,
+        ),
+        within_3d: extractYamlNumber(
+          freshnessBlock,
+          "within_3d",
+          4,
+          defaults.freshness.within_3d,
+        ),
+        older: extractYamlNumber(freshnessBlock, "older", 4, defaults.freshness.older),
       },
-      thresholds: {
-        min_score: extractNumber("min_score", defaults.thresholds.min_score),
-        min_ratio: extractNumber("min_ratio", defaults.thresholds.min_ratio),
-      },
-      throttling: {
-        delay_ms: extractNumber("delay_ms", defaults.throttling.delay_ms),
-        max_enrichments: extractNumber("max_enrichments", defaults.throttling.max_enrichments),
-      },
+      list_threshold: extractYamlNumber(section, "list_threshold", 2, defaults.list_threshold),
+      pipeline_threshold: extractYamlNumber(
+        section,
+        "pipeline_threshold",
+        2,
+        defaults.pipeline_threshold,
+      ),
+      detail_concurrent_tabs: extractYamlNumber(
+        section,
+        "detail_concurrent_tabs",
+        2,
+        defaults.detail_concurrent_tabs,
+      ),
+      detail_delay_min_ms: extractYamlNumber(
+        section,
+        "detail_delay_min_ms",
+        2,
+        defaults.detail_delay_min_ms,
+      ),
+      detail_delay_max_ms: extractYamlNumber(
+        section,
+        "detail_delay_max_ms",
+        2,
+        defaults.detail_delay_max_ms,
+      ),
     };
   } catch {
     return defaults;
   }
+}
+
+function extractYamlBlock(lines: readonly string[], key: string, indent: number): string[] {
+  const header = new RegExp(`^${" ".repeat(indent)}${escapeRegExp(key)}:\\s*$`);
+  const start = lines.findIndex((line) => header.test(line));
+  if (start === -1) return [];
+
+  const block: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === "") {
+      block.push(line);
+      continue;
+    }
+    if (countIndent(line) <= indent) break;
+    block.push(line);
+  }
+  return block;
+}
+
+function extractYamlArray(lines: readonly string[], key: string, indent: number): string[] {
+  const block = extractYamlBlock(lines, key, indent);
+  return block
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim().replace(/^["']|["']$/g, ""));
+}
+
+function extractYamlNumber(
+  lines: readonly string[],
+  key: string,
+  indent: number,
+  fallback: number,
+): number {
+  const pattern = new RegExp(
+    `^${" ".repeat(indent)}${escapeRegExp(key)}:\\s*(-?\\d+(?:\\.\\d+)?)\\s*$`,
+  );
+  const match = lines.find((line) => pattern.test(line))?.match(pattern);
+  return match ? Number(match[1]) : fallback;
+}
+
+function countIndent(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function loadNegativeKeywords(repoRoot: string): string[] {
@@ -634,6 +737,26 @@ function loadTrackedCompanyRoles(repoRoot: string): Set<string> {
     }
   } catch { /* ignore */ }
   return tracked;
+}
+
+function loadPipelineUrls(repoRoot: string): Set<string> {
+  const pipelinePath = join(repoRoot, "data/pipeline.md");
+  const urls = new Set<string>();
+  if (!existsSync(pipelinePath)) return urls;
+
+  try {
+    const content = readFileSync(pipelinePath, "utf-8");
+    for (const line of content.split("\n")) {
+      const match = /^\s*-\s+\[[ xX]?\]\s+(\S+)/.exec(line);
+      if (match?.[1]) {
+        urls.add(match[1]);
+      }
+    }
+  } catch {
+    return urls;
+  }
+
+  return urls;
 }
 
 function nowIso(): string {

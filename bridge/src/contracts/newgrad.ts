@@ -74,11 +74,11 @@ export interface NewGradDetail {
   /** Site-computed match score, if displayed (0-100). */
   matchScore: number | null;
   /** Experience level match indicator from the detail page. */
-  expLevelMatch: string | null;
+  expLevelMatch: number | null;
   /** Skill match indicator from the detail page. */
-  skillMatch: string | null;
+  skillMatch: number | null;
   /** Industry experience match indicator. */
-  industryExpMatch: string | null;
+  industryExpMatch: number | null;
   /** Full job description text. */
   description: string;
   /** URL of the original listing on the source site. */
@@ -98,7 +98,7 @@ export interface NewGradDetail {
 export interface ScoreBreakdown {
   /** Points earned from role/title keyword matches. */
   roleMatch: number;
-  /** Number of skill keywords that matched the listing. */
+  /** Weighted skill score contributed by keyword matches. */
   skillHits: number;
   /** The actual skill keywords that were found. */
   skillKeywordsMatched: readonly string[];
@@ -200,29 +200,31 @@ export interface NewGradEnrichResult {
  * expected in `config/profile.yml` under `newgrad_scan`.
  */
 export interface NewGradScanConfig {
-  /** Keywords that match against the job title for role relevance scoring. */
-  role_keywords: readonly string[];
-  /** Keywords matched against the listing text for skill relevance scoring. */
-  skill_keywords: readonly string[];
-  /** Freshness scoring parameters. */
+  /** Title-match scoring configuration. */
+  role_keywords: {
+    positive: readonly string[];
+    weight: number;
+  };
+  /** Skill-match scoring configuration. */
+  skill_keywords: {
+    terms: readonly string[];
+    weight: number;
+    max_score: number;
+  };
+  /** Freshness buckets. */
   freshness: {
-    /** Maximum points awarded for posting recency. */
-    max_points: number;
-    /** Posts older than this many days receive zero freshness points. */
-    max_days: number;
+    within_24h: number;
+    within_3d: number;
+    older: number;
   };
-  /** Score thresholds for filtering decisions. */
-  thresholds: {
-    /** Minimum score (absolute) for a row to be promoted. */
-    min_score: number;
-    /** Minimum score as a fraction of max_score (0-1) for promotion. */
-    min_ratio: number;
-  };
-  /** Rate-limiting to avoid overloading the source site. */
-  throttling: {
-    /** Delay in milliseconds between detail-page fetches. */
-    delay_ms: number;
-    /** Maximum number of detail pages to fetch per scan run. */
-    max_enrichments: number;
-  };
+  /** Minimum score to promote a list row to detail enrichment. */
+  list_threshold: number;
+  /** Minimum score required to append an enriched row to pipeline.md. */
+  pipeline_threshold: number;
+  /** Max number of background tabs to open concurrently. */
+  detail_concurrent_tabs: number;
+  /** Minimum randomized delay between enrichment batches. */
+  detail_delay_min_ms: number;
+  /** Maximum randomized delay between enrichment batches. */
+  detail_delay_max_ms: number;
 }
