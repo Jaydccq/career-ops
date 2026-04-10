@@ -414,8 +414,8 @@ Includes max-height + overflow safety net for single-page enforcement."
   "candidate": {
     "name": "Jane Doe",
     "email": "jane@example.com",
-    "linkedin_url": "https://linkedin.com/in/jane-doe-12345",
-    "linkedin_display": "linkedin.com/in/jane-doe",
+    "linkedin_url": "https://www.linkedin.com/in/jane-doe-12345",
+    "linkedin_display": "linkedin.com/in/jane-doe-12345",
     "location": "San Francisco, CA"
   },
   "letter": {
