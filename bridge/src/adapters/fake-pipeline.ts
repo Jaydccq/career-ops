@@ -34,6 +34,13 @@ import type {
   TrackerRow,
 } from "../contracts/jobs.js";
 import type { BridgeError } from "../contracts/envelope.js";
+import type {
+  NewGradRow,
+  EnrichedRow,
+  NewGradScoreResult,
+  NewGradEnrichResult,
+  PipelineEntry,
+} from "../contracts/newgrad.js";
 
 const DEFAULT_DELAY_MS = 400;
 
@@ -212,6 +219,38 @@ export function createFakePipelineAdapter(
 
     async mergeTracker(dryRun: boolean): Promise<MergeReport> {
       return { added: 0, updated: 0, skipped: 0, dryRun };
+    },
+
+    async scoreNewGradRows(rows: NewGradRow[]): Promise<NewGradScoreResult> {
+      return {
+        promoted: rows.map((row) => ({
+          row,
+          score: 5,
+          maxScore: 5,
+          breakdown: {
+            roleMatch: 1,
+            skillHits: 2,
+            skillKeywordsMatched: ["typescript", "react"],
+            freshness: 2,
+          },
+        })),
+        filtered: [],
+      };
+    },
+
+    async enrichNewGradRows(rows: EnrichedRow[]): Promise<NewGradEnrichResult> {
+      const entries: PipelineEntry[] = rows.map((r) => ({
+        url: r.row.row.applyUrl,
+        company: r.row.row.company,
+        role: r.row.row.title,
+        score: r.row.score,
+        source: "newgrad-jobs.com",
+      }));
+      return {
+        added: rows.length,
+        skipped: 0,
+        entries,
+      };
     },
   };
 }

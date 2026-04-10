@@ -30,6 +30,12 @@ import type {
   JobSnapshot,
   TrackerRow,
 } from "./jobs.js";
+import type {
+  NewGradRow,
+  EnrichedRow,
+  NewGradScoreResult,
+  NewGradEnrichResult,
+} from "./newgrad.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Transport-level constants                                                 */
@@ -63,7 +69,9 @@ export type EndpointId =
   | "evaluateStream"
   | "jobGet"
   | "trackerList"
-  | "reportRead";
+  | "reportRead"
+  | "newgradScore"
+  | "newgradEnrich";
 
 export interface EndpointDescriptor<TReq, TRes> {
   id: EndpointId;
@@ -282,6 +290,47 @@ export const REPORT_READ: EndpointDescriptor<void, Response<ReportReadResult>> =
 };
 
 /* -------------------------------------------------------------------------- */
+/*  /newgrad-scan/score — score + filter listing rows from newgrad-jobs.com    */
+/* -------------------------------------------------------------------------- */
+
+export interface NewGradScoreRequest {
+  rows: NewGradRow[];
+}
+
+export const NEWGRAD_SCORE: EndpointDescriptor<
+  RequestEnvelope<NewGradScoreRequest>,
+  Response<NewGradScoreResult>
+> = {
+  id: "newgradScore",
+  method: "POST",
+  path: "/v1/newgrad-scan/score",
+  phase: 3,
+  idempotent: true,
+  errors: ["UNAUTHORIZED", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL"],
+};
+
+/* -------------------------------------------------------------------------- */
+/*  /newgrad-scan/enrich — enrich scored rows with detail data + write        */
+/*  survivors to pipeline.md                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface NewGradEnrichRequest {
+  rows: EnrichedRow[];
+}
+
+export const NEWGRAD_ENRICH: EndpointDescriptor<
+  RequestEnvelope<NewGradEnrichRequest>,
+  Response<NewGradEnrichResult>
+> = {
+  id: "newgradEnrich",
+  method: "POST",
+  path: "/v1/newgrad-scan/enrich",
+  phase: 3,
+  idempotent: true,
+  errors: ["UNAUTHORIZED", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL"],
+};
+
+/* -------------------------------------------------------------------------- */
 /*  Endpoint registry — used by tests and by a future OpenAPI generator       */
 /* -------------------------------------------------------------------------- */
 
@@ -293,6 +342,8 @@ export const ENDPOINTS = {
   JOB_GET,
   TRACKER_LIST,
   REPORT_READ,
+  NEWGRAD_SCORE,
+  NEWGRAD_ENRICH,
 } as const;
 
 export type EndpointRegistry = typeof ENDPOINTS;

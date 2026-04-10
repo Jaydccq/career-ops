@@ -23,6 +23,12 @@ import type {
   PhaseTransition,
 } from "./jobs.js";
 import type { BridgeError } from "./envelope.js";
+import type {
+  NewGradRow,
+  EnrichedRow,
+  NewGradScoreResult,
+  NewGradEnrichResult,
+} from "./newgrad.js";
 
 /**
  * Configuration the adapter needs at construction time. Provided once
@@ -130,6 +136,19 @@ export interface PipelineAdapter {
    * explicit step, not a side effect.
    */
   mergeTracker(dryRun: boolean): Promise<MergeReport>;
+
+  /**
+   * Score and filter a batch of newgrad-jobs.com listing rows.
+   * Reads scoring config from profile.yml, negative keywords from
+   * portals.yml, and dedup set from applications.md.
+   */
+  scoreNewGradRows(rows: NewGradRow[]): Promise<NewGradScoreResult>;
+
+  /**
+   * Enrich scored rows with detail-page data, re-score using description
+   * text, apply pipeline_threshold, and append survivors to pipeline.md.
+   */
+  enrichNewGradRows(rows: EnrichedRow[]): Promise<NewGradEnrichResult>;
 }
 
 /* -------------------------------------------------------------------------- */

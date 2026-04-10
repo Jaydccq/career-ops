@@ -22,6 +22,7 @@ import {
   AUTH_HEADER,
   type HealthResult,
 } from "./contracts/api.js";
+import type { NewGradRow, EnrichedRow } from "./contracts/newgrad.js";
 import {
   PROTOCOL_VERSION,
   type BridgeError,
@@ -476,6 +477,134 @@ export function buildServer(args: BuildServerArgs) {
   fastify.get("/v1/jobs", async (_req, reply) => {
     const jobs = await store.list(20);
     reply.code(200).send(success("jobs-list", { jobs }));
+  });
+
+  /* -- POST /v1/newgrad-scan/score --------------------------------------- */
+
+  const newGradRowSchema = z.object({
+    position: z.number().int(),
+    title: z.string(),
+    postedAgo: z.string(),
+    applyUrl: z.string(),
+    detailUrl: z.string(),
+    workModel: z.string(),
+    location: z.string(),
+    company: z.string(),
+    salary: z.string().nullable(),
+    companySize: z.string().nullable(),
+    industry: z.string().nullable(),
+    qualifications: z.string().nullable(),
+    h1bSponsored: z.boolean(),
+    isNewGrad: z.boolean(),
+  });
+
+  const newGradScoreSchema = envelopeSchema(
+    z.object({ rows: z.array(newGradRowSchema).max(200) })
+  );
+
+  fastify.post("/v1/newgrad-scan/score", async (req, reply) => {
+    if (!generalRateLimit.check("general")) {
+      return sendFailure(reply, requestIdFromBody(req.body),
+        bridgeError("RATE_LIMITED", "too many requests"));
+    }
+
+    const parsed = newGradScoreSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendFailure(
+        reply,
+        requestIdFromBody(req.body),
+        bridgeError("BAD_REQUEST", "invalid envelope", {
+          issues: parsed.error.issues,
+        })
+      );
+    }
+    const env = parsed.data as RequestEnvelope<{ rows: NewGradRow[] }>;
+    try {
+      assertProtocol(env);
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+
+    try {
+      const result = await adapter.scoreNewGradRows(env.payload.rows);
+      reply.code(200).send(success(env.requestId, result));
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+  });
+
+  /* -- POST /v1/newgrad-scan/enrich -------------------------------------- */
+
+  const scoreBreakdownSchema = z.object({
+    roleMatch: z.number(),
+    skillHits: z.number(),
+    skillKeywordsMatched: z.array(z.string()),
+    freshness: z.number(),
+  });
+
+  const scoredRowSchema = z.object({
+    row: newGradRowSchema,
+    score: z.number(),
+    maxScore: z.number(),
+    breakdown: scoreBreakdownSchema,
+  });
+
+  const newGradDetailSchema = z.object({
+    position: z.number().int(),
+    title: z.string(),
+    company: z.string(),
+    location: z.string(),
+    employmentType: z.string().nullable(),
+    workModel: z.string().nullable(),
+    seniorityLevel: z.string().nullable(),
+    salaryRange: z.string().nullable(),
+    matchScore: z.number().nullable(),
+    expLevelMatch: z.string().nullable(),
+    skillMatch: z.string().nullable(),
+    industryExpMatch: z.string().nullable(),
+    description: z.string(),
+    originalPostUrl: z.string(),
+    applyNowUrl: z.string(),
+  });
+
+  const enrichedRowSchema = z.object({
+    row: scoredRowSchema,
+    detail: newGradDetailSchema,
+  });
+
+  const newGradEnrichSchema = envelopeSchema(
+    z.object({ rows: z.array(enrichedRowSchema).max(50) })
+  );
+
+  fastify.post("/v1/newgrad-scan/enrich", async (req, reply) => {
+    if (!generalRateLimit.check("general")) {
+      return sendFailure(reply, requestIdFromBody(req.body),
+        bridgeError("RATE_LIMITED", "too many requests"));
+    }
+
+    const parsed = newGradEnrichSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendFailure(
+        reply,
+        requestIdFromBody(req.body),
+        bridgeError("BAD_REQUEST", "invalid envelope", {
+          issues: parsed.error.issues,
+        })
+      );
+    }
+    const env = parsed.data as RequestEnvelope<{ rows: EnrichedRow[] }>;
+    try {
+      assertProtocol(env);
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+
+    try {
+      const result = await adapter.enrichNewGradRows(env.payload.rows);
+      reply.code(200).send(success(env.requestId, result));
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
   });
 
   return { fastify, store };

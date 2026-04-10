@@ -26,9 +26,18 @@ import type {
   TrackerStatus,
 } from "../contracts/jobs.js";
 import type { BridgeError } from "../contracts/envelope.js";
+import type {
+  NewGradRow,
+  EnrichedRow,
+  NewGradScoreResult,
+  NewGradEnrichResult,
+  NewGradScanConfig,
+  PipelineEntry,
+} from "../contracts/newgrad.js";
 
 import { spawn } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -40,6 +49,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import { bridgeError } from "../runtime/errors.js";
+import { scoreAndFilter } from "./newgrad-scorer.js";
 import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
 
 const LOCK_WAIT_MS = 5_000;
@@ -462,7 +472,168 @@ export function createClaudePipelineAdapter(
         dryRun,
       };
     },
+
+    async scoreNewGradRows(rows: NewGradRow[]): Promise<NewGradScoreResult> {
+      const scanConfig = loadNewGradScanConfig(config.repoRoot);
+      const negativeKeywords = loadNegativeKeywords(config.repoRoot);
+      const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
+      const { promoted, filtered } = scoreAndFilter(rows, scanConfig, negativeKeywords, trackedSet);
+      return { promoted, filtered };
+    },
+
+    async enrichNewGradRows(rows: EnrichedRow[]): Promise<NewGradEnrichResult> {
+      const scanConfig = loadNewGradScanConfig(config.repoRoot);
+      const negativeKeywords = loadNegativeKeywords(config.repoRoot);
+      const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
+
+      const entries: PipelineEntry[] = [];
+      let skipped = 0;
+
+      for (const enrichedRow of rows) {
+        // Re-score using the detail description as qualifications text
+        const augmentedRow: NewGradRow = {
+          ...enrichedRow.row.row,
+          qualifications: [
+            enrichedRow.row.row.qualifications ?? "",
+            enrichedRow.detail.description,
+          ].join(" "),
+        };
+
+        const { promoted } = scoreAndFilter(
+          [augmentedRow],
+          scanConfig,
+          negativeKeywords,
+          trackedSet,
+        );
+
+        if (promoted.length === 0) {
+          skipped++;
+          continue;
+        }
+
+        const scored = promoted[0]!;
+        const entry: PipelineEntry = {
+          url: enrichedRow.detail.applyNowUrl || enrichedRow.row.row.applyUrl,
+          company: enrichedRow.row.row.company,
+          role: enrichedRow.row.row.title,
+          score: scored.score,
+          source: "newgrad-jobs.com",
+        };
+        entries.push(entry);
+      }
+
+      // Append survivors to data/pipeline.md
+      if (entries.length > 0) {
+        const pipelinePath = join(config.repoRoot, "data/pipeline.md");
+        const maxScore = scanConfig.skill_keywords.length + scanConfig.freshness.max_points + 1;
+        const lines = entries.map(
+          (e) =>
+            `- [ ] ${e.url} — ${e.company} | ${e.role} (via newgrad-scan, score: ${e.score}/${maxScore})`,
+        );
+
+        // Ensure file exists with a header
+        if (!existsSync(pipelinePath)) {
+          writeFileSync(pipelinePath, "# Pipeline Inbox\n\n", "utf-8");
+        }
+        appendFileSync(pipelinePath, "\n" + lines.join("\n") + "\n", "utf-8");
+      }
+
+      return { added: entries.length, skipped, entries };
+    },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Newgrad-scan helpers                                                       */
+/* -------------------------------------------------------------------------- */
+
+function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
+  const profilePath = join(repoRoot, "config/profile.yml");
+  const defaults: NewGradScanConfig = {
+    role_keywords: ["engineer", "developer", "software"],
+    skill_keywords: ["typescript", "react", "node", "python"],
+    freshness: { max_points: 2, max_days: 14 },
+    thresholds: { min_score: 2, min_ratio: 0.3 },
+    throttling: { delay_ms: 1000, max_enrichments: 20 },
+  };
+
+  if (!existsSync(profilePath)) return defaults;
+
+  try {
+    const content = readFileSync(profilePath, "utf-8");
+    // Simple YAML extraction for newgrad_scan section
+    const sectionMatch = /newgrad_scan:\s*\n((?:[ \t]+.+\n?)*)/m.exec(content);
+    if (!sectionMatch) return defaults;
+
+    const section = sectionMatch[1]!;
+    const extractArray = (key: string): string[] => {
+      const blockMatch = new RegExp(`${key}:\\s*\\n((?:\\s+-\\s+.+\\n?)*)`, "m").exec(section);
+      if (!blockMatch) return [];
+      return [...blockMatch[1]!.matchAll(/^\s+-\s+(.+)$/gm)].map(m => m[1]!.trim().replace(/^["']|["']$/g, ""));
+    };
+    const extractNumber = (key: string, fallback: number): number => {
+      const m = new RegExp(`${key}:\\s*(\\d+(?:\\.\\d+)?)`, "m").exec(section);
+      return m ? Number(m[1]) : fallback;
+    };
+
+    const roleKw = extractArray("role_keywords");
+    const skillKw = extractArray("skill_keywords");
+
+    return {
+      role_keywords: roleKw.length > 0 ? roleKw : defaults.role_keywords,
+      skill_keywords: skillKw.length > 0 ? skillKw : defaults.skill_keywords,
+      freshness: {
+        max_points: extractNumber("max_points", defaults.freshness.max_points),
+        max_days: extractNumber("max_days", defaults.freshness.max_days),
+      },
+      thresholds: {
+        min_score: extractNumber("min_score", defaults.thresholds.min_score),
+        min_ratio: extractNumber("min_ratio", defaults.thresholds.min_ratio),
+      },
+      throttling: {
+        delay_ms: extractNumber("delay_ms", defaults.throttling.delay_ms),
+        max_enrichments: extractNumber("max_enrichments", defaults.throttling.max_enrichments),
+      },
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function loadNegativeKeywords(repoRoot: string): string[] {
+  const portalsPath = join(repoRoot, "portals.yml");
+  if (!existsSync(portalsPath)) return [];
+
+  try {
+    const content = readFileSync(portalsPath, "utf-8");
+    const negMatch = /negative:\s*\n((?:\s+-\s+.+\n?)*)/m.exec(content);
+    if (!negMatch) return [];
+    return [...negMatch[1]!.matchAll(/^\s+-\s+(.+)$/gm)].map(m => m[1]!.trim().replace(/^["']|["']$/g, ""));
+  } catch {
+    return [];
+  }
+}
+
+function loadTrackedCompanyRoles(repoRoot: string): Set<string> {
+  const trackerPath = join(repoRoot, "data/applications.md");
+  const tracked = new Set<string>();
+  if (!existsSync(trackerPath)) return tracked;
+
+  try {
+    const content = readFileSync(trackerPath, "utf-8");
+    for (const line of content.split("\n")) {
+      if (!line.startsWith("|") || line.includes("---") || line.includes("Company")) continue;
+      const cols = line.split("|").map(s => s.trim());
+      if (cols.length >= 5) {
+        const company = cols[3]?.toLowerCase() ?? "";
+        const role = cols[4]?.toLowerCase() ?? "";
+        if (company && role) {
+          tracked.add(`${company}|${role}`);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return tracked;
 }
 
 function nowIso(): string {
