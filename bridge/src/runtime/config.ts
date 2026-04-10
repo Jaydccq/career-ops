@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-export type BridgeMode = "fake" | "real";
+export type BridgeMode = "fake" | "real" | "sdk";
 
 export interface BridgeConfig {
   /** Absolute path to career-ops repo root. cwd for every shell-out. */
@@ -152,9 +152,10 @@ function readPackageVersion(pkgPath: string): string {
 
 function parseMode(raw: string | undefined): BridgeMode {
   if (raw === "real") return "real";
+  if (raw === "sdk") return "sdk";
   if (raw === "fake" || raw === undefined) return "fake";
   throw new Error(
-    `CAREER_OPS_BRIDGE_MODE must be "fake" or "real", got "${raw}"`
+    `CAREER_OPS_BRIDGE_MODE must be "fake", "real", or "sdk", got "${raw}"`
   );
 }
 
@@ -204,6 +205,13 @@ export function loadConfig(): BridgeConfig {
     throw new Error(
       `bridge bootstrap: CAREER_OPS_BRIDGE_MODE=real but 'claude' CLI is not on PATH. ` +
         `Install Claude Code or switch to CAREER_OPS_BRIDGE_MODE=fake.`
+    );
+  }
+
+  if (mode === "sdk" && !process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      `bridge bootstrap: CAREER_OPS_BRIDGE_MODE=sdk but ANTHROPIC_API_KEY is not set. ` +
+        `Set the env var or switch to CAREER_OPS_BRIDGE_MODE=fake.`
     );
   }
 
