@@ -802,11 +802,14 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
     // Detect newgrad-jobs.com and show scan UI instead of single-JD flow
     try {
-      const currentHost = new URL(capturedData?.url ?? "").hostname;
-      if (currentHost.includes("newgrad-jobs.com")) {
-        show("newgradScan");
-        void loadRecentJobs();
-        return;
+      const capturedUrl = (capturedData as { url?: string } | null)?.url;
+      if (capturedUrl) {
+        const currentHost = new URL(capturedUrl).hostname;
+        if (currentHost.includes("newgrad-jobs.com")) {
+          show("newgradScan");
+          void loadRecentJobs();
+          return;
+        }
       }
     } catch { /* invalid URL, proceed normally */ }
 
