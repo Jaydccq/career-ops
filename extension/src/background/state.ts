@@ -11,6 +11,7 @@ import { STATE_STORAGE_KEY } from "../contracts/messages.js";
 const DEFAULT_STATE: ExtensionState = {
   bridgeHost: "127.0.0.1",
   bridgePort: 47319,
+  preferredBridgePreset: "real-codex",
   bridgeToken: "",
 };
 

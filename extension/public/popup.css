@@ -99,6 +99,68 @@ html, body {
   color: var(--fg-muted);
 }
 
+.mode-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mode-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.mode-select {
+  appearance: none;
+  background: #000;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.mode-select:focus {
+  border-color: var(--accent);
+}
+
+.mode-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mode-current,
+.mode-match,
+.mode-help {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.mode-match[data-match="yes"] {
+  color: var(--ok);
+}
+
+.mode-match[data-match="no"] {
+  color: var(--warn);
+}
+
+.mode-command {
+  display: block;
+  background: #000;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .cta {
   appearance: none;
   background: transparent;

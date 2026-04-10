@@ -21,7 +21,9 @@ function toPipelineConfig(
   return {
     repoRoot: cfg.repoRoot,
     claudeBin: cfg.claudeBin ?? "claude",
+    codexBin: cfg.codexBin,
     nodeBin: cfg.nodeBin,
+    realExecutor: cfg.realExecutor,
     evaluationTimeoutSec: cfg.evaluationTimeoutSec,
     livenessTimeoutSec: cfg.livenessTimeoutSec,
     allowDangerousClaudeFlags: true,
@@ -52,6 +54,7 @@ async function main(): Promise<void> {
   fastify.log.info(
     {
       mode: config.mode,
+      realExecutor: config.realExecutor,
       host: config.host,
       port: config.port,
       repoRoot: config.repoRoot,

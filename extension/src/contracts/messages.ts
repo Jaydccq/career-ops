@@ -42,6 +42,12 @@ export interface MergeReport {
   dryRun: boolean;
 }
 
+export type BridgePreset =
+  | "fake"
+  | "real-claude"
+  | "real-codex"
+  | "sdk";
+
 /* -------------------------------------------------------------------------- */
 /*  popup -> background                                                       */
 /* -------------------------------------------------------------------------- */
@@ -51,6 +57,10 @@ export type PopupRequest =
   | { kind: "hasToken" }
   /** Store the bridge token (first-time setup). */
   | { kind: "setToken"; token: string }
+  /** Read the preferred bridge mode preset stored by the extension. */
+  | { kind: "getModePreference" }
+  /** Persist the preferred bridge mode preset. */
+  | { kind: "setModePreference"; preset: BridgePreset }
   /** Ask background to return the current health snapshot (cached 5s). */
   | { kind: "getHealth" }
   /** Ask background to capture the active tab's job-page context. */
@@ -90,6 +100,10 @@ export type PopupResponse =
   | { kind: "hasToken"; ok: false; error: BridgeError }
   | { kind: "setToken"; ok: true; result: { saved: true } }
   | { kind: "setToken"; ok: false; error: BridgeError }
+  | { kind: "getModePreference"; ok: true; result: { preset: BridgePreset } }
+  | { kind: "getModePreference"; ok: false; error: BridgeError }
+  | { kind: "setModePreference"; ok: true; result: { saved: true; preset: BridgePreset } }
+  | { kind: "setModePreference"; ok: false; error: BridgeError }
   | { kind: "getHealth"; ok: true; result: HealthResult }
   | { kind: "getHealth"; ok: false; error: BridgeError }
   | { kind: "captureActiveTab"; ok: true; result: CapturedTab }
@@ -184,6 +198,8 @@ export interface ExtensionState {
   /** Bridge host override (defaults handled by background). */
   bridgeHost: string;
   bridgePort: number;
+  /** User-selected bridge execution preset shown in the popup. */
+  preferredBridgePreset: BridgePreset;
   /** Shared secret, copied from bridge/.bridge-token on setup. */
   bridgeToken: string;
   /** Last health snapshot, for fast popup render. */

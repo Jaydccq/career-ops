@@ -87,6 +87,11 @@ export interface SdkPipelineOptions {
   model?: string;
 }
 
+export const __internal = {
+  extractJsonFromText,
+  buildSystemPrompt,
+};
+
 export function createSdkPipelineAdapter(
   config: PipelineConfig,
   options: SdkPipelineOptions = {}

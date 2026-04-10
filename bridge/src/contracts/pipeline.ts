@@ -33,8 +33,12 @@ export interface PipelineConfig {
   repoRoot: string;
   /** Absolute path to the `claude` CLI binary. Resolved via `which` at boot. */
   claudeBin: string;
+  /** Absolute path to the `codex` CLI binary when available. */
+  codexBin?: string | null;
   /** Absolute path to the `node` CLI binary. */
   nodeBin: string;
+  /** Which CLI powers real mode. */
+  realExecutor?: "claude" | "codex";
   /** Maximum seconds one evaluation is allowed to run. */
   evaluationTimeoutSec: number;
   /** Maximum seconds a Playwright liveness check is allowed to run. */

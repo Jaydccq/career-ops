@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:node": "node --test src/adapters/claude-pipeline.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts"

@@ -23,6 +23,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export type BridgeMode = "fake" | "real" | "sdk";
+export type RealExecutor = "claude" | "codex";
 
 export interface BridgeConfig {
   /** Absolute path to career-ops repo root. cwd for every shell-out. */
@@ -37,10 +38,14 @@ export interface BridgeConfig {
   token: string;
   /** Absolute path to the claude CLI, or null if unresolved. */
   claudeBin: string | null;
+  /** Absolute path to the codex CLI, or null if unresolved. */
+  codexBin: string | null;
   /** Absolute path to the node CLI. */
   nodeBin: string;
   /** Which pipeline adapter to use. */
   mode: BridgeMode;
+  /** Which CLI powers real mode. */
+  realExecutor: RealExecutor;
   /** Seconds an evaluation is allowed to run. */
   evaluationTimeoutSec: number;
   /** Seconds a liveness check is allowed to run. */
@@ -159,6 +164,14 @@ function parseMode(raw: string | undefined): BridgeMode {
   );
 }
 
+function parseRealExecutor(raw: string | undefined): RealExecutor {
+  if (raw === "codex") return "codex";
+  if (raw === "claude" || raw === undefined || raw === "") return "claude";
+  throw new Error(
+    `CAREER_OPS_REAL_EXECUTOR must be "claude" or "codex", got "${raw}"`
+  );
+}
+
 function parsePort(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
@@ -198,13 +211,22 @@ export function loadConfig(): BridgeConfig {
 
   const token = loadOrGenerateToken(bridgeDir);
   const claudeBin = resolveBin("claude");
+  const codexBin = resolveBin("codex");
   const nodeBin = resolveBin("node") ?? process.execPath;
   const mode = parseMode(process.env.CAREER_OPS_BRIDGE_MODE);
+  const realExecutor = parseRealExecutor(process.env.CAREER_OPS_REAL_EXECUTOR);
 
-  if (mode === "real" && !claudeBin) {
+  if (mode === "real" && realExecutor === "claude" && !claudeBin) {
     throw new Error(
       `bridge bootstrap: CAREER_OPS_BRIDGE_MODE=real but 'claude' CLI is not on PATH. ` +
         `Install Claude Code or switch to CAREER_OPS_BRIDGE_MODE=fake.`
+    );
+  }
+
+  if (mode === "real" && realExecutor === "codex" && !codexBin) {
+    throw new Error(
+      `bridge bootstrap: CAREER_OPS_BRIDGE_MODE=real and CAREER_OPS_REAL_EXECUTOR=codex but 'codex' CLI is not on PATH. ` +
+        `Install Codex CLI or switch CAREER_OPS_REAL_EXECUTOR=claude.`
     );
   }
 
@@ -225,8 +247,10 @@ export function loadConfig(): BridgeConfig {
     port: parsePort(process.env.CAREER_OPS_BRIDGE_PORT, DEFAULT_PORT),
     token,
     claudeBin,
+    codexBin,
     nodeBin,
     mode,
+    realExecutor,
     evaluationTimeoutSec: DEFAULT_EVAL_TIMEOUT_SEC,
     livenessTimeoutSec: DEFAULT_LIVENESS_TIMEOUT_SEC,
     bridgeVersion,
@@ -237,17 +261,33 @@ export function loadConfig(): BridgeConfig {
 /**
  * Cheap diagnostic used by /health. Never throws; returns structured info.
  */
+function inspectCli(bin: string | null, name: string): {
+  ok: boolean;
+  version?: string;
+  error?: string;
+} {
+  if (!bin) {
+    return { ok: false, error: `${name} CLI not found on PATH` };
+  }
+  const v = claudeVersion(bin);
+  if (v === null) {
+    return { ok: false, error: `${name} --version failed` };
+  }
+  return { ok: true, version: v };
+}
+
 export function inspectClaude(config: BridgeConfig): {
   ok: boolean;
   version?: string;
   error?: string;
 } {
-  if (!config.claudeBin) {
-    return { ok: false, error: "claude CLI not found on PATH" };
-  }
-  const v = claudeVersion(config.claudeBin);
-  if (v === null) {
-    return { ok: false, error: "claude --version failed" };
-  }
-  return { ok: true, version: v };
+  return inspectCli(config.claudeBin, "claude");
+}
+
+export function inspectCodex(config: BridgeConfig): {
+  ok: boolean;
+  version?: string;
+  error?: string;
+} {
+  return inspectCli(config.codexBin, "codex");
 }

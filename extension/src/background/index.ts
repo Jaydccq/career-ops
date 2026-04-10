@@ -91,6 +91,10 @@ async function handleRequest(req: PopupRequest): Promise<PopupResponse> {
         return await handleHasToken();
       case "setToken":
         return await handleSetToken(req.token);
+      case "getModePreference":
+        return await handleGetModePreference();
+      case "setModePreference":
+        return await handleSetModePreference(req.preset);
       case "getHealth":
         return await handleGetHealth();
       case "captureActiveTab":
@@ -149,6 +153,26 @@ async function handleSetToken(token: string): Promise<PopupResponse> {
   }
   await patchState({ bridgeToken: trimmed });
   return { kind: "setToken", ok: true, result: { saved: true } };
+}
+
+async function handleGetModePreference(): Promise<PopupResponse> {
+  const state = await loadState();
+  return {
+    kind: "getModePreference",
+    ok: true,
+    result: { preset: state.preferredBridgePreset },
+  };
+}
+
+async function handleSetModePreference(
+  preset: import("../contracts/messages.js").BridgePreset
+): Promise<PopupResponse> {
+  const next = await patchState({ preferredBridgePreset: preset });
+  return {
+    kind: "setModePreference",
+    ok: true,
+    result: { saved: true, preset: next.preferredBridgePreset },
+  };
 }
 
 async function handleGetHealth(): Promise<PopupResponse> {

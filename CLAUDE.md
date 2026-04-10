@@ -203,7 +203,7 @@ Default modes are in `modes/` (English). Additional language-specific modes are 
 
 | If the user... | Mode |
 |----------------|------|
-| Pastes JD or URL | auto-pipeline (evaluate + report + PDF + tracker) |
+| Pastes JD or URL | auto-pipeline (evaluate + report + tracker; PDFs only on explicit request) |
 | Asks to evaluate offer | `oferta` |
 | Asks to compare offers | `ofertas` |
 | Wants LinkedIn outreach | `contacto` |

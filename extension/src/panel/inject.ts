@@ -15,6 +15,7 @@
 
 const PANEL_ID = "career-ops-panel-root";
 const STORAGE_POS_KEY = "careerOps.panelPos";
+type BridgePreset = "fake" | "real-claude" | "real-codex" | "sdk";
 
 function getOrCreatePanel(): { root: HTMLElement; shadow: ShadowRoot; existed: boolean } {
   const existing = document.getElementById(PANEL_ID);
@@ -143,6 +144,27 @@ function buildStyles(): string {
 }
 .setup-input:focus { border-color: #7aa7ff; }
 
+.mode-field { display: flex; flex-direction: column; gap: 6px; }
+.mode-label { font-size: 11px; color: #8f8f94; }
+.mode-select {
+  appearance: none; background: #000; color: #e8e8ea;
+  border: 1px solid #26262a; border-radius: 4px; padding: 7px 10px;
+  font-family: inherit; font-size: 12px; outline: none;
+}
+.mode-select:focus { border-color: #7aa7ff; }
+.mode-meta { display: flex; flex-direction: column; gap: 2px; }
+.mode-current, .mode-match, .mode-help {
+  font-size: 11px; color: #8f8f94; line-height: 1.5;
+}
+.mode-match[data-match="yes"] { color: #4ecb71; }
+.mode-match[data-match="no"] { color: #e5b93c; }
+.mode-command {
+  display: block; background: #000; color: #7aa7ff;
+  border: 1px solid #26262a; border-radius: 4px; padding: 8px 10px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  white-space: pre-wrap; word-break: break-word;
+}
+
 .recent-list { display: flex; flex-direction: column; gap: 3px; }
 .recent-empty { font-size: 11px; color: #8f8f94; }
 .recent-item {
@@ -173,6 +195,25 @@ function buildHTML(): string {
   <div class="panel-body">
     <div id="offline-banner" class="offline-banner hidden">
       Bridge not reachable. Run: <code>cd bridge && npm run start</code>
+    </div>
+    <div id="mode-panel" class="section">
+      <div class="section-title">Bridge Mode</div>
+      <label class="mode-field">
+        <span class="mode-label">Preferred mode</span>
+        <select id="mode-select" class="mode-select">
+          <option value="real-codex">real / codex</option>
+          <option value="real-claude">real / claude</option>
+          <option value="sdk">sdk</option>
+          <option value="fake">fake</option>
+        </select>
+      </label>
+      <div class="mode-meta">
+        <div class="mode-current" id="mode-current">Current bridge: unknown</div>
+        <div class="mode-match" id="mode-match">Select a preset to see the startup command.</div>
+      </div>
+      <div class="mode-help" id="mode-help"></div>
+      <code class="mode-command" id="mode-command"></code>
+      <button class="cta" id="mode-copy-btn">Copy start command</button>
     </div>
     <div id="setup" class="section hidden">
       <div class="section-title">First-time setup</div>
@@ -233,6 +274,12 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const closeBtn = $("close-btn");
   const healthEl = $("health");
   const offlineBanner = $("offline-banner");
+  const modeSelect = $("mode-select") as HTMLSelectElement;
+  const modeCurrentEl = $("mode-current");
+  const modeMatchEl = $("mode-match");
+  const modeHelpEl = $("mode-help");
+  const modeCommandEl = $("mode-command");
+  const modeCopyBtn = $("mode-copy-btn") as HTMLButtonElement;
   const setupEl = $("setup");
   const setupTokenInput = $("setup-token") as HTMLInputElement;
   const setupSaveBtn = $("setup-save-btn") as HTMLButtonElement;
@@ -307,6 +354,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   let currentJobId: string | null = null;
   let currentResult: any = null;
   let activePort: chrome.runtime.Port | null = null;
+  let preferredPreset: BridgePreset = "real-codex";
+  let currentBridgePreset: BridgePreset | null = null;
 
   const PHASE_ORDER = [
     "queued", "extracting_jd", "evaluating", "writing_report",
@@ -315,7 +364,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const PHASE_LABEL: Record<string, string> = {
     queued: "Queued", extracting_jd: "Extracting job description",
     evaluating: "Evaluating (A–F blocks)", writing_report: "Writing report",
-    generating_pdf: "Generating PDF", writing_tracker: "Writing tracker row",
+    generating_pdf: "PDF step", writing_tracker: "Writing tracker row",
     completed: "Completed", failed: "Failed",
   };
 
@@ -340,16 +389,114 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   function pct(n: number): string { return Math.round(n * 100) + "%"; }
 
+  function presetFromHealth(health: any): BridgePreset | null {
+    if (health?.execution?.mode === "fake") return "fake";
+    if (health?.execution?.mode === "sdk") return "sdk";
+    if (health?.execution?.mode === "real") {
+      return health?.execution?.realExecutor === "codex" ? "real-codex" : "real-claude";
+    }
+    return null;
+  }
+
+  function presetDisplayName(preset: BridgePreset): string {
+    switch (preset) {
+      case "fake": return "fake";
+      case "real-claude": return "real / claude";
+      case "real-codex": return "real / codex";
+      case "sdk": return "sdk";
+    }
+  }
+
+  function presetDescription(preset: BridgePreset): string {
+    switch (preset) {
+      case "fake":
+        return "Fast UI smoke mode. No real report or PDF files are written.";
+      case "real-claude":
+        return "Full checked-in career-ops flow using claude -p as the executor.";
+      case "real-codex":
+        return "Full checked-in career-ops flow using codex exec as the executor.";
+      case "sdk":
+        return "Direct Anthropic SDK mode. Report and tracker write, but PDF is currently skipped.";
+    }
+  }
+
+  function presetCommand(preset: BridgePreset): string {
+    switch (preset) {
+      case "fake":
+        return "npm --prefix bridge run start";
+      case "real-claude":
+        return "CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start";
+      case "real-codex":
+        return "CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=codex npm --prefix bridge run start";
+      case "sdk":
+        return "CAREER_OPS_BRIDGE_MODE=sdk ANTHROPIC_API_KEY=... npm --prefix bridge run start";
+    }
+  }
+
+  function renderModePanel(health?: any): void {
+    modeSelect.value = preferredPreset;
+    modeHelpEl.textContent = presetDescription(preferredPreset);
+    modeCommandEl.textContent = presetCommand(preferredPreset);
+
+    const currentText = currentBridgePreset
+      ? "Current bridge: " + presetDisplayName(currentBridgePreset)
+      : health?.execution?.mode
+        ? "Current bridge: " + health.execution.mode
+        : "Current bridge: unknown";
+    modeCurrentEl.textContent = currentText;
+
+    if (!currentBridgePreset) {
+      modeMatchEl.dataset.match = "no";
+      modeMatchEl.textContent = "Restart the local bridge with the command below if you want this preset.";
+      return;
+    }
+
+    const matches = currentBridgePreset === preferredPreset;
+    modeMatchEl.dataset.match = matches ? "yes" : "no";
+    modeMatchEl.textContent = matches
+      ? "Bridge already matches your preferred preset."
+      : "Bridge is running a different preset. Restart it with the command below to switch.";
+  }
+
   async function refreshHealth(): Promise<void> {
     setHealth("unknown", "checking…");
     const res = await sendMsg({ kind: "getHealth" });
     if (res?.ok) {
       setHealth("ok", "bridge " + (res.result?.bridgeVersion ?? ""));
       offlineBanner.classList.add("hidden");
+      currentBridgePreset = presetFromHealth(res.result);
+      renderModePanel(res.result);
     } else {
       setHealth("bad", res?.error?.code ?? "offline");
       offlineBanner.classList.remove("hidden");
+      currentBridgePreset = null;
+      renderModePanel();
     }
+  }
+
+  async function onModeChange(): Promise<void> {
+    preferredPreset = modeSelect.value as BridgePreset;
+    renderModePanel();
+    const res = await sendMsg({ kind: "setModePreference", preset: preferredPreset });
+    if (!res?.ok) {
+      renderError(res?.error?.code ?? "INTERNAL", res?.error?.message ?? "failed to save mode");
+      return;
+    }
+    preferredPreset = res.result.preset;
+    renderModePanel();
+  }
+
+  async function onCopyModeCommand(): Promise<void> {
+    const text = presetCommand(preferredPreset);
+    try {
+      await navigator.clipboard.writeText(text);
+      modeCopyBtn.textContent = "Copied";
+    } catch {
+      modeCopyBtn.textContent = "Copy failed";
+    }
+    setTimeout(() => {
+      modeCopyBtn.textContent = "Copy start command";
+    }, 1500);
   }
 
   async function runCapture(): Promise<void> {
@@ -500,6 +647,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     void refreshHealth();
     await runCapture();
   });
+  modeSelect.addEventListener("change", () => { void onModeChange(); });
+  modeCopyBtn.addEventListener("click", () => { void onCopyModeCommand(); });
   mergeTrackerBtn.addEventListener("click", async () => {
     mergeTrackerBtn.disabled = true;
     mergeTrackerBtn.textContent = "Merging…";
@@ -511,6 +660,12 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   // Init
   void (async () => {
+    const preferenceRes = await sendMsg({ kind: "getModePreference" });
+    if (preferenceRes?.ok) {
+      preferredPreset = preferenceRes.result.preset;
+    }
+    renderModePanel();
+
     const tokenRes = await sendMsg({ kind: "hasToken" });
     if (!tokenRes?.ok || !tokenRes.result?.present) {
       show("setup");

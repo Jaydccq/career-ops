@@ -89,6 +89,12 @@ export interface HealthResult {
   protocolVersion: string;
   /** Bridge semver. */
   bridgeVersion: string;
+  execution: {
+    /** Bridge adapter mode. */
+    mode: "fake" | "real" | "sdk";
+    /** Which CLI powers real mode, if applicable. */
+    realExecutor: "claude" | "codex" | null;
+  };
   repo: {
     /** Absolute path to the career-ops repo root the bridge is serving. */
     rootPath: string;
@@ -104,6 +110,8 @@ export interface HealthResult {
   deps: {
     /** `claude --version` succeeded. */
     claudeCli: { ok: boolean; version?: string; error?: string };
+    /** `codex --version` succeeded. */
+    codexCli: { ok: boolean; version?: string; error?: string };
     /** `node --version` — always ok if we're running, but reported for completeness. */
     node: { version: string };
     /** Playwright chromium browser is installed. */

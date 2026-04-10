@@ -14,6 +14,7 @@
  */
 
 import type {
+  BridgePreset,
   CapturedTab,
   ExtensionState,
   JobPortMessage,
@@ -23,6 +24,7 @@ import type {
 import { STATE_STORAGE_KEY } from "../contracts/messages.js";
 import type {
   EvaluationResult,
+  HealthResult,
   JobPhase,
   JobEvent,
   JobId,
@@ -46,7 +48,7 @@ const PHASE_LABEL: Record<JobPhase, string> = {
   extracting_jd: "Extracting job description",
   evaluating: "Evaluating (A–F blocks)",
   writing_report: "Writing report",
-  generating_pdf: "Generating PDF",
+  generating_pdf: "PDF step",
   writing_tracker: "Writing tracker row",
   completed: "Completed",
   failed: "Failed",
@@ -61,6 +63,12 @@ const healthEl = document.getElementById("health")!;
 const setupEl = document.getElementById("setup")!;
 const setupTokenInput = document.getElementById("setup-token") as HTMLInputElement;
 const setupSaveBtn = document.getElementById("setup-save-btn") as HTMLButtonElement;
+const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
+const modeCurrentEl = document.getElementById("mode-current")!;
+const modeMatchEl = document.getElementById("mode-match")!;
+const modeHelpEl = document.getElementById("mode-help")!;
+const modeCommandEl = document.getElementById("mode-command")!;
+const modeCopyBtn = document.getElementById("mode-copy-btn") as HTMLButtonElement;
 const captureEl = document.getElementById("capture")!;
 const notDetectedEl = document.getElementById("not-detected")!;
 const runningEl = document.getElementById("running")!;
@@ -95,6 +103,8 @@ let captured: CapturedTab | null = null;
 let currentJobId: JobId | null = null;
 let currentResult: EvaluationResult | null = null;
 let activePort: chrome.runtime.Port | null = null;
+let preferredPreset: BridgePreset = "real-codex";
+let currentBridgePreset: BridgePreset | null = null;
 
 /* -------------------------------------------------------------------------- */
 /*  UI switching                                                              */
@@ -138,6 +148,9 @@ async function init(): Promise<void> {
   // Cached health — make the popup feel instant.
   const stored = await chrome.storage.local.get(STATE_STORAGE_KEY);
   const state = stored[STATE_STORAGE_KEY] as ExtensionState | undefined;
+  preferredPreset = state?.preferredBridgePreset ?? preferredPreset;
+  modeSelect.value = preferredPreset;
+  renderModePanel();
   if (state?.lastHealthAt != null && state.lastHealthOk != null) {
     const age = Date.now() - new Date(state.lastHealthAt).getTime();
     if (age < 30_000) {
@@ -149,6 +162,13 @@ async function init(): Promise<void> {
         offlineBannerEl.classList.remove("hidden");
       }
     }
+  }
+
+  const preferenceRes = await sendRequest({ kind: "getModePreference" });
+  if (preferenceRes.ok) {
+    preferredPreset = preferenceRes.result.preset;
+    modeSelect.value = preferredPreset;
+    renderModePanel();
   }
 
   const tokenRes = await sendRequest({ kind: "hasToken" });
@@ -193,9 +213,13 @@ async function refreshHealth(): Promise<void> {
   if (res.ok) {
     setHealth("ok", `bridge ${res.result.bridgeVersion}`);
     offlineBannerEl.classList.add("hidden");
+    currentBridgePreset = presetFromHealth(res.result);
+    renderModePanel(res.result);
   } else {
     setHealth("bad", res.error.code);
     offlineBannerEl.classList.remove("hidden");
+    currentBridgePreset = null;
+    renderModePanel();
   }
 }
 
@@ -362,6 +386,63 @@ function renderError(code: string, message: string): void {
   show("error");
 }
 
+function renderModePanel(health?: HealthResult): void {
+  modeSelect.value = preferredPreset;
+  modeHelpEl.textContent = presetDescription(preferredPreset);
+  modeCommandEl.textContent = presetCommand(preferredPreset);
+
+  const currentText = currentBridgePreset
+    ? `Current bridge: ${presetDisplayName(currentBridgePreset)}`
+    : health
+      ? `Current bridge: ${health.execution.mode}`
+      : "Current bridge: unknown";
+  modeCurrentEl.textContent = currentText;
+
+  if (!currentBridgePreset) {
+    modeMatchEl.dataset.match = "no";
+    modeMatchEl.textContent =
+      "Restart the local bridge with the command below if you want this preset.";
+    return;
+  }
+
+  const matches = currentBridgePreset === preferredPreset;
+  modeMatchEl.dataset.match = matches ? "yes" : "no";
+  modeMatchEl.textContent = matches
+    ? "Bridge already matches your preferred preset."
+    : "Bridge is running a different preset. Restart it with the command below to switch.";
+}
+
+async function onModeChange(): Promise<void> {
+  preferredPreset = modeSelect.value as BridgePreset;
+  renderModePanel();
+  const res = await sendRequest({
+    kind: "setModePreference",
+    preset: preferredPreset,
+  });
+  if (!res.ok) {
+    renderError(res.error.code, res.error.message);
+    return;
+  }
+  preferredPreset = res.result.preset;
+  renderModePanel();
+}
+
+async function onCopyModeCommand(): Promise<void> {
+  const text = presetCommand(preferredPreset);
+  try {
+    await navigator.clipboard.writeText(text);
+    modeCopyBtn.textContent = "Copied";
+    setTimeout(() => {
+      modeCopyBtn.textContent = "Copy start command";
+    }, 1500);
+  } catch {
+    modeCopyBtn.textContent = "Copy failed";
+    setTimeout(() => {
+      modeCopyBtn.textContent = "Copy start command";
+    }, 1500);
+  }
+}
+
 async function onRetryClick(): Promise<void> {
   if (currentJobId) {
     currentJobId = null;
@@ -442,6 +523,56 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+function presetFromHealth(health: HealthResult): BridgePreset | null {
+  if (health.execution.mode === "fake") return "fake";
+  if (health.execution.mode === "sdk") return "sdk";
+  if (health.execution.mode === "real") {
+    return health.execution.realExecutor === "codex"
+      ? "real-codex"
+      : "real-claude";
+  }
+  return null;
+}
+
+function presetDisplayName(preset: BridgePreset): string {
+  switch (preset) {
+    case "fake":
+      return "fake";
+    case "real-claude":
+      return "real / claude";
+    case "real-codex":
+      return "real / codex";
+    case "sdk":
+      return "sdk";
+  }
+}
+
+function presetDescription(preset: BridgePreset): string {
+  switch (preset) {
+    case "fake":
+      return "Fast UI smoke mode. No real report or PDF files are written.";
+    case "real-claude":
+      return "Full checked-in career-ops flow using claude -p as the executor.";
+    case "real-codex":
+      return "Full checked-in career-ops flow using codex exec as the executor.";
+    case "sdk":
+      return "Direct Anthropic SDK mode. Report and tracker write, but PDF is currently skipped.";
+  }
+}
+
+function presetCommand(preset: BridgePreset): string {
+  switch (preset) {
+    case "fake":
+      return "npm --prefix bridge run start";
+    case "real-claude":
+      return "CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start";
+    case "real-codex":
+      return "CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=codex npm --prefix bridge run start";
+    case "sdk":
+      return "CAREER_OPS_BRIDGE_MODE=sdk ANTHROPIC_API_KEY=... npm --prefix bridge run start";
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Wire events                                                               */
 /* -------------------------------------------------------------------------- */
@@ -451,5 +582,7 @@ openReportBtn.addEventListener("click", () => void onOpenReportClick());
 retryBtn.addEventListener("click", () => void onRetryClick());
 setupSaveBtn.addEventListener("click", () => void onSetupSaveClick());
 mergeTrackerBtn.addEventListener("click", () => void onMergeTrackerClick());
+modeSelect.addEventListener("change", () => void onModeChange());
+modeCopyBtn.addEventListener("click", () => void onCopyModeCommand());
 
 void init();

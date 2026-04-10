@@ -35,7 +35,7 @@ import {
 } from "./contracts/jobs.js";
 import type { PipelineAdapter } from "./contracts/pipeline.js";
 
-import { type BridgeConfig, inspectClaude } from "./runtime/config.js";
+import { type BridgeConfig, inspectClaude, inspectCodex } from "./runtime/config.js";
 import { bridgeError, httpStatusFor, toBridgeError } from "./runtime/errors.js";
 import { assertProtocol, failure, success } from "./runtime/envelope.js";
 import { createInMemoryJobStore } from "./runtime/job-store.js";
@@ -162,12 +162,18 @@ export function buildServer(args: BuildServerArgs) {
   fastify.get("/v1/health", async (_req, reply) => {
     const doctor = await adapter.doctor();
     const claude = inspectClaude(config);
+    const codex = inspectCodex(config);
     const result: HealthResult = {
       protocolVersion: PROTOCOL_VERSION,
       bridgeVersion: config.bridgeVersion,
+      execution: {
+        mode: config.mode,
+        realExecutor: config.mode === "real" ? config.realExecutor : null,
+      },
       repo: doctor.repo,
       deps: {
         claudeCli: claude,
+        codexCli: codex,
         node: { version: process.version },
         playwrightChromium: doctor.playwrightChromium,
       },

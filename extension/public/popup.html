@@ -20,6 +20,26 @@
       Bridge not reachable. Run: <code>cd bridge &amp;&amp; npm run start</code>
     </div>
 
+    <section id="mode-panel" class="panel">
+      <div class="panel-title">Bridge Mode</div>
+      <label class="mode-field">
+        <span class="mode-label">Preferred mode</span>
+        <select id="mode-select" class="mode-select">
+          <option value="real-codex">real / codex</option>
+          <option value="real-claude">real / claude</option>
+          <option value="sdk">sdk</option>
+          <option value="fake">fake</option>
+        </select>
+      </label>
+      <div class="mode-meta">
+        <div class="mode-current" id="mode-current">Current bridge: unknown</div>
+        <div class="mode-match" id="mode-match">Select a preset to see the startup command.</div>
+      </div>
+      <div class="mode-help" id="mode-help"></div>
+      <code class="mode-command" id="mode-command"></code>
+      <button class="cta" id="mode-copy-btn">Copy start command</button>
+    </section>
+
     <section id="setup" class="panel hidden">
       <div class="panel-title">First-time setup</div>
       <p class="setup-hint">

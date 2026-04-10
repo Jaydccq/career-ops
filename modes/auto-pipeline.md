@@ -1,6 +1,6 @@
 # Modo: auto-pipeline — Pipeline Completo Automático
 
-Cuando el usuario pega un JD (texto o URL) sin sub-comando explícito, ejecutar TODO el pipeline en secuencia:
+Cuando el usuario pega un JD (texto o URL) sin sub-comando explícito, ejecutar el pipeline por defecto en secuencia:
 
 ## Paso 0 — Extraer JD
 
@@ -22,8 +22,17 @@ Ejecutar exactamente igual que el modo `oferta` (leer `modes/oferta.md` para tod
 ## Paso 2 — Guardar Report .md
 Guardar la evaluación completa en `reports/{###}-{company-slug}-{YYYY-MM-DD}.md` (ver formato en `modes/oferta.md`).
 
-## Paso 3 — Generar PDF
-Ejecutar el pipeline completo de `pdf` (leer `modes/pdf.md`).
+## Paso 3 — PDF solo bajo confirmación explícita
+
+**Por defecto NO generar PDF automáticamente.**
+
+Después de guardar el report, mostrar el resultado al usuario y esperar confirmación explícita tipo:
+
+- "genera el PDF"
+- "sí, haz el CV"
+- "tailor the resume for this role"
+
+Solo entonces ejecutar el pipeline completo de `pdf` (leer `modes/pdf.md`).
 
 ## Paso 4 — Draft Application Answers (solo si score >= 4.5)
 
@@ -61,9 +70,15 @@ Si el score final es >= 4.5, generar borrador de respuestas para el formulario d
 
 **Idioma**: Siempre en el idioma del JD (EN default). Aplicar `/tech-translate`.
 
-## Paso 4b — Generate Cover Letter (solo si score >= 4.5)
+## Paso 4b — Cover letter solo bajo confirmación explícita
 
-Si el score final es >= 4.5, generar también un cover letter PDF de 1 página.
+**Por defecto NO generar cover letter automáticamente**, incluso si el score final es >= 4.5.
+
+Primero evaluar si tendría sentido proponerlo. Luego esperar confirmación explícita del usuario tipo:
+
+- "genera cover letter"
+- "sí, prepara carta"
+- "write the cover letter too"
 
 **Workflow:**
 1. Cargar `modes/cover-letter.md` (ya con `_shared.md` cargado)
@@ -72,7 +87,7 @@ Si el score final es >= 4.5, generar también un cover letter PDF de 1 página.
 4. Append `## H) Cover Letter` section to the report .md (path + plain-text fallback + JD quotes used)
 5. Si la generación falla, continuar con Paso 5 y marcar `cover_letter: pending` en las notas del tracker
 
-**Cuándo NO generar (override del trigger ≥4.5):**
+**Cuándo NO generar incluso si el usuario lo pide:**
 - JD dice explícitamente "no cover letter accepted"
 - Score >= 4.5 pero el formulario no tiene campo de cover letter Y tampoco un campo de free-text donde pegarlo
 

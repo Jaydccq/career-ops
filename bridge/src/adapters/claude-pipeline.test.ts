@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import { __internal } from "./claude-pipeline.js";
 
@@ -23,10 +22,10 @@ test("extractTerminalJsonObject returns the final Claude JSON payload", () => {
 
   const parsed = __internal.extractTerminalJsonObject(stdout);
 
-  assert.equal(parsed.status, "completed");
-  assert.equal(parsed.report_num, "017");
-  assert.equal(parsed.score, 4.6);
-  assert.equal(parsed.tldr, "Strong fit for agentic product work.");
+  expect(parsed.status).toBe("completed");
+  expect(parsed.report_num).toBe("017");
+  expect(parsed.score).toBe(4.6);
+  expect(parsed.tldr).toBe("Strong fit for agentic product work.");
 });
 
 test("parseReportMarkdown extracts report header metadata and summary", () => {
@@ -50,11 +49,11 @@ test("parseReportMarkdown extracts report header metadata and summary", () => {
 
   const parsed = __internal.parseReportMarkdown(markdown);
 
-  assert.equal(parsed.company, "Marble AI");
-  assert.equal(parsed.role, "Founding AI Engineer");
-  assert.equal(parsed.date, "2026-04-10");
-  assert.equal(parsed.archetype, "Agentic / Automation");
-  assert.equal(parsed.score, 4.6);
-  assert.equal(parsed.url, "https://jobs.ashbyhq.com/marble.ai/abc");
-  assert.equal(parsed.tldr, "Strong fit for agentic product work in a small team.");
+  expect(parsed.company).toBe("Marble AI");
+  expect(parsed.role).toBe("Founding AI Engineer");
+  expect(parsed.date).toBe("2026-04-10");
+  expect(parsed.archetype).toBe("Agentic / Automation");
+  expect(parsed.score).toBe(4.6);
+  expect(parsed.url).toBe("https://jobs.ashbyhq.com/marble.ai/abc");
+  expect(parsed.tldr).toBe("Strong fit for agentic product work in a small team.");
 });

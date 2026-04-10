@@ -1,19 +1,12 @@
 /**
- * claude-pipeline.ts — real PipelineAdapter that shells out to `claude -p`.
+ * claude-pipeline.ts — real PipelineAdapter that shells out to a CLI agent.
  *
- * MVP scope:
- *   • Single job-page input from the extension.
- *   • Write a real report to reports/.
- *   • Return real score + summary + report path to the popup.
- *   • Write a tracker TSV drop file without touching applications.md.
+ * Supported real executors:
+ *   • `claude -p`   (default, existing behavior)
+ *   • `codex exec`  (CLI-wrapper integration for fast bring-up)
  *
- * This intentionally keeps the implementation narrow. It reuses the
- * existing batch prompt contract, but the adapter itself owns:
- *   • report-number reservation
- *   • JD tempfile creation
- *   • final JSON extraction
- *   • report header parsing
- *   • tracker TSV synthesis
+ * Both paths reuse the same batch prompt contract and the same artifact
+ * layout in reports/, output/, and batch/tracker-additions/.
  */
 
 import type {
@@ -85,6 +78,14 @@ interface CommandResult {
   timedOut: boolean;
 }
 
+interface ExecutionPlan {
+  command: string;
+  args: string[];
+  stdinText?: string;
+  terminalFilePath?: string;
+  cleanupPaths: string[];
+}
+
 export const __internal = {
   extractTerminalJsonObject,
   parseReportMarkdown,
@@ -93,6 +94,10 @@ export const __internal = {
 export function createClaudePipelineAdapter(
   config: PipelineConfig
 ): PipelineAdapter {
+  const realExecutor = config.realExecutor ?? "claude";
+  const selectedCliBin =
+    realExecutor === "codex" ? config.codexBin ?? null : config.claudeBin;
+
   return {
     async doctor(): Promise<DoctorReport> {
       const cvOk = existsSync(join(config.repoRoot, "cv.md"));
@@ -106,7 +111,7 @@ export function createClaudePipelineAdapter(
         : "unknown";
 
       return {
-        ok: cvOk && profileOk && trackerOk && Boolean(config.claudeBin),
+        ok: cvOk && profileOk && trackerOk && Boolean(selectedCliBin),
         repo: {
           rootPath: config.repoRoot,
           careerOpsVersion,
@@ -115,10 +120,10 @@ export function createClaudePipelineAdapter(
           profileOk,
         },
         claudeCli: {
-          ok: Boolean(config.claudeBin),
-          ...(config.claudeBin
-            ? { version: "present" }
-            : { error: "claude CLI not found" }),
+          ok: Boolean(selectedCliBin),
+          ...(selectedCliBin
+            ? { version: `${realExecutor} CLI present` }
+            : { error: `${realExecutor} CLI not found` }),
         },
         node: { version: process.version },
         playwrightChromium: { ok: true },
@@ -184,10 +189,10 @@ export function createClaudePipelineAdapter(
       input: EvaluationInput,
       onProgress: PipelineProgressHandler
     ): Promise<EvaluationResult | BridgeError> {
-      if (!config.claudeBin) {
+      if (!selectedCliBin) {
         return bridgeError(
           "BRIDGE_NOT_READY",
-          "claude CLI not found on PATH"
+          `${realExecutor} CLI not found on PATH`
         );
       }
 
@@ -205,6 +210,7 @@ export function createClaudePipelineAdapter(
       const jdPath = join(tmpdir(), `career-ops-bridge-jd-${jobId}.txt`);
       const promptPath = join(batchDir, `.bridge-prompt-${jobId}.md`);
       const logPath = join(logsDir, `${reportNumberText}-${jobId}.log`);
+      let executionPlan: ExecutionPlan | null = null;
 
       try {
         onProgress({
@@ -245,22 +251,34 @@ export function createClaudePipelineAdapter(
           `Batch ID: ${jobId}`,
         ].join(" ");
 
-        const args = ["-p"];
-        if (config.allowDangerousClaudeFlags) {
-          args.push("--dangerously-skip-permissions");
-        }
-        args.push("--append-system-prompt-file", promptPath, task);
+        executionPlan = buildExecutionPlan(config, {
+          jobId,
+          promptPath,
+          task,
+          logsDir,
+          reportNumberText,
+        });
 
         const command = await runCommand(
-          config.claudeBin,
-          args,
+          executionPlan.command,
+          executionPlan.args,
           config.repoRoot,
-          config.evaluationTimeoutSec * 1000
+          config.evaluationTimeoutSec * 1000,
+          executionPlan.stdinText
         );
 
+        const logSections = [command.stdout, command.stderr].filter(Boolean);
+        if (executionPlan.terminalFilePath && existsSync(executionPlan.terminalFilePath)) {
+          logSections.push(
+            `=== terminal-output ===\n${readFileSync(
+              executionPlan.terminalFilePath,
+              "utf-8"
+            )}`
+          );
+        }
         writeFileSync(
           logPath,
-          [command.stdout, command.stderr].filter(Boolean).join("\n\n"),
+          logSections.join("\n\n"),
           "utf-8"
         );
 
@@ -283,7 +301,10 @@ export function createClaudePipelineAdapter(
           );
         }
 
-        const terminal = extractTerminalJsonObject(command.stdout);
+        const terminal =
+          realExecutor === "codex" && executionPlan.terminalFilePath
+            ? readCodexTerminalJson(executionPlan.terminalFilePath)
+            : extractTerminalJsonObject(command.stdout);
         if (terminal.status !== "completed") {
           return bridgeError(
             "EVAL_FAILED",
@@ -368,6 +389,9 @@ export function createClaudePipelineAdapter(
       } finally {
         safeRemoveFile(promptPath);
         safeRemoveFile(jdPath);
+        for (const path of executionPlan?.cleanupPaths ?? []) {
+          safeRemoveFile(path);
+        }
       }
     },
 
@@ -508,7 +532,9 @@ function buildResolvedPrompt(
   1. Guardar el report markdown en \`reports/${args.reportNumber}-{company-slug}-${args.date}.md\`
   2. Terminar imprimiendo un JSON final valido
 - El JD en \`${args.jdPath}\` es la fuente primaria. Si es corto, puedes leer la URL para completar huecos.
-- Si el PDF falla, NO falles todo el run: continua, deja \`pdf: null\` o \`pendiente\`, y sigue con el report.
+- PDF_CONFIRMED: no
+- No generes PDF en este run salvo que el prompt diga explicitamente lo contrario. Para este bridge run, el comportamiento por defecto es \`report + tracker\` sin PDF.
+- Deja \`pdf: null\` si no hubo confirmacion explicita para generar PDF.
 - No edites \`data/applications.md\` directamente.
 - En el JSON final incluye tambien:
   - \`tldr\`: una frase real y concreta
@@ -517,6 +543,132 @@ function buildResolvedPrompt(
 `;
 
   return `${resolved}\n${overrides}`;
+}
+
+function buildExecutionPlan(
+  config: PipelineConfig,
+  args: {
+    jobId: string;
+    promptPath: string;
+    task: string;
+    logsDir: string;
+    reportNumberText: string;
+  }
+): ExecutionPlan {
+  const realExecutor = config.realExecutor ?? "claude";
+
+  if (realExecutor === "codex") {
+    if (!config.codexBin) {
+      throw new Error("codex CLI is not configured");
+    }
+
+    const outputSchemaPath = join(
+      args.logsDir,
+      `${args.reportNumberText}-${args.jobId}-codex-schema.json`
+    );
+    const outputMessagePath = join(
+      args.logsDir,
+      `${args.reportNumberText}-${args.jobId}-codex-last-message.json`
+    );
+
+    writeFileSync(
+      outputSchemaPath,
+      JSON.stringify(buildCodexTerminalSchema(), null, 2),
+      "utf-8"
+    );
+
+    const prompt = buildCodexPrompt(args.promptPath, args.task);
+    return {
+      command: config.codexBin,
+      args: [
+        "--search",
+        "exec",
+        "--full-auto",
+        "-C",
+        config.repoRoot,
+        "--add-dir",
+        tmpdir(),
+        "--output-schema",
+        outputSchemaPath,
+        "-o",
+        outputMessagePath,
+        "--color",
+        "never",
+        "-",
+      ],
+      stdinText: prompt,
+      terminalFilePath: outputMessagePath,
+      cleanupPaths: [outputSchemaPath],
+    };
+  }
+
+  const claudeBin = config.claudeBin;
+  if (!claudeBin) {
+    throw new Error("claude CLI is not configured");
+  }
+
+  const commandArgs = ["-p"];
+  if (config.allowDangerousClaudeFlags) {
+    commandArgs.push("--dangerously-skip-permissions");
+  }
+  commandArgs.push("--append-system-prompt-file", args.promptPath, args.task);
+
+  return {
+    command: claudeBin,
+    args: commandArgs,
+    cleanupPaths: [],
+  };
+}
+
+function buildCodexPrompt(promptPath: string, task: string): string {
+  const prompt = readFileSync(promptPath, "utf-8");
+  return [
+    prompt,
+    "",
+    "## Codex CLI Invocation",
+    task,
+    "",
+    "Final response rules:",
+    "- Return only a JSON object. No prose, no markdown fences.",
+    "- The JSON must match the provided output schema exactly.",
+    "- Keep file writes in the normal career-ops locations required by the prompt.",
+  ].join("\n");
+}
+
+function buildCodexTerminalSchema(): Record<string, unknown> {
+  const nullableString = [{ type: "string" }, { type: "null" }];
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "status",
+      "id",
+      "report_num",
+      "company",
+      "role",
+      "score",
+      "tldr",
+      "archetype",
+      "pdf",
+      "report",
+      "error",
+    ],
+    properties: {
+      status: { type: "string", enum: ["completed", "failed"] },
+      id: { type: "string", minLength: 1 },
+      report_num: {
+        anyOf: [{ type: "string", minLength: 1 }, { type: "integer" }],
+      },
+      company: { type: "string" },
+      role: { type: "string" },
+      score: { anyOf: [{ type: "number" }, { type: "null" }] },
+      tldr: { type: "string" },
+      archetype: { type: "string" },
+      pdf: { anyOf: nullableString },
+      report: { anyOf: nullableString },
+      error: { anyOf: nullableString },
+    },
+  };
 }
 
 function reserveReportNumber(repoRoot: string): number {
@@ -567,13 +719,14 @@ async function runCommand(
   command: string,
   args: readonly string[],
   cwd: string,
-  timeoutMs: number
+  timeoutMs: number,
+  stdinText?: string
 ): Promise<CommandResult> {
   return await new Promise((resolvePromise) => {
     const child = spawn(command, args, {
       cwd,
       env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     let stdout = "";
@@ -597,6 +750,10 @@ async function runCommand(
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderr += chunk.toString();
     });
+    if (stdinText !== undefined) {
+      child.stdin.write(stdinText);
+    }
+    child.stdin.end();
     child.on("error", (err) => {
       if (settled) return;
       settled = true;
@@ -620,6 +777,23 @@ async function runCommand(
       });
     });
   });
+}
+
+function readCodexTerminalJson(path: string): ClaudeTerminalJson {
+  const content = readFileSync(path, "utf-8").trim();
+  if (!content) {
+    throw new Error("Codex output did not include a terminal JSON block");
+  }
+  const parsed = JSON.parse(content) as Partial<ClaudeTerminalJson>;
+  if (
+    (parsed.status !== "completed" && parsed.status !== "failed") ||
+    parsed.report_num === undefined ||
+    typeof parsed.id !== "string" ||
+    parsed.id.length === 0
+  ) {
+    throw new Error("Codex terminal JSON is missing required fields");
+  }
+  return parsed as ClaudeTerminalJson;
 }
 
 function extractTerminalJsonObject(stdout: string): ClaudeTerminalJson {
