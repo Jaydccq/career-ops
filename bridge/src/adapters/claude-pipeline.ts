@@ -68,6 +68,7 @@ interface ParsedReportMarkdown {
   score: number;
   archetype: string;
   url?: string;
+  pdf?: string;
   tldr: string;
 }
 
@@ -76,6 +77,7 @@ interface CommandResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  completedByProbe?: boolean;
 }
 
 interface ExecutionPlan {
@@ -264,7 +266,24 @@ export function createClaudePipelineAdapter(
           executionPlan.args,
           config.repoRoot,
           config.evaluationTimeoutSec * 1000,
-          executionPlan.stdinText
+          executionPlan.stdinText,
+          realExecutor === "codex"
+            ? () => {
+                const reportPath = resolveReportPath(
+                  config.repoRoot,
+                  reportNumber
+                );
+                if (!reportPath || !existsSync(reportPath)) {
+                  return false;
+                }
+                try {
+                  parseReportMarkdown(readFileSync(reportPath, "utf-8"));
+                  return true;
+                } catch {
+                  return false;
+                }
+              }
+            : undefined
         );
 
         const logSections = [command.stdout, command.stderr].filter(Boolean);
@@ -283,6 +302,18 @@ export function createClaudePipelineAdapter(
         );
 
         if (command.timedOut) {
+          const recovered = finalizeEvaluationFromArtifacts({
+            repoRoot: config.repoRoot,
+            trackerDir,
+            jobId,
+            reportNumber,
+            reportNumberText,
+            terminal: null,
+            onProgress,
+          });
+          if (recovered) {
+            return recovered;
+          }
           return bridgeError("TIMEOUT", "evaluation timed out", {
             logPath,
             reportNumber,
@@ -290,6 +321,18 @@ export function createClaudePipelineAdapter(
         }
 
         if (command.exitCode !== 0) {
+          const recovered = finalizeEvaluationFromArtifacts({
+            repoRoot: config.repoRoot,
+            trackerDir,
+            jobId,
+            reportNumber,
+            reportNumberText,
+            terminal: null,
+            onProgress,
+          });
+          if (recovered) {
+            return recovered;
+          }
           return bridgeError(
             "EVAL_FAILED",
             extractErrorMessage(command.stderr || command.stdout),
@@ -301,85 +344,42 @@ export function createClaudePipelineAdapter(
           );
         }
 
-        const terminal =
-          realExecutor === "codex" && executionPlan.terminalFilePath
-            ? readCodexTerminalJson(executionPlan.terminalFilePath)
-            : extractTerminalJsonObject(command.stdout);
-        if (terminal.status !== "completed") {
+        let terminal: ClaudeTerminalJson | null = null;
+        try {
+          terminal =
+            realExecutor === "codex" && executionPlan.terminalFilePath
+              ? readCodexTerminalJson(executionPlan.terminalFilePath)
+              : extractTerminalJsonObject(command.stdout);
+        } catch {
+          terminal = null;
+        }
+
+        if (terminal && terminal.status !== "completed") {
           return bridgeError(
             "EVAL_FAILED",
-            terminal.error ?? "claude run did not complete successfully",
+            terminal.error ?? "cli run did not complete successfully",
             { logPath, reportNumber }
           );
         }
 
-        const reportPath = resolveReportPath(
-          config.repoRoot,
+        const finalized = finalizeEvaluationFromArtifacts({
+          repoRoot: config.repoRoot,
+          trackerDir,
+          jobId,
           reportNumber,
-          terminal.report
-        );
-        if (!reportPath || !existsSync(reportPath)) {
-          return bridgeError(
-            "EVAL_FAILED",
-            `report ${reportNumberText} was not written`,
-            { logPath, reportNumber }
-          );
+          reportNumberText,
+          terminal,
+          onProgress,
+        });
+        if (finalized) {
+          return finalized;
         }
 
-        onProgress({
-          phase: "writing_report",
-          at: nowIso(),
-          note: basename(reportPath),
-        });
-
-        const reportMarkdown = readFileSync(reportPath, "utf-8");
-        const reportMeta = parseReportMarkdown(reportMarkdown);
-        const score = coerceScore(terminal.score, reportMeta.score);
-        const tldr = terminal.tldr?.trim() || reportMeta.tldr;
-        const archetype = terminal.archetype?.trim() || reportMeta.archetype;
-        const company = terminal.company?.trim() || reportMeta.company;
-        const role = terminal.role?.trim() || reportMeta.role;
-        const pdfPath = resolveOptionalArtifactPath(
-          config.repoRoot,
-          terminal.pdf ?? null
+        return bridgeError(
+          "EVAL_FAILED",
+          `report ${reportNumberText} was not written`,
+          { logPath, reportNumber }
         );
-
-        onProgress({
-          phase: "generating_pdf",
-          at: nowIso(),
-          note: pdfPath ? basename(pdfPath) : "pdf skipped or unavailable",
-        });
-
-        const trackerEntryNum = nextTrackerEntryNumber(config.repoRoot);
-        const trackerRow = buildTrackerRow({
-          num: trackerEntryNum,
-          date: reportMeta.date,
-          company,
-          role,
-          score,
-          reportPath,
-          pdfPath,
-          tldr,
-        });
-        writeTrackerAddition(trackerDir, jobId, trackerRow);
-
-        onProgress({
-          phase: "writing_tracker",
-          at: nowIso(),
-          note: `${jobId}.tsv`,
-        });
-
-        return {
-          reportNumber,
-          reportPath,
-          pdfPath,
-          company,
-          role,
-          score,
-          archetype,
-          tldr,
-          trackerRow,
-        };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return bridgeError("INTERNAL", message, {
@@ -720,7 +720,8 @@ async function runCommand(
   args: readonly string[],
   cwd: string,
   timeoutMs: number,
-  stdinText?: string
+  stdinText?: string,
+  completionProbe?: () => boolean
 ): Promise<CommandResult> {
   return await new Promise((resolvePromise) => {
     const child = spawn(command, args, {
@@ -732,15 +733,21 @@ async function runCommand(
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let completedByProbe = false;
+    let completionKillTimer: NodeJS.Timeout | undefined;
+    let completionPollTimer: NodeJS.Timeout | undefined;
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      if (completionPollTimer) clearInterval(completionPollTimer);
+      if (completionKillTimer) clearTimeout(completionKillTimer);
       child.kill("SIGKILL");
       resolvePromise({
         exitCode: null,
         stdout,
         stderr,
         timedOut: true,
+        completedByProbe,
       });
     }, timeoutMs);
 
@@ -754,26 +761,49 @@ async function runCommand(
       child.stdin.write(stdinText);
     }
     child.stdin.end();
+    if (completionProbe) {
+      completionPollTimer = setInterval(() => {
+        if (settled || completedByProbe) return;
+        try {
+          if (!completionProbe()) return;
+        } catch {
+          return;
+        }
+        completedByProbe = true;
+        child.kill("SIGTERM");
+        completionKillTimer = setTimeout(() => {
+          if (!settled) {
+            child.kill("SIGKILL");
+          }
+        }, 1500);
+      }, 1000);
+    }
     child.on("error", (err) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (completionPollTimer) clearInterval(completionPollTimer);
+      if (completionKillTimer) clearTimeout(completionKillTimer);
       resolvePromise({
         exitCode: 1,
         stdout,
         stderr: `${stderr}\n${err.message}`.trim(),
         timedOut: false,
+        completedByProbe,
       });
     });
     child.on("close", (exitCode) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (completionPollTimer) clearInterval(completionPollTimer);
+      if (completionKillTimer) clearTimeout(completionKillTimer);
       resolvePromise({
         exitCode,
         stdout,
         stderr,
         timedOut: false,
+        completedByProbe,
       });
     });
   });
@@ -874,16 +904,17 @@ function sliceBalancedJson(text: string, start: number): string | undefined {
 
 function parseReportMarkdown(markdown: string): ParsedReportMarkdown {
   const headingMatch = markdown.match(
-    /^#\s+Evaluación:\s+(.+?)\s+[—-]\s+(.+)$/m
+    /^#\s+(?:Evaluación|Evaluation):\s+(.+?)\s+[—-]\s+(.+)$/m
   );
   if (!headingMatch) {
     throw new Error("report header missing company/role heading");
   }
 
-  const date = readHeader(markdown, "Fecha");
-  const archetype = readHeader(markdown, "Arquetipo");
-  const scoreRaw = readHeader(markdown, "Score");
-  const url = readOptionalHeader(markdown, "URL");
+  const date = readHeaderAny(markdown, ["Fecha", "Date"]);
+  const archetype = readHeaderAny(markdown, ["Arquetipo", "Archetype"]);
+  const scoreRaw = readHeaderAny(markdown, ["Score"]);
+  const url = readOptionalHeaderAny(markdown, ["URL"]);
+  const pdf = readOptionalHeaderAny(markdown, ["PDF"]);
   const scoreMatch = /([\d.]+)\s*\/\s*5/.exec(scoreRaw);
   if (!scoreMatch) {
     throw new Error("report header missing numeric score");
@@ -901,16 +932,17 @@ function parseReportMarkdown(markdown: string): ParsedReportMarkdown {
     score: Number(scoreMatch[1]),
     archetype: archetype.trim(),
     ...(url ? { url: url.trim() } : {}),
+    ...(pdf ? { pdf: pdf.trim() } : {}),
     tldr,
   };
 }
 
-function readHeader(markdown: string, label: string): string {
-  const value = readOptionalHeader(markdown, label);
-  if (!value) {
-    throw new Error(`report header missing ${label}`);
+function readHeaderAny(markdown: string, labels: readonly string[]): string {
+  for (const label of labels) {
+    const value = readOptionalHeader(markdown, label);
+    if (value) return value;
   }
-  return value;
+  throw new Error(`report header missing ${labels.join("/")}`);
 }
 
 function readOptionalHeader(markdown: string, label: string): string | undefined {
@@ -919,6 +951,17 @@ function readOptionalHeader(markdown: string, label: string): string | undefined
     new RegExp(`^\\*\\*${escaped}:\\*\\*\\s+(.+)$`, "m")
   );
   return match?.[1]?.trim();
+}
+
+function readOptionalHeaderAny(
+  markdown: string,
+  labels: readonly string[]
+): string | undefined {
+  for (const label of labels) {
+    const value = readOptionalHeader(markdown, label);
+    if (value) return value;
+  }
+  return undefined;
 }
 
 function extractTldrFromSummaryTable(markdown: string): string | undefined {
@@ -973,6 +1016,80 @@ function resolveOptionalArtifactPath(
   if (/^pendiente$/i.test(rawPath.trim())) return null;
   const resolved = resolveArtifactPath(repoRoot, rawPath);
   return resolved && existsSync(resolved) ? resolved : null;
+}
+
+function finalizeEvaluationFromArtifacts(args: {
+  repoRoot: string;
+  trackerDir: string;
+  jobId: string;
+  reportNumber: number;
+  reportNumberText: string;
+  terminal: ClaudeTerminalJson | null;
+  onProgress: PipelineProgressHandler;
+}): EvaluationResult | undefined {
+  const reportPath = resolveReportPath(
+    args.repoRoot,
+    args.reportNumber,
+    args.terminal?.report
+  );
+  if (!reportPath || !existsSync(reportPath)) {
+    return undefined;
+  }
+
+  const reportMarkdown = readFileSync(reportPath, "utf-8");
+  const reportMeta = parseReportMarkdown(reportMarkdown);
+  const score = coerceScore(args.terminal?.score, reportMeta.score);
+  const tldr = args.terminal?.tldr?.trim() || reportMeta.tldr;
+  const archetype = args.terminal?.archetype?.trim() || reportMeta.archetype;
+  const company = args.terminal?.company?.trim() || reportMeta.company;
+  const role = args.terminal?.role?.trim() || reportMeta.role;
+  const pdfPath = resolveOptionalArtifactPath(
+    args.repoRoot,
+    args.terminal?.pdf ?? reportMeta.pdf ?? null
+  );
+
+  args.onProgress({
+    phase: "writing_report",
+    at: nowIso(),
+    note: basename(reportPath),
+  });
+
+  args.onProgress({
+    phase: "generating_pdf",
+    at: nowIso(),
+    note: pdfPath ? basename(pdfPath) : "pdf skipped or unavailable",
+  });
+
+  const trackerEntryNum = nextTrackerEntryNumber(args.repoRoot);
+  const trackerRow = buildTrackerRow({
+    num: trackerEntryNum,
+    date: reportMeta.date,
+    company,
+    role,
+    score,
+    reportPath,
+    pdfPath,
+    tldr,
+  });
+  writeTrackerAddition(args.trackerDir, args.jobId, trackerRow);
+
+  args.onProgress({
+    phase: "writing_tracker",
+    at: nowIso(),
+    note: `${args.jobId}.tsv`,
+  });
+
+  return {
+    reportNumber: args.reportNumber,
+    reportPath,
+    pdfPath,
+    company,
+    role,
+    score,
+    archetype,
+    tldr,
+    trackerRow,
+  };
 }
 
 function resolveArtifactPath(
