@@ -22,7 +22,9 @@ export function pct(n: number): string {
 export const PHASE_ORDER: readonly JobPhase[] = [
   "queued",
   "extracting_jd",
-  "evaluating",
+  "reading_context",
+  "reasoning",
+  "assembling",
   "writing_report",
   "generating_pdf",
   "writing_tracker",
@@ -32,12 +34,17 @@ export const PHASE_ORDER: readonly JobPhase[] = [
 export const PHASE_LABEL: Record<JobPhase, string> = {
   queued: "Queued",
   extracting_jd: "Extracting job description",
-  evaluating: "Evaluating (A\u2013F blocks)",
+  reading_context: "Reading your CV + portfolio",
+  reasoning: "Scoring A\u2013F blocks",
+  assembling: "Finalizing report",
   writing_report: "Writing report",
   generating_pdf: "PDF step",
   writing_tracker: "Writing tracker row",
   completed: "Completed",
   failed: "Failed",
+  // Deprecated: retained for one release so older popups that receive a
+  // legacy "evaluating" SSE event from an older bridge don't crash.
+  evaluating: "Evaluating",
 };
 
 export function presetDisplayName(preset: BridgePreset): string {

@@ -6,11 +6,13 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.280",
     "esbuild": "^0.24.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.4"
   }
 }

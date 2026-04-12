@@ -28,12 +28,18 @@ export type JobId = string & { readonly __brand: "JobId" };
 export type JobPhase =
   | "queued"
   | "extracting_jd"
-  | "evaluating"
+  | "reading_context"
+  | "reasoning"
+  | "assembling"
   | "writing_report"
   | "generating_pdf"
   | "writing_tracker"
   | "completed"
-  | "failed";
+  | "failed"
+  // deprecated, remove next release — kept so older popups don't crash on
+  // version skew while Task 3 migrates the bridge to emit the three
+  // sub-phases above.
+  | "evaluating";
 
 export const TERMINAL_PHASES: ReadonlySet<JobPhase> = new Set([
   "completed",
