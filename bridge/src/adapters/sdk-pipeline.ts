@@ -199,10 +199,6 @@ export function createSdkPipelineAdapter(
           messages: [{ role: "user", content: userContent }],
         });
 
-        onProgress({ phase: "assembling", at: nowIso(), note: "parsing structured output" });
-
-        onProgress({ phase: "writing_report", at: nowIso() });
-
         const textBlock = response.content.find(
           (b): b is Anthropic.TextBlock => b.type === "text"
         );
@@ -228,7 +224,12 @@ export function createSdkPipelineAdapter(
         const evalOutput = validated.data;
         const reportMarkdown = buildReport(evalOutput, input, today);
         const slug = slugify(evalOutput.company);
+
+        onProgress({ phase: "assembling", at: nowIso(), note: "parsing structured output" });
+
         const reportPath = writeReport(config.repoRoot, reportNumber, slug, today, reportMarkdown);
+
+        onProgress({ phase: "writing_report", at: nowIso() });
 
         onProgress({ phase: "writing_tracker", at: nowIso() });
 
