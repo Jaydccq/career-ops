@@ -33,6 +33,8 @@ import {
   type BridgePreset,
   PHASE_ORDER,
   PHASE_LABEL,
+  etaHint,
+  formatElapsed,
   pct,
   presetCommand,
   presetDescription,
@@ -82,6 +84,7 @@ const expiryDismissBtn = document.getElementById("expiry-dismiss-btn") as HTMLBu
 const jobIdEl = document.getElementById("job-id")!;
 const phaseListEl = document.getElementById("phase-list")!;
 const phaseCounterEl = document.getElementById("phase-counter")!;
+const elapsedCounterEl = document.getElementById("elapsed-counter")!;
 
 const resultScoreEl = document.getElementById("result-score")!;
 const resultHeaderEl = document.getElementById("result-header")!;
@@ -115,6 +118,8 @@ let currentBridgePreset: BridgePreset | null = null;
 let expiryBypassResolve: ((proceed: boolean) => void) | null = null;
 let lastErrorRetryable = true;
 let jobPollTimer: number | null = null;
+let evaluationStartedAt: number | null = null;
+let elapsedIntervalId: number | null = null;
 
 /* -------------------------------------------------------------------------- */
 /*  UI switching                                                              */
@@ -142,6 +147,32 @@ function startJobPolling(jobId: JobId): void {
   jobPollTimer = window.setInterval(() => {
     void pollJobSnapshot(jobId);
   }, 4000);
+}
+
+function startElapsedTimer(): void {
+  stopElapsedTimer();
+  evaluationStartedAt = Date.now();
+  const tick = (): void => {
+    if (evaluationStartedAt === null) return;
+    const ms = Date.now() - evaluationStartedAt;
+    const base = formatElapsed(ms);
+    // Currently-active phase (if any) drives the hint
+    const activePhaseEl = phaseListEl.querySelector("li.active");
+    const phaseName = activePhaseEl?.getAttribute("data-phase") as JobPhase | null;
+    const hint = phaseName ? etaHint(phaseName) : null;
+    elapsedCounterEl.textContent = hint ? `${base} \u00b7 ${hint}` : base;
+  };
+  tick();
+  elapsedIntervalId = window.setInterval(tick, 1000);
+}
+
+function stopElapsedTimer(): void {
+  if (elapsedIntervalId !== null) {
+    clearInterval(elapsedIntervalId);
+    elapsedIntervalId = null;
+  }
+  evaluationStartedAt = null;
+  elapsedCounterEl.textContent = "";
 }
 
 function setHealth(state: "unknown" | "ok" | "bad" | "warn", label: string): void {
@@ -226,6 +257,7 @@ async function init(): Promise<void> {
     currentJobId = state.lastJobId;
     jobIdEl.textContent = `job ${currentJobId}`;
     show("running");
+    startElapsedTimer();
     subscribeToJob(currentJobId);
     startJobPolling(currentJobId);
   }
@@ -381,6 +413,7 @@ async function onEvaluateClick(): Promise<void> {
   jobIdEl.textContent = `job ${currentJobId}`;
   renderPhases(res.result.initialSnapshot);
   show("running");
+  startElapsedTimer();
   subscribeToJob(currentJobId);
   startJobPolling(currentJobId);
 }
@@ -467,6 +500,7 @@ function renderPhases(snap: JobSnapshot): void {
     const phase = PHASE_ORDER[i]!;
     const li = document.createElement("li");
     li.textContent = PHASE_LABEL[phase];
+    li.setAttribute("data-phase", phase);
     if (isFailed) {
       if (i === failedPhaseIdx) {
         li.className = "failed";
@@ -511,6 +545,7 @@ function appendPhase(phase: JobPhase): void {
 
 function renderDone(result: EvaluationResult): void {
   stopJobPolling();
+  stopElapsedTimer();
   // Score hero — large, color-coded
   resultScoreEl.textContent = `${result.score.toFixed(1)}/5`;
   resultScoreEl.style.color = scoreColor(result.score);
@@ -602,6 +637,7 @@ function renderRecovery(el: HTMLElement, hint: RecoveryHint): void {
 
 function renderError(code: string, message: string): void {
   stopJobPolling();
+  stopElapsedTimer();
   const err = classifyError(code, message);
   lastErrorRetryable = err.retryable;
   errorCategoryEl.textContent = err.category;
@@ -690,6 +726,7 @@ async function onCopySummaryClick(): Promise<void> {
 
 async function onRetryClick(): Promise<void> {
   stopJobPolling();
+  stopElapsedTimer();
   if (!lastErrorRetryable) {
     // Non-retryable (auth) — clear token and go to setup
     await sendRequest({ kind: "setToken", token: "" });

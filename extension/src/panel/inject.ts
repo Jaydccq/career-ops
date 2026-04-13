@@ -18,6 +18,8 @@ import {
   type BridgePreset,
   PHASE_ORDER,
   PHASE_LABEL,
+  etaHint,
+  formatElapsed,
   pct,
   presetCommand,
   presetDescription,
@@ -134,6 +136,7 @@ function buildStyles(): string {
 .phase-list li.active { color: #e8e8ea; font-weight: 500; }
 .phase-list li.completed { color: #4ecb71; }
 .phase-list li.failed { color: #ef5f5f; }
+.elapsed { margin-top: 4px; font-size: 11px; color: #8f8f94; font-variant-numeric: tabular-nums; }
 
 .result { font-size: 13px; font-weight: 500; }
 .result .score { color: #7aa7ff; font-weight: 600; }
@@ -251,6 +254,7 @@ function buildHTML(): string {
       <div class="section-title">Running evaluation</div>
       <div class="job-id" id="job-id"></div>
       <ol class="phase-list" id="phase-list"></ol>
+      <div class="elapsed" id="elapsed-counter" aria-live="polite"></div>
     </div>
     <div id="done" class="section hidden">
       <div class="section-title">Evaluation complete</div>
@@ -329,6 +333,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const evaluateBtn = $("evaluate-btn") as HTMLButtonElement;
   const jobIdEl = $("job-id");
   const phaseListEl = $("phase-list");
+  const elapsedCounterEl = $("elapsed-counter");
   const resultHeaderEl = $("result-header");
   const resultTldrEl = $("result-tldr");
   const openReportBtn = $("open-report-btn") as HTMLButtonElement;
@@ -406,6 +411,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   let preferredPreset: BridgePreset = "real-codex";
   let currentBridgePreset: BridgePreset | null = null;
   let jobPollTimer: number | null = null;
+  let evaluationStartedAt: number | null = null;
+  let elapsedIntervalId: number | null = null;
 
   // PHASE_ORDER, PHASE_LABEL imported from shared/utils
 
@@ -431,6 +438,31 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     jobPollTimer = window.setInterval(() => {
       void pollJobSnapshot(jobId);
     }, 4000);
+  }
+
+  function startElapsedTimer(): void {
+    stopElapsedTimer();
+    evaluationStartedAt = Date.now();
+    const tick = (): void => {
+      if (evaluationStartedAt === null) return;
+      const ms = Date.now() - evaluationStartedAt;
+      const base = formatElapsed(ms);
+      const activePhaseEl = phaseListEl.querySelector("li.active");
+      const phaseName = activePhaseEl?.getAttribute("data-phase") as JobPhase | null;
+      const hint = phaseName ? etaHint(phaseName) : null;
+      elapsedCounterEl.textContent = hint ? `${base} \u00b7 ${hint}` : base;
+    };
+    tick();
+    elapsedIntervalId = window.setInterval(tick, 1000);
+  }
+
+  function stopElapsedTimer(): void {
+    if (elapsedIntervalId !== null) {
+      clearInterval(elapsedIntervalId);
+      elapsedIntervalId = null;
+    }
+    evaluationStartedAt = null;
+    elapsedCounterEl.textContent = "";
   }
 
   function setHealth(state: string, label: string): void {
@@ -625,6 +657,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     jobIdEl.textContent = "job " + currentJobId;
     renderPhases(res.result.initialSnapshot);
     show("running");
+    startElapsedTimer();
     subscribeToJob(currentJobId!);
     startJobPolling(currentJobId!);
   }
@@ -678,6 +711,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     for (const phase of PHASE_ORDER) {
       const li = document.createElement("li");
       li.textContent = PHASE_LABEL[phase] ?? phase;
+      li.setAttribute("data-phase", phase);
       if (phase === snap.phase) li.className = "active";
       else if (done.has(phase)) li.className = "completed";
       phaseListEl.appendChild(li);
@@ -698,6 +732,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   function renderDone(result: any): void {
     stopJobPolling();
+    stopElapsedTimer();
     while (resultHeaderEl.firstChild) resultHeaderEl.removeChild(resultHeaderEl.firstChild);
     const b = document.createElement("strong");
     b.textContent = result.company;
@@ -716,6 +751,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   function renderError(code: string, message: string): void {
     stopJobPolling();
+    stopElapsedTimer();
     errorCodeEl.textContent = code;
     errorMessageEl.textContent = message;
     show("error");

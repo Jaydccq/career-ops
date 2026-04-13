@@ -94,3 +94,26 @@ export function presetFromHealth(health: HealthResultLike): BridgePreset | null 
   }
   return null;
 }
+
+/**
+ * Format elapsed milliseconds as `m:ss`. Used by the running-phase UI so
+ * users can see time passing during the slow `reasoning` phase.
+ * 0 → "0:00", 65_000 → "1:05", 3_605_000 → "60:05".
+ */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return `${mm}:${String(ss).padStart(2, "0")}`;
+}
+
+/**
+ * Short "typically takes X" hint shown next to the elapsed counter during
+ * the phases where the wait is long enough that users wonder if it's
+ * stuck. Returns null for fast phases — nothing to hint about.
+ */
+export function etaHint(phase: JobPhase): string | null {
+  if (phase === "reasoning") return "typically ~1-2 min";
+  if (phase === "writing_report") return "a few seconds";
+  return null;
+}

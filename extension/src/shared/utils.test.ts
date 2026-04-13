@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PHASE_ORDER, PHASE_LABEL } from "./utils.js";
+import { PHASE_ORDER, PHASE_LABEL, formatElapsed, etaHint } from "./utils.js";
 
 describe("evaluating sub-phases", () => {
   it("splits evaluating into reading_context, reasoning, assembling", () => {
@@ -31,5 +31,37 @@ describe("evaluating sub-phases", () => {
 
   it("keeps 'evaluating' out of the happy-path timeline", () => {
     expect(PHASE_ORDER).not.toContain("evaluating");
+  });
+});
+
+describe("formatElapsed", () => {
+  it("formats zero and sub-minute as m:ss", () => {
+    expect(formatElapsed(0)).toBe("0:00");
+    expect(formatElapsed(5_000)).toBe("0:05");
+    expect(formatElapsed(59_999)).toBe("0:59");
+  });
+  it("pads seconds with a leading zero", () => {
+    expect(formatElapsed(65_000)).toBe("1:05");
+  });
+  it("handles times over an hour without a separate hour field", () => {
+    expect(formatElapsed(3_605_000)).toBe("60:05");
+  });
+  it("clamps negatives to zero", () => {
+    expect(formatElapsed(-1)).toBe("0:00");
+  });
+});
+
+describe("etaHint", () => {
+  it("returns a hint for the slow reasoning phase", () => {
+    expect(etaHint("reasoning")).toMatch(/1.2|~/);
+  });
+  it("returns a short hint for writing_report", () => {
+    expect(etaHint("writing_report")).toMatch(/second/i);
+  });
+  it("returns null for fast phases that don't need a hint", () => {
+    expect(etaHint("queued")).toBeNull();
+    expect(etaHint("reading_context")).toBeNull();
+    expect(etaHint("assembling")).toBeNull();
+    expect(etaHint("extracting_jd")).toBeNull();
   });
 });

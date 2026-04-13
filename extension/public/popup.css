@@ -438,6 +438,13 @@ html, body {
   padding-top: var(--sp-1);
 }
 
+.elapsed {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-small);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .job-id {
   font-family: var(--font-mono);
   font-size: var(--fs-small);
