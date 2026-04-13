@@ -249,15 +249,27 @@ async function init(): Promise<void> {
   }
 
   // Reopen recovery — show cached result if available.
+  // Each restore branch must early-return so runCapture() doesn't
+  // overwrite the just-painted UI. Mirrors panel/inject.ts:965-997.
   if (state?.lastResult) {
     currentJobId = state.lastResult.jobId;
     currentResult = state.lastResult.result;
     renderDone(state.lastResult.result);
-  } else if (state?.lastJobId) {
+    // Side-effects: refresh health + recent list so the restored view
+    // isn't stale. Don't await — they're informational.
+    // NOTE: do NOT clearActiveJob here — lastResult is the cached
+    // "what just happened" view and should remain visible across opens.
+    void refreshHealth();
+    void loadRecentJobs();
+    return;
+  }
+
+  if (state?.lastJobId) {
     // We have a lastJobId but no cached result. Before showing a
     // "running" UI that may lie indefinitely (bridge restarted, job
     // crashed, etc.), validate the job's actual phase via the bridge.
-    const snapRes = await sendRequest({ kind: "getJob", jobId: state.lastJobId });
+    const lastJobId = state.lastJobId;
+    const snapRes = await sendRequest({ kind: "getJob", jobId: lastJobId });
     if (!snapRes.ok) {
       // Bridge doesn't recognize this job (NOT_FOUND) or is unreachable.
       // Either way the safest move is to clear the stale id and fall
@@ -266,28 +278,45 @@ async function init(): Promise<void> {
       if (snapRes.error.code === "NOT_FOUND") {
         await sendRequest({ kind: "clearActiveJob" });
       }
+      // Fall through to capture flow below — bridge said the job is gone.
     } else {
       const snap = snapRes.result;
       if (snap.phase === "completed" && snap.result) {
-        currentJobId = state.lastJobId;
+        currentJobId = lastJobId;
         currentResult = snap.result;
         renderDone(snap.result);
-      } else if (snap.phase === "failed" && snap.error) {
-        renderError(snap.error.code, snap.error.message);
-      } else {
-        currentJobId = state.lastJobId;
-        jobIdEl.textContent = `job ${currentJobId}`;
-        // Seed the phase UI from the snapshot so the user immediately
-        // sees current progress instead of an empty checklist.
-        renderPhases(snap);
-        show("running");
-        startElapsedTimer();
-        subscribeToJob(currentJobId);
-        startJobPolling(currentJobId);
+        void refreshHealth();
+        void loadRecentJobs();
+        // I2 fix — clear stale id so we don't re-render this terminal
+        // state on the next open.
+        void sendRequest({ kind: "clearActiveJob" });
+        return;
       }
+      if (snap.phase === "failed" && snap.error) {
+        renderError(snap.error.code, snap.error.message);
+        void refreshHealth();
+        void loadRecentJobs();
+        // I2 fix — see above.
+        void sendRequest({ kind: "clearActiveJob" });
+        return;
+      }
+      // Intermediate phase — actually running, don't clear, just resume.
+      currentJobId = lastJobId;
+      jobIdEl.textContent = `job ${currentJobId}`;
+      // Seed the phase UI from the snapshot so the user immediately
+      // sees current progress instead of an empty checklist.
+      renderPhases(snap);
+      show("running");
+      startElapsedTimer();
+      subscribeToJob(currentJobId);
+      startJobPolling(currentJobId);
+      void refreshHealth();
+      void loadRecentJobs();
+      return;
     }
   }
 
+  // Cold start (or stale-job fall-through) — capture the active tab.
   // Phase 2: Health, capture, and recent jobs are independent — fire all at once.
   void refreshHealth();
   void loadRecentJobs();

@@ -971,14 +971,19 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
           currentResult = snap.result;
           renderDone(snap.result);
           void loadRecentJobs();
+          // I2 fix — clear stale id so terminal state isn't re-shown next open.
+          void sendMsg({ kind: "clearActiveJob" });
           return;
         }
         if (snap.phase === "failed" && snap.error) {
           renderError(snap.error.code, snap.error.message);
           void loadRecentJobs();
+          // I2 fix — see above.
+          void sendMsg({ kind: "clearActiveJob" });
           return;
         }
-        // intermediate phase — show running UI seeded from snapshot
+        // intermediate phase — show running UI seeded from snapshot.
+        // Do NOT clearActiveJob — this job is still live.
         jobIdEl.textContent = "job " + currentJobId;
         renderPhases(snap);
         show("running");
@@ -989,6 +994,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
         return;
       }
       if ("lastResult" in r && r.lastResult) {
+        // Cached "what just happened" view — do NOT clearActiveJob;
+        // this should remain visible across reopens.
         currentJobId = r.lastResult.jobId;
         currentResult = r.lastResult.result;
         renderDone(r.lastResult.result);
