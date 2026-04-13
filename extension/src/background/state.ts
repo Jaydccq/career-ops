@@ -37,3 +37,20 @@ export async function patchState(
   await saveState(next);
   return next;
 }
+
+/**
+ * Remove specific optional fields from the persisted state. Needed
+ * because `exactOptionalPropertyTypes` forbids assigning `undefined`
+ * to optional fields via patchState. Mutates only the listed keys.
+ */
+export async function clearStateFields(
+  keys: ReadonlyArray<keyof ExtensionState>
+): Promise<ExtensionState> {
+  const current = await loadState();
+  const next: ExtensionState = { ...current };
+  for (const k of keys) {
+    delete (next as unknown as Record<string, unknown>)[k];
+  }
+  await saveState(next);
+  return next;
+}

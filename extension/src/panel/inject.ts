@@ -956,6 +956,47 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       return;
     }
     void refreshHealth();
+
+    // Reopen recovery — restore an in-flight or recently-completed job
+    // before falling back to a fresh capture. This mirrors the popup's
+    // restore flow but goes through the background, since content
+    // scripts can't read chrome.storage.local directly.
+    const activeRes = await sendMsg({ kind: "getActiveJob" });
+    if (activeRes?.ok) {
+      const r = activeRes.result;
+      if (r.active) {
+        currentJobId = r.active.jobId;
+        const snap = r.active.snapshot;
+        if (snap.phase === "completed" && snap.result) {
+          currentResult = snap.result;
+          renderDone(snap.result);
+          void loadRecentJobs();
+          return;
+        }
+        if (snap.phase === "failed" && snap.error) {
+          renderError(snap.error.code, snap.error.message);
+          void loadRecentJobs();
+          return;
+        }
+        // intermediate phase — show running UI seeded from snapshot
+        jobIdEl.textContent = "job " + currentJobId;
+        renderPhases(snap);
+        show("running");
+        startElapsedTimer();
+        subscribeToJob(currentJobId!);
+        startJobPolling(currentJobId!);
+        void loadRecentJobs();
+        return;
+      }
+      if ("lastResult" in r && r.lastResult) {
+        currentJobId = r.lastResult.jobId;
+        currentResult = r.lastResult.result;
+        renderDone(r.lastResult.result);
+        void loadRecentJobs();
+        return;
+      }
+    }
+
     await runCapture();
 
     // Detect newgrad-jobs.com and show scan UI instead of single-JD flow

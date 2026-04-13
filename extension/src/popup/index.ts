@@ -254,12 +254,38 @@ async function init(): Promise<void> {
     currentResult = state.lastResult.result;
     renderDone(state.lastResult.result);
   } else if (state?.lastJobId) {
-    currentJobId = state.lastJobId;
-    jobIdEl.textContent = `job ${currentJobId}`;
-    show("running");
-    startElapsedTimer();
-    subscribeToJob(currentJobId);
-    startJobPolling(currentJobId);
+    // We have a lastJobId but no cached result. Before showing a
+    // "running" UI that may lie indefinitely (bridge restarted, job
+    // crashed, etc.), validate the job's actual phase via the bridge.
+    const snapRes = await sendRequest({ kind: "getJob", jobId: state.lastJobId });
+    if (!snapRes.ok) {
+      // Bridge doesn't recognize this job (NOT_FOUND) or is unreachable.
+      // Either way the safest move is to clear the stale id and fall
+      // through to the normal capture flow below — never strand the
+      // user on a fake "reasoning · 47:23".
+      if (snapRes.error.code === "NOT_FOUND") {
+        await sendRequest({ kind: "clearActiveJob" });
+      }
+    } else {
+      const snap = snapRes.result;
+      if (snap.phase === "completed" && snap.result) {
+        currentJobId = state.lastJobId;
+        currentResult = snap.result;
+        renderDone(snap.result);
+      } else if (snap.phase === "failed" && snap.error) {
+        renderError(snap.error.code, snap.error.message);
+      } else {
+        currentJobId = state.lastJobId;
+        jobIdEl.textContent = `job ${currentJobId}`;
+        // Seed the phase UI from the snapshot so the user immediately
+        // sees current progress instead of an empty checklist.
+        renderPhases(snap);
+        show("running");
+        startElapsedTimer();
+        subscribeToJob(currentJobId);
+        startJobPolling(currentJobId);
+      }
+    }
   }
 
   // Phase 2: Health, capture, and recent jobs are independent — fire all at once.

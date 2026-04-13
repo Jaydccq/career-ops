@@ -38,7 +38,7 @@ import type {
   ScoredRow,
 } from "../contracts/bridge-wire.js";
 
-import { loadState, patchState } from "./state.js";
+import { clearStateFields, loadState, patchState } from "./state.js";
 import { bridgeClientFromState } from "./bridge-client.js";
 import { resolvePermissionOrigin } from "../shared/permissions.js";
 
@@ -126,6 +126,10 @@ async function handleRequest(req: PopupRequest): Promise<PopupResponse> {
         return await handleStartEvaluation(req.input);
       case "getJob":
         return await handleGetJob(req.jobId);
+      case "getActiveJob":
+        return await handleGetActiveJob();
+      case "clearActiveJob":
+        return await handleClearActiveJob();
       case "subscribeJob":
         return handleSubscribeAck(req.jobId);
       case "unsubscribeJob":
@@ -667,6 +671,61 @@ async function handleGetJob(jobId: JobId): Promise<PopupResponse> {
   const res = await client.getJob(jobId);
   if (!res.ok) return { kind: "getJob", ok: false, error: res.error };
   return { kind: "getJob", ok: true, result: res.result };
+}
+
+/**
+ * Restore the popup/panel's active-job UI after a reopen. Returns:
+ *   - `{ active: null, lastResult }` when the most recent terminal state
+ *     was a successful completion the caller can display.
+ *   - `{ active: { jobId, snapshot } }` when a job is in flight (or
+ *     terminal but still resolvable from the bridge).
+ *   - `{ active: null }` when there is nothing to restore (cold start
+ *     or the bridge has forgotten the job — in which case we also
+ *     clear the stale lastJobId so we don't loop on it).
+ */
+async function handleGetActiveJob(): Promise<PopupResponse> {
+  const state = await loadState();
+  if (!state.lastJobId) {
+    return { kind: "getActiveJob", ok: true, result: { active: null } };
+  }
+  // If the persisted lastResult belongs to the same job, prefer it —
+  // the eval already terminated successfully and the caller can render
+  // the cached result without contacting the bridge.
+  if (state.lastResult && state.lastResult.jobId === state.lastJobId) {
+    return {
+      kind: "getActiveJob",
+      ok: true,
+      result: { active: null, lastResult: state.lastResult },
+    };
+  }
+  // Otherwise consult the bridge for the live snapshot.
+  if (!state.bridgeToken) {
+    return { kind: "getActiveJob", ok: true, result: { active: null } };
+  }
+  const client = bridgeClientFromState(state);
+  const res = await client.getJob(state.lastJobId);
+  if (!res.ok) {
+    if (res.error.code === "NOT_FOUND") {
+      // Bridge has no record (restart, eviction). Clear so the next
+      // open boots clean.
+      await clearStateFields(["lastJobId"]);
+      return { kind: "getActiveJob", ok: true, result: { active: null } };
+    }
+    // Network/other error — leave persisted state untouched and surface
+    // the error so the caller can decide how to react (typically:
+    // fall through to runCapture()).
+    return { kind: "getActiveJob", ok: false, error: res.error };
+  }
+  return {
+    kind: "getActiveJob",
+    ok: true,
+    result: { active: { jobId: state.lastJobId, snapshot: res.result } },
+  };
+}
+
+async function handleClearActiveJob(): Promise<PopupResponse> {
+  await clearStateFields(["lastJobId"]);
+  return { kind: "clearActiveJob", ok: true, result: { cleared: true } };
 }
 
 function handleSubscribeAck(_jobId: JobId): PopupResponse {
@@ -2051,6 +2110,11 @@ function fanEvent(jobId: JobId, event: JobEvent): void {
         message: `${event.result.role} · ${event.result.archetype}`,
       });
     } else if (event.kind === "failed") {
+      // Clear lastJobId so a popup/panel reopen doesn't get stuck
+      // trying to resume a dead job. We intentionally do NOT touch
+      // lastResult — it preserves the previous successful evaluation
+      // for the "what just happened" view.
+      void clearStateFields(["lastJobId"]);
       chrome.notifications.create(jobId, {
         type: "basic",
         iconUrl: "icon-128.png",

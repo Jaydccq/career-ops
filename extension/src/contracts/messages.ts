@@ -83,6 +83,20 @@ export type PopupRequest =
   /** Ask background for the current point-in-time job snapshot. */
   | { kind: "getJob"; jobId: JobId }
   /**
+   * Ask background for the currently-active job, if any. Used by popup
+   * and panel on open to restore "running" / "done" UI without starting
+   * a fresh capture. Background reads chrome.storage.local for
+   * lastJobId / lastResult and validates lastJobId against the bridge
+   * (a stale lastJobId — bridge restarted — gets cleared as a side
+   * effect). The single-source-of-truth contract still lives in
+   * chrome.storage.local; this message just exposes it to scripts that
+   * cannot read storage directly (e.g., content-script panel).
+   */
+  | { kind: "getActiveJob" }
+  /** Explicit clear of the persisted lastJobId. Used by popup to recover
+   *  from a stale running state (job the bridge no longer knows about). */
+  | { kind: "clearActiveJob" }
+  /**
    * Subscribe to a running job. Background maintains the SSE connection
    * and re-fans the events to the popup via chrome.runtime long-lived
    * ports. The popup never opens HTTP connections directly.
@@ -142,6 +156,19 @@ export type PopupResponse =
   | { kind: "startEvaluation"; ok: false; error: BridgeError }
   | { kind: "getJob"; ok: true; result: JobSnapshot }
   | { kind: "getJob"; ok: false; error: BridgeError }
+  | {
+      kind: "getActiveJob";
+      ok: true;
+      result:
+        | {
+            active: null;
+            lastResult?: { jobId: JobId; at: string; result: EvaluationResult };
+          }
+        | { active: { jobId: JobId; snapshot: JobSnapshot } };
+    }
+  | { kind: "getActiveJob"; ok: false; error: BridgeError }
+  | { kind: "clearActiveJob"; ok: true; result: { cleared: true } }
+  | { kind: "clearActiveJob"; ok: false; error: BridgeError }
   | { kind: "subscribeJob"; ok: true; result: { subscribed: true } }
   | { kind: "subscribeJob"; ok: false; error: BridgeError }
   | { kind: "unsubscribeJob"; ok: true; result: { unsubscribed: true } }
