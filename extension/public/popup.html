@@ -69,6 +69,12 @@
           <button class="btn ghost" id="expiry-dismiss-btn" type="button">Cancel</button>
         </div>
       </div>
+      <div id="cross-tab-warning" class="cross-tab-warning hidden" role="status">
+        <div class="cross-tab-warning-text" id="cross-tab-warning-text">
+          Already evaluating another tab. Open the running job first or wait for it to finish.
+        </div>
+        <button class="btn" id="view-running-btn" type="button">View running job</button>
+      </div>
       <button class="btn primary" id="evaluate-btn" type="button">Evaluate this job</button>
     </section>
 
@@ -84,6 +90,9 @@
       <ol class="stepper" id="phase-list" aria-live="polite"></ol>
       <div class="phase-counter" id="phase-counter"></div>
       <div class="elapsed" id="elapsed-counter" aria-live="polite"></div>
+      <div class="close-hint hidden" id="close-safe-hint">
+        It's safe to close this popup &mdash; we'll notify you when the report is ready.
+      </div>
     </section>
 
     <section id="done" class="panel primary hidden" aria-label="Evaluation result">

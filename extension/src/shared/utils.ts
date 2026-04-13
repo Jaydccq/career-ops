@@ -117,3 +117,52 @@ export function etaHint(phase: JobPhase): string | null {
   if (phase === "writing_report") return "a few seconds";
   return null;
 }
+
+/**
+ * Phases that count as "actively running" — we should not start a second
+ * concurrent evaluation while one of these is in flight.
+ */
+const INTERMEDIATE_PHASES: ReadonlySet<JobPhase> = new Set<JobPhase>([
+  "queued",
+  "extracting_jd",
+  "reading_context",
+  "reasoning",
+  "assembling",
+  "writing_report",
+  "generating_pdf",
+  "writing_tracker",
+  "evaluating",
+]);
+
+export function isIntermediatePhase(phase: JobPhase): boolean {
+  return INTERMEDIATE_PHASES.has(phase);
+}
+
+/**
+ * Returns true when the popup/panel should disable its Evaluate button
+ * because there's already an in-flight job tied to a *different* URL.
+ *
+ * Inputs are intentionally minimal so this is trivial to unit-test:
+ *   • runningPhase  — the active job's phase (null = no active job)
+ *   • runningUrl    — the URL the active job was started for
+ *   • currentUrl    — the URL of the tab the popup/panel is now showing
+ */
+export function shouldDisableEvaluate(
+  runningPhase: JobPhase | null,
+  runningUrl: string | null,
+  currentUrl: string | null,
+): boolean {
+  if (runningPhase === null) return false;
+  if (!isIntermediatePhase(runningPhase)) return false;
+  if (!runningUrl || !currentUrl) return false;
+  return runningUrl !== currentUrl;
+}
+
+/**
+ * Should the "It's safe to close this popup" hint be shown right now?
+ * Only true during the long `reasoning` phase — the other phases finish
+ * fast enough that suggesting the user walk away would be misleading.
+ */
+export function shouldShowCloseHint(phase: JobPhase | null): boolean {
+  return phase === "reasoning";
+}

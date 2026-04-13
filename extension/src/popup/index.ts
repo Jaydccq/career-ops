@@ -41,6 +41,8 @@ import {
   presetDisplayName,
   presetFromHealth,
   scoreColor,
+  shouldDisableEvaluate,
+  shouldShowCloseHint,
 } from "../shared/utils.js";
 
 type UiState = "idle" | "setup" | "captured" | "notDetected" | "running" | "done" | "error";
@@ -85,6 +87,11 @@ const jobIdEl = document.getElementById("job-id")!;
 const phaseListEl = document.getElementById("phase-list")!;
 const phaseCounterEl = document.getElementById("phase-counter")!;
 const elapsedCounterEl = document.getElementById("elapsed-counter")!;
+const closeSafeHintEl = document.getElementById("close-safe-hint")!;
+
+// Cross-tab guard (Task 8)
+const crossTabWarningEl = document.getElementById("cross-tab-warning")!;
+const viewRunningBtn = document.getElementById("view-running-btn") as HTMLButtonElement;
 
 const resultScoreEl = document.getElementById("result-score")!;
 const resultHeaderEl = document.getElementById("result-header")!;
@@ -173,6 +180,8 @@ function stopElapsedTimer(): void {
   }
   evaluationStartedAt = null;
   elapsedCounterEl.textContent = "";
+  // The running view is going away — make sure the hint goes with it.
+  closeSafeHintEl.classList.add("hidden");
 }
 
 function setHealth(state: "unknown" | "ok" | "bad" | "warn", label: string): void {
@@ -301,15 +310,7 @@ async function init(): Promise<void> {
         return;
       }
       // Intermediate phase — actually running, don't clear, just resume.
-      currentJobId = lastJobId;
-      jobIdEl.textContent = `job ${currentJobId}`;
-      // Seed the phase UI from the snapshot so the user immediately
-      // sees current progress instead of an empty checklist.
-      renderPhases(snap);
-      show("running");
-      startElapsedTimer();
-      subscribeToJob(currentJobId);
-      startJobPolling(currentJobId);
+      resumeRunningJob(lastJobId, snap);
       void refreshHealth();
       void loadRecentJobs();
       return;
@@ -321,6 +322,68 @@ async function init(): Promise<void> {
   void refreshHealth();
   void loadRecentJobs();
   await runCapture();
+
+  // Task 8 cross-tab guard — after capture lands, check whether another
+  // tab has an in-flight job. If so, disable Evaluate and offer a
+  // "View running job" affordance instead of letting the user start a
+  // second concurrent evaluation.
+  await maybeApplyCrossTabGuard();
+}
+
+/**
+ * Render the running UI for an already-in-flight job. Reused by:
+ *   • the Task 6 reopen-restore path (popup opened on the same tab)
+ *   • the Task 8 cross-tab "view running job" path (popup opened on
+ *     a different tab; user clicks the button)
+ *
+ * Stays a thin orchestrator so both paths share rendering + subscription
+ * setup and we don't drift in one place.
+ */
+function resumeRunningJob(jobId: JobId, snap: JobSnapshot): void {
+  currentJobId = jobId;
+  jobIdEl.textContent = `job ${jobId}`;
+  // Seed the phase UI from the snapshot so the user immediately
+  // sees current progress instead of an empty checklist.
+  renderPhases(snap);
+  show("running");
+  startElapsedTimer();
+  subscribeToJob(jobId);
+  startJobPolling(jobId);
+}
+
+/**
+ * If the bridge says there's an active job AND it was started on a
+ * different URL than the tab we just captured, surface the cross-tab
+ * warning. This prevents the user from accidentally queueing a second
+ * concurrent evaluation that would clobber `state.lastJobId` and burn
+ * Codex credits.
+ */
+async function maybeApplyCrossTabGuard(): Promise<void> {
+  if (!captured) return;
+  const activeRes = await sendRequest({ kind: "getActiveJob" });
+  if (!activeRes.ok) return;
+  if (!("active" in activeRes.result) || activeRes.result.active === null) return;
+
+  const { jobId, snapshot } = activeRes.result.active;
+  const runningUrl = snapshot.input?.url ?? null;
+  if (
+    !shouldDisableEvaluate(
+      snapshot.phase,
+      runningUrl,
+      captured.url,
+    )
+  ) {
+    return;
+  }
+
+  // Disable evaluate, show the warning + view-running affordance.
+  evaluateBtn.disabled = true;
+  evaluateBtn.textContent = "Already evaluating — view running job";
+  crossTabWarningEl.classList.remove("hidden");
+  viewRunningBtn.onclick = () => {
+    crossTabWarningEl.classList.add("hidden");
+    resumeRunningJob(jobId, snapshot);
+  };
 }
 
 async function onSetupSaveClick(): Promise<void> {
@@ -389,6 +452,11 @@ function renderCaptured(cap: CapturedTab): void {
   expiryWarningEl.classList.add("hidden");
   evaluateBtn.classList.remove("hidden");
   captureDetectionEl.style.color = "";
+  // Reset any prior cross-tab guard — maybeApplyCrossTabGuard re-applies
+  // it after this if the situation still warrants it.
+  crossTabWarningEl.classList.add("hidden");
+  evaluateBtn.disabled = false;
+  evaluateBtn.textContent = "Evaluate this job";
 
   if (cap.detection.label === "not_job_posting") {
     show("notDetected");
@@ -535,6 +603,10 @@ async function pollJobSnapshot(jobId: JobId): Promise<void> {
   applyJobSnapshot(res.result);
 }
 
+function updateCloseSafeHint(activePhase: JobPhase | null): void {
+  closeSafeHintEl.classList.toggle("hidden", !shouldShowCloseHint(activePhase));
+}
+
 function renderPhases(snap: JobSnapshot): void {
   while (phaseListEl.firstChild) phaseListEl.removeChild(phaseListEl.firstChild);
   const done = new Set(snap.progress?.phases.map((p) => p.phase) ?? []);
@@ -580,6 +652,9 @@ function renderPhases(snap: JobSnapshot): void {
   } else {
     phaseCounterEl.textContent = `${completedCount} of ${total} complete`;
   }
+  // "It's safe to close" hint — only during the slow reasoning phase.
+  // Failed/terminal phases hide it (failure handled elsewhere).
+  updateCloseSafeHint(isFailed ? null : (snap.phase as JobPhase));
 }
 
 function appendPhase(phase: JobPhase): void {
@@ -596,6 +671,7 @@ function appendPhase(phase: JobPhase): void {
     }
   }
   phaseCounterEl.textContent = `Phase ${reachedIdx + 1} of ${PHASE_ORDER.length}`;
+  updateCloseSafeHint(phase);
 }
 
 function renderDone(result: EvaluationResult): void {

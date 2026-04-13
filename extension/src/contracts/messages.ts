@@ -280,6 +280,10 @@ export interface ExtensionState {
   lastHealthOk?: boolean;
   /** Most recent jobId the popup watched. Not a history log. */
   lastJobId?: JobId;
+  /** URL the most recent job was started for. Used by popup/panel to
+   *  detect cross-tab scenarios (open another tab, popup would otherwise
+   *  start a second concurrent job). Cleared when the job terminates. */
+  lastJobUrl?: string;
   /** Cached copy of the last completed evaluation for the popup
    *  "what just happened" view. */
   lastResult?: {

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { PHASE_ORDER, PHASE_LABEL, formatElapsed, etaHint } from "./utils.js";
+import {
+  PHASE_ORDER,
+  PHASE_LABEL,
+  formatElapsed,
+  etaHint,
+  shouldDisableEvaluate,
+  shouldShowCloseHint,
+} from "./utils.js";
 
 describe("evaluating sub-phases", () => {
   it("splits evaluating into reading_context, reasoning, assembling", () => {
@@ -48,6 +55,33 @@ describe("formatElapsed", () => {
   });
   it("clamps negatives to zero", () => {
     expect(formatElapsed(-1)).toBe("0:00");
+  });
+});
+
+describe("shouldDisableEvaluate", () => {
+  it("returns false when no job is running", () => {
+    expect(shouldDisableEvaluate(null, null, "https://a")).toBe(false);
+  });
+  it("returns false when the running job is on the same URL", () => {
+    expect(shouldDisableEvaluate("reasoning", "https://a", "https://a")).toBe(false);
+  });
+  it("returns true when a job is intermediate on a different URL", () => {
+    expect(shouldDisableEvaluate("reasoning", "https://a", "https://b")).toBe(true);
+    expect(shouldDisableEvaluate("queued", "https://a", "https://b")).toBe(true);
+  });
+  it("returns false when the running job is already terminal", () => {
+    expect(shouldDisableEvaluate("completed", "https://a", "https://b")).toBe(false);
+    expect(shouldDisableEvaluate("failed", "https://a", "https://b")).toBe(false);
+  });
+});
+
+describe("shouldShowCloseHint", () => {
+  it("only fires during the slow reasoning phase", () => {
+    expect(shouldShowCloseHint("reasoning")).toBe(true);
+    expect(shouldShowCloseHint("queued")).toBe(false);
+    expect(shouldShowCloseHint("assembling")).toBe(false);
+    expect(shouldShowCloseHint("completed")).toBe(false);
+    expect(shouldShowCloseHint(null)).toBe(false);
   });
 });
 

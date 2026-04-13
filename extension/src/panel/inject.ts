@@ -26,6 +26,8 @@ import {
   presetDisplayName,
   presetFromHealth,
   scoreColor,
+  shouldDisableEvaluate,
+  shouldShowCloseHint,
 } from "../shared/utils.js";
 
 declare const __EXTENSION_VERSION__: string;
@@ -137,6 +139,12 @@ function buildStyles(): string {
 .phase-list li.completed { color: #4ecb71; }
 .phase-list li.failed { color: #ef5f5f; }
 .elapsed { margin-top: 4px; font-size: 11px; color: #8f8f94; font-variant-numeric: tabular-nums; }
+.close-hint { margin-top: 6px; font-size: 11px; color: #8f8f94; line-height: 1.5; border-top: 1px solid #1f1f22; padding-top: 6px; }
+.cross-tab-warning {
+  background: #000; border: 1px solid #26262a; border-radius: 4px;
+  padding: 6px 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.cross-tab-warning-text { font-size: 11px; color: #8f8f94; line-height: 1.5; }
 
 .result { font-size: 13px; font-weight: 500; }
 .result .score { color: #7aa7ff; font-weight: 600; }
@@ -243,6 +251,12 @@ function buildHTML(): string {
       <div class="capture-url" id="capture-url"></div>
       <div class="capture-title" id="capture-title"></div>
       <div class="capture-detection" id="capture-detection"></div>
+      <div id="cross-tab-warning" class="cross-tab-warning hidden" role="status">
+        <div class="cross-tab-warning-text" id="cross-tab-warning-text">
+          Already evaluating another tab. Open the running job first or wait for it to finish.
+        </div>
+        <button class="cta" id="view-running-btn">View running job</button>
+      </div>
       <button class="cta primary" id="evaluate-btn">Evaluate this job</button>
     </div>
     <div id="not-detected" class="section hidden">
@@ -255,6 +269,9 @@ function buildHTML(): string {
       <div class="job-id" id="job-id"></div>
       <ol class="phase-list" id="phase-list"></ol>
       <div class="elapsed" id="elapsed-counter" aria-live="polite"></div>
+      <div class="close-hint hidden" id="close-safe-hint">
+        You can navigate away &mdash; we'll notify you when the report is ready.
+      </div>
     </div>
     <div id="done" class="section hidden">
       <div class="section-title">Evaluation complete</div>
@@ -334,6 +351,9 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const jobIdEl = $("job-id");
   const phaseListEl = $("phase-list");
   const elapsedCounterEl = $("elapsed-counter");
+  const closeSafeHintEl = $("close-safe-hint");
+  const crossTabWarningEl = $("cross-tab-warning");
+  const viewRunningBtn = $("view-running-btn") as HTMLButtonElement;
   const resultHeaderEl = $("result-header");
   const resultTldrEl = $("result-tldr");
   const openReportBtn = $("open-report-btn") as HTMLButtonElement;
@@ -463,6 +483,11 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     }
     evaluationStartedAt = null;
     elapsedCounterEl.textContent = "";
+    closeSafeHintEl.classList.add("hidden");
+  }
+
+  function updateCloseSafeHint(activePhase: JobPhase | null): void {
+    closeSafeHintEl.classList.toggle("hidden", !shouldShowCloseHint(activePhase));
   }
 
   function setHealth(state: string, label: string): void {
@@ -616,8 +641,51 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
         ? "likely job posting (" + pct(cap.detection.confidence) + ")"
         : "not a job posting (heuristic)";
     captureDetectionEl.textContent = label;
+    // Reset any prior cross-tab guard — maybeApplyCrossTabGuard re-applies
+    // it after this if the situation still warrants it.
+    crossTabWarningEl.classList.add("hidden");
+    evaluateBtn.disabled = false;
+    evaluateBtn.textContent = "Evaluate this job";
     if (cap.detection?.label === "not_job_posting") { show("notDetected"); return; }
     show("captured");
+  }
+
+  function resumeRunningJob(jobId: string, snap: any): void {
+    currentJobId = jobId;
+    jobIdEl.textContent = "job " + jobId;
+    renderPhases(snap);
+    show("running");
+    startElapsedTimer();
+    subscribeToJob(jobId);
+    startJobPolling(jobId);
+  }
+
+  /**
+   * Cross-tab guard (Task 8). After capture lands, if the bridge says
+   * a job is in flight on a different URL, disable Evaluate and offer
+   * a "View running job" affordance so the user doesn't accidentally
+   * spawn a second concurrent evaluation.
+   */
+  async function maybeApplyCrossTabGuard(): Promise<void> {
+    if (!capturedData) return;
+    const activeRes = await sendMsg({ kind: "getActiveJob" });
+    if (!activeRes?.ok) return;
+    const r = activeRes.result;
+    if (!r?.active) return;
+
+    const snap = r.active.snapshot;
+    const runningUrl = snap?.input?.url ?? null;
+    const phase = snap?.phase as JobPhase | undefined;
+    if (!phase) return;
+    if (!shouldDisableEvaluate(phase, runningUrl, capturedData.url)) return;
+
+    evaluateBtn.disabled = true;
+    evaluateBtn.textContent = "Already evaluating — view running job";
+    crossTabWarningEl.classList.remove("hidden");
+    viewRunningBtn.onclick = () => {
+      crossTabWarningEl.classList.add("hidden");
+      resumeRunningJob(r.active.jobId, snap);
+    };
   }
 
   async function onEvaluateClick(): Promise<void> {
@@ -716,6 +784,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       else if (done.has(phase)) li.className = "completed";
       phaseListEl.appendChild(li);
     }
+    updateCloseSafeHint(snap.phase as JobPhase);
   }
 
   function appendPhase(phase: string): void {
@@ -728,6 +797,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       if (i === idx) li.className = "active";
       else if (i < idx) li.className = "completed";
     }
+    updateCloseSafeHint(phase as JobPhase);
   }
 
   function renderDone(result: any): void {
@@ -984,12 +1054,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
         }
         // intermediate phase — show running UI seeded from snapshot.
         // Do NOT clearActiveJob — this job is still live.
-        jobIdEl.textContent = "job " + currentJobId;
-        renderPhases(snap);
-        show("running");
-        startElapsedTimer();
-        subscribeToJob(currentJobId!);
-        startJobPolling(currentJobId!);
+        resumeRunningJob(currentJobId!, snap);
         void loadRecentJobs();
         return;
       }
@@ -1019,6 +1084,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       }
     } catch { /* invalid URL, proceed normally */ }
 
+    // Task 8 cross-tab guard — only meaningful after capture lands.
+    await maybeApplyCrossTabGuard();
     void loadRecentJobs();
   })();
 }

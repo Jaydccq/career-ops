@@ -70,6 +70,22 @@ interface Subscription {
 const subscriptions = new Map<JobId, Subscription>();
 
 /* -------------------------------------------------------------------------- */
+/*  Notification click handler                                                */
+/* -------------------------------------------------------------------------- */
+
+// Registered at module top — listeners attached during async event handling
+// don't survive service-worker eviction. Currently we just clear the
+// notification on click (Chrome doesn't auto-dismiss basic notifications).
+// Opening the popup programmatically is restricted in MV3, so we trust the
+// Task 6 reopen-restore path: when the user manually opens the popup or
+// panel, they'll see the resumable-state UI.
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId.startsWith("career-ops-")) {
+    chrome.notifications.clear(notificationId);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
 /*  Toolbar icon click → toggle panel in active tab                           */
 /* -------------------------------------------------------------------------- */
 
@@ -638,8 +654,11 @@ async function handleStartEvaluation(
   }
   const { jobId } = res.result;
 
-  // Persist last-job for popup reopen.
-  await patchState({ lastJobId: jobId });
+  // Persist last-job for popup reopen. Also store the URL so a popup
+  // opened on a different tab can detect the cross-tab scenario and
+  // surface the "view running job" affordance instead of starting a
+  // second concurrent evaluation.
+  await patchState({ lastJobId: jobId, lastJobUrl: input.url });
 
   // Kick off the SSE stream immediately so we don't lose events between
   // POST and the popup's subscribe call.
@@ -2099,31 +2118,60 @@ function fanEvent(jobId: JobId, event: JobEvent): void {
     }
   }
 
-  // Chrome notification on terminal events
+  // Chrome notification on terminal events. Best-effort — if the user
+  // revoked the notifications permission the create call will surface
+  // chrome.runtime.lastError in the callback; we log + move on so the
+  // evaluation still completes normally.
   try {
     if (event.kind === "done") {
       void persistLastResult(jobId, event.result);
-      chrome.notifications.create(jobId, {
-        type: "basic",
-        iconUrl: "icon-128.png",
-        title: `${event.result.company} — ${event.result.score.toFixed(1)}/5`,
-        message: `${event.result.role} · ${event.result.archetype}`,
-      });
+      // Job is terminal — drop lastJobUrl so a future popup open on a
+      // different tab doesn't think the *new* tab is the cross-tab case.
+      void clearStateFields(["lastJobUrl"]);
+      chrome.notifications.create(
+        `career-ops-${jobId}`,
+        {
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icon-128.png"),
+          title: `Evaluation ready — ${event.result.score.toFixed(1)}/5`,
+          message: `${event.result.company} · ${event.result.role}`,
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "notification failed:",
+              chrome.runtime.lastError.message
+            );
+          }
+        }
+      );
     } else if (event.kind === "failed") {
       // Clear lastJobId so a popup/panel reopen doesn't get stuck
       // trying to resume a dead job. We intentionally do NOT touch
       // lastResult — it preserves the previous successful evaluation
-      // for the "what just happened" view.
-      void clearStateFields(["lastJobId"]);
-      chrome.notifications.create(jobId, {
-        type: "basic",
-        iconUrl: "icon-128.png",
-        title: "Evaluation failed",
-        message: event.error.message,
-      });
+      // for the "what just happened" view. Drop lastJobUrl too so a
+      // future capture on a different tab isn't misread as cross-tab.
+      void clearStateFields(["lastJobId", "lastJobUrl"]);
+      chrome.notifications.create(
+        `career-ops-${jobId}`,
+        {
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icon-128.png"),
+          title: "Evaluation failed",
+          message: event.error.message,
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "notification failed:",
+              chrome.runtime.lastError.message
+            );
+          }
+        }
+      );
     }
   } catch {
-    // notifications permission may be denied — fail silently
+    // notifications API completely unavailable — fail silently
   }
 }
 
@@ -2153,6 +2201,9 @@ async function persistLastResult(
     lastJobId: jobId,
     lastResult: { jobId, at: new Date().toISOString(), result },
   });
+  // The job is terminal — drop the URL marker so a popup opened on a
+  // different tab no longer flags it as the cross-tab scenario.
+  await clearStateFields(["lastJobUrl"]);
 }
 
 function postJobEvent(port: chrome.runtime.Port, event: JobPortMessage["event"]): void {

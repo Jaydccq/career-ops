@@ -80,6 +80,7 @@ async function main() {
   await copyFile(join(PUBLIC_DIR, "popup.css"), join(DIST, "popup.css"));
   await copyFile(join(PUBLIC_DIR, "permission.html"), join(DIST, "permission.html"));
   await copyFile(join(PUBLIC_DIR, "permission.css"), join(DIST, "permission.css"));
+  await copyFile(join(PUBLIC_DIR, "icon-128.png"), join(DIST, "icon-128.png"));
 
   console.log("\n✅ extension built → dist/");
   console.log("   Load in Chrome: chrome://extensions → 'Load unpacked' → select dist/");
