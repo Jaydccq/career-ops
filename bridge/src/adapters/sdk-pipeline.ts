@@ -161,9 +161,13 @@ export function createSdkPipelineAdapter(
     async runEvaluation(
       _jobId: JobId,
       input: EvaluationInput,
-      onProgress: PipelineProgressHandler
+      onProgress: PipelineProgressHandler,
+      signal?: AbortSignal
     ): Promise<EvaluationResult | BridgeError> {
       try {
+        if (signal?.aborted) {
+          return bridgeError("CANCELLED", "evaluation cancelled by user");
+        }
         onProgress({ phase: "extracting_jd", at: nowIso(), note: "loading context" });
 
         onProgress({ phase: "reading_context", at: nowIso(), note: "reading cv + system prompt" });
@@ -191,13 +195,16 @@ export function createSdkPipelineAdapter(
           `Wrap the JSON in a \`\`\`json code fence.`,
         ].join("\n\n");
 
-        const response = await client.messages.create({
-          model,
-          max_tokens: 16000,
-          thinking: { type: "adaptive" },
-          system: systemPrompt,
-          messages: [{ role: "user", content: userContent }],
-        });
+        const response = await client.messages.create(
+          {
+            model,
+            max_tokens: 16000,
+            thinking: { type: "adaptive" },
+            system: systemPrompt,
+            messages: [{ role: "user", content: userContent }],
+          },
+          signal ? { signal } : undefined
+        );
 
         const textBlock = response.content.find(
           (b): b is Anthropic.TextBlock => b.type === "text"
@@ -259,6 +266,14 @@ export function createSdkPipelineAdapter(
           trackerRow,
         };
       } catch (err) {
+        // User-initiated abort surfaces as AbortError (DOMException) in
+        // fetch-based SDKs. Translate to CANCELLED rather than INTERNAL.
+        if (signal?.aborted) {
+          return bridgeError("CANCELLED", "evaluation cancelled by user");
+        }
+        if (err instanceof Error && err.name === "AbortError") {
+          return bridgeError("CANCELLED", "evaluation cancelled by user");
+        }
         if (err instanceof Anthropic.RateLimitError) {
           return bridgeError("RATE_LIMITED", "Anthropic API rate limit hit");
         }

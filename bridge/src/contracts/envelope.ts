@@ -83,7 +83,8 @@ export type ErrorCode =
   | "JD_EXTRACTION_FAILED" // could not extract JD from URL
   | "PDF_FAILED"           // generate-pdf.mjs exited non-zero
   | "TRACKER_MERGE_FAILED" // merge-tracker.mjs exited non-zero
-  | "TIMEOUT";             // operation exceeded the bridge-enforced timeout
+  | "TIMEOUT"              // operation exceeded the bridge-enforced timeout
+  | "CANCELLED";           // user-initiated cancellation of an in-flight evaluation
 
 /** Which codes are safe to retry with the same requestId. */
 export const ERROR_RETRIABILITY: Readonly<Record<ErrorCode, boolean>> = {
@@ -100,6 +101,9 @@ export const ERROR_RETRIABILITY: Readonly<Record<ErrorCode, boolean>> = {
   PDF_FAILED: true,
   TRACKER_MERGE_FAILED: true,
   TIMEOUT: true,
+  // User-initiated cancel — retrying is meaningful (user can click
+  // Evaluate again on the same URL) but the failed run itself is not.
+  CANCELLED: false,
 };
 
 export interface BridgeError {

@@ -104,6 +104,13 @@ export type PopupRequest =
   | { kind: "subscribeJob"; jobId: JobId }
   /** Cancel a subscription. Does NOT cancel the underlying job. */
   | { kind: "unsubscribeJob"; jobId: JobId }
+  /**
+   * Cancel the underlying in-flight evaluation. Background issues
+   * DELETE /v1/jobs/:id to the bridge; the bridge emits a `failed`
+   * SSE event with code CANCELLED which the UI renders as a calm
+   * "Evaluation cancelled" screen. Does NOT touch subscription state.
+   */
+  | { kind: "cancelJob"; jobId: JobId }
   /** Ask background to open a file:// URL in a new tab. */
   | { kind: "openPath"; absolutePath: string }
   /** Ask background to fetch recent tracker rows from the bridge. */
@@ -173,6 +180,8 @@ export type PopupResponse =
   | { kind: "subscribeJob"; ok: false; error: BridgeError }
   | { kind: "unsubscribeJob"; ok: true; result: { unsubscribed: true } }
   | { kind: "unsubscribeJob"; ok: false; error: BridgeError }
+  | { kind: "cancelJob"; ok: true; result: { cancelled: true } }
+  | { kind: "cancelJob"; ok: false; error: BridgeError }
   | { kind: "openPath"; ok: true; result: { opened: true } }
   | { kind: "openPath"; ok: false; error: BridgeError }
   | { kind: "getRecentJobs"; ok: true; result: { rows: readonly TrackerRow[]; totalRows: number } }

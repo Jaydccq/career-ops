@@ -38,6 +38,10 @@ export function httpStatusFor(code: ErrorCode): number {
       return 429;
     case "TIMEOUT":
       return 504;
+    case "CANCELLED":
+      // 499 Client Closed Request is conventional for user-initiated
+      // cancellation. Not standardized but widely recognized.
+      return 499;
     case "EVAL_FAILED":
     case "JD_EXTRACTION_FAILED":
     case "PDF_FAILED":

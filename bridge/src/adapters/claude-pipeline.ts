@@ -92,6 +92,8 @@ interface CommandResult {
   stderr: string;
   timedOut: boolean;
   completedByProbe?: boolean;
+  /** True when the process exited after an external AbortSignal fired. */
+  cancelled?: boolean;
 }
 
 interface ExecutionPlan {
@@ -106,6 +108,7 @@ export const __internal = {
   buildCodexTerminalSchema,
   extractTerminalJsonObject,
   parseReportMarkdown,
+  cleanupAfterCancel,
 };
 
 export function createClaudePipelineAdapter(
@@ -204,7 +207,8 @@ export function createClaudePipelineAdapter(
     async runEvaluation(
       jobId: JobId,
       input: EvaluationInput,
-      onProgress: PipelineProgressHandler
+      onProgress: PipelineProgressHandler,
+      signal?: AbortSignal
     ): Promise<EvaluationResult | BridgeError> {
       if (!selectedCliBin) {
         return bridgeError(
@@ -328,7 +332,8 @@ export function createClaudePipelineAdapter(
             : undefined,
           (line) => {
             appendJobLog(logPath, "proc", line);
-          }
+          },
+          signal
         );
         appendJobLog(
           logPath,
@@ -357,6 +362,29 @@ export function createClaudePipelineAdapter(
             "bridge",
             "terminal json file missing at command completion"
           );
+        }
+
+        if (command.cancelled) {
+          appendJobLog(
+            logPath,
+            "bridge",
+            "evaluation cancelled by user; cleaning up"
+          );
+          cleanupAfterCancel({
+            repoRoot: config.repoRoot,
+            reportNumber,
+            trackerDir,
+            jobId,
+            promptPath,
+            jdPath,
+            ...(executionPlan?.terminalFilePath
+              ? { terminalFilePath: executionPlan.terminalFilePath }
+              : {}),
+          });
+          return bridgeError("CANCELLED", "evaluation cancelled by user", {
+            logPath,
+            reportNumber,
+          });
         }
 
         if (command.timedOut) {
@@ -1161,7 +1189,8 @@ async function runCommand(
   timeoutMs: number,
   stdinText?: string,
   completionProbe?: () => boolean,
-  trace?: (line: string) => void
+  trace?: (line: string) => void,
+  signal?: AbortSignal
 ): Promise<CommandResult> {
   return await new Promise((resolvePromise) => {
     const child = spawn(command, args, {
@@ -1174,20 +1203,64 @@ async function runCommand(
     let stderr = "";
     let settled = false;
     let completedByProbe = false;
+    let cancelledByAbort = false;
     let completionKillTimer: NodeJS.Timeout | undefined;
     let completionPollTimer: NodeJS.Timeout | undefined;
     let heartbeatTimer: NodeJS.Timeout | undefined;
+    let sigkillTimer: NodeJS.Timeout | undefined;
     let stdoutBytes = 0;
     let stderrBytes = 0;
     trace?.(
       `spawn pid=${child.pid ?? "unknown"} cwd=${cwd} timeoutMs=${timeoutMs} command=${command} args=${formatArgsForLog(args)}`
     );
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
+
+    const clearAllTimers = (): void => {
       if (completionPollTimer) clearInterval(completionPollTimer);
       if (completionKillTimer) clearTimeout(completionKillTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (sigkillTimer) clearTimeout(sigkillTimer);
+    };
+
+    const onAbort = (): void => {
+      if (settled) return;
+      cancelledByAbort = true;
+      // Don't settle yet — let the exit handler resolve after SIGKILL.
+      trace?.(
+        `cancel requested; sending SIGTERM to pid=${child.pid ?? "unknown"}`
+      );
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* ignore — child may already be gone */
+      }
+      sigkillTimer = setTimeout(() => {
+        if (settled) return;
+        trace?.(
+          `cancel SIGTERM did not exit after 2s; sending SIGKILL to pid=${child.pid ?? "unknown"}`
+        );
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* ignore */
+        }
+      }, 2_000);
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        // Fire the handler on the next tick so the child has a pid and
+        // the promise is already returned. Using queueMicrotask keeps
+        // us inside the current event-loop turn.
+        queueMicrotask(onAbort);
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clearAllTimers();
       trace?.(`timeout reached; sending SIGKILL to pid=${child.pid ?? "unknown"}`);
       child.kill("SIGKILL");
       resolvePromise({
@@ -1196,6 +1269,7 @@ async function runCommand(
         stderr,
         timedOut: true,
         completedByProbe,
+        cancelled: cancelledByAbort,
       });
     }, timeoutMs);
 
@@ -1248,9 +1322,7 @@ async function runCommand(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (completionPollTimer) clearInterval(completionPollTimer);
-      if (completionKillTimer) clearTimeout(completionKillTimer);
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      clearAllTimers();
       trace?.(`child process error: ${err.message}`);
       resolvePromise({
         exitCode: 1,
@@ -1258,17 +1330,16 @@ async function runCommand(
         stderr: `${stderr}\n${err.message}`.trim(),
         timedOut: false,
         completedByProbe,
+        cancelled: cancelledByAbort,
       });
     });
     child.on("close", (exitCode) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (completionPollTimer) clearInterval(completionPollTimer);
-      if (completionKillTimer) clearTimeout(completionKillTimer);
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      clearAllTimers();
       trace?.(
-        `close exitCode=${exitCode ?? "null"} completedByProbe=${completedByProbe} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes}`
+        `close exitCode=${exitCode ?? "null"} completedByProbe=${completedByProbe} cancelled=${cancelledByAbort} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes}`
       );
       resolvePromise({
         exitCode,
@@ -1276,6 +1347,7 @@ async function runCommand(
         stderr,
         timedOut: false,
         completedByProbe,
+        cancelled: cancelledByAbort,
       });
     });
   });
@@ -1761,6 +1833,80 @@ function extractErrorMessage(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return "evaluation failed";
   return normalized.slice(0, MAX_ERROR_TAIL_CHARS);
+}
+
+/**
+ * Remove the artifacts produced by a partially-run evaluation, per the
+ * cancel contract:
+ *   • Report file: keep iff it exists AND is non-empty AND parses as a
+ *     complete report (audit trail). Otherwise delete.
+ *   • Tracker TSV for this jobId: always delete if present (naming
+ *     scheme here is `{jobId}.tsv` — see writeTrackerAddition).
+ *   • Ephemeral per-job files (JD, resolved prompt, codex terminal JSON):
+ *     always delete — they're useless after cancel and leak /tmp.
+ *
+ * This helper is exported via __internal for unit testing. It must be
+ * side-effect free apart from filesystem writes: no network, no
+ * subprocesses, no globals mutated.
+ */
+function cleanupAfterCancel(args: {
+  repoRoot: string;
+  reportNumber: number;
+  trackerDir: string;
+  jobId: JobId;
+  promptPath: string;
+  jdPath: string;
+  terminalFilePath?: string;
+}): void {
+  // Report file: keep if non-empty AND parseable; delete otherwise.
+  const reportPath = resolveReportPath(args.repoRoot, args.reportNumber);
+  if (reportPath && existsSync(reportPath)) {
+    let shouldDelete = false;
+    try {
+      const contents = readFileSync(reportPath, "utf-8");
+      if (contents.trim().length === 0) {
+        shouldDelete = true;
+      } else {
+        try {
+          parseReportMarkdown(contents);
+          // parseable → keep as audit trail
+        } catch {
+          shouldDelete = true;
+        }
+      }
+    } catch {
+      // unreadable → delete so the number isn't orphaned by a broken
+      // zero-byte file hanging around.
+      shouldDelete = true;
+    }
+    if (shouldDelete) {
+      try {
+        rmSync(reportPath, { force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+
+  // Tracker TSV for this job: always delete if present. The bridge
+  // writes TSVs as `{jobId}.tsv` in tracker-additions (see
+  // writeTrackerAddition). We only need to remove that single file.
+  try {
+    rmSync(join(args.trackerDir, `${args.jobId}.tsv`), { force: true });
+  } catch {
+    /* best-effort */
+  }
+
+  // Ephemeral per-job files: always delete.
+  try { rmSync(args.jdPath, { force: true }); } catch { /* ignore */ }
+  try { rmSync(args.promptPath, { force: true }); } catch { /* ignore */ }
+  if (args.terminalFilePath) {
+    try {
+      rmSync(args.terminalFilePath, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function safeRemoveFile(path: string): void {

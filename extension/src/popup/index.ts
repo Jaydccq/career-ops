@@ -88,6 +88,7 @@ const phaseListEl = document.getElementById("phase-list")!;
 const phaseCounterEl = document.getElementById("phase-counter")!;
 const elapsedCounterEl = document.getElementById("elapsed-counter")!;
 const closeSafeHintEl = document.getElementById("close-safe-hint")!;
+const cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement;
 
 // Cross-tab guard (Task 8)
 const crossTabWarningEl = document.getElementById("cross-tab-warning")!;
@@ -140,6 +141,13 @@ function show(state: UiState): void {
   doneEl.classList.toggle("hidden", state !== "done");
   errorEl.classList.toggle("hidden", state !== "error");
   app.className = `state-${state}`;
+  // Whenever we (re-)enter running, restore the cancel button's
+  // default label + enabled state. onCancelClick disables it to
+  // prevent double-click; leaving non-running states resets it.
+  if (state === "running") {
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = "Cancel evaluation";
+  }
 }
 
 function stopJobPolling(): void {
@@ -711,7 +719,20 @@ function classifyError(code: string, message: string): {
   explanation: string;
   recovery: RecoveryHint;
   retryable: boolean;
+  cancelled?: boolean;
 } {
+  // User-initiated cancel is NOT a failure. Render it as a calm,
+  // dismissable state with a retry path back to the capture flow.
+  if (code === "CANCELLED") {
+    return {
+      category: "Evaluation cancelled",
+      explanation: "You cancelled this run. No partial output is kept.",
+      recovery: { before: "" },
+      retryable: true,
+      cancelled: true,
+    };
+  }
+
   const lower = `${code} ${message}`.toLowerCase();
 
   if (lower.includes("econnrefused") || lower.includes("fetch") || lower.includes("network") || lower.includes("bridge_unreachable")) {
@@ -774,7 +795,14 @@ function renderError(code: string, message: string): void {
   errorCategoryEl.textContent = err.category;
   errorExplanationEl.textContent = err.explanation;
   renderRecovery(errorRecoveryEl, err.recovery);
-  retryBtn.textContent = err.retryable ? "Try again" : "Re-enter token";
+  retryBtn.textContent = err.cancelled
+    ? "Start a new evaluation"
+    : err.retryable
+      ? "Try again"
+      : "Re-enter token";
+  // Toggle the calm-variant class so the error panel drops red styling
+  // and reads more like a notice than a failure screen.
+  errorEl.classList.toggle("variant-cancelled", Boolean(err.cancelled));
   show("error");
 }
 
@@ -855,9 +883,39 @@ async function onCopySummaryClick(): Promise<void> {
   }, 1500);
 }
 
+/**
+ * Fire DELETE /v1/jobs/:id via background. The bridge will terminate
+ * the subprocess and emit a `failed` SSE event with code CANCELLED;
+ * the existing handleJobEvent path renders the calm cancel UI. We
+ * intentionally don't pre-emptively switch screens here — that would
+ * race with the SSE terminal event and create a flicker.
+ *
+ * Disable the button immediately so double-clicks don't fire twice.
+ */
+async function onCancelClick(): Promise<void> {
+  if (!currentJobId) return;
+  cancelBtn.disabled = true;
+  cancelBtn.textContent = "Cancelling\u2026";
+  const res = await sendRequest({ kind: "cancelJob", jobId: currentJobId });
+  if (!res.ok) {
+    // The bridge returns NOT_FOUND if the job already finished in
+    // the race window. Treat that as success: the SSE stream will
+    // deliver the real terminal event momentarily.
+    if (res.error.code !== "NOT_FOUND") {
+      renderError(res.error.code, res.error.message);
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = "Cancel evaluation";
+    }
+  }
+  // On success, leave the button disabled — the SSE `failed` event
+  // will switch us to the error screen. If it doesn't arrive within
+  // a few seconds, the polling path in applyJobSnapshot will pick it up.
+}
+
 async function onRetryClick(): Promise<void> {
   stopJobPolling();
   stopElapsedTimer();
+  errorEl.classList.remove("variant-cancelled");
   if (!lastErrorRetryable) {
     // Non-retryable (auth) — clear token and go to setup
     await sendRequest({ kind: "setToken", token: "" });
@@ -970,6 +1028,7 @@ bridgeChip.addEventListener("click", toggleModePanel);
 evaluateBtn.addEventListener("click", () => void onEvaluateClick());
 openReportBtn.addEventListener("click", () => void onOpenReportClick());
 retryBtn.addEventListener("click", () => void onRetryClick());
+cancelBtn.addEventListener("click", () => void onCancelClick());
 setupSaveBtn.addEventListener("click", () => void onSetupSaveClick());
 mergeTrackerBtn.addEventListener("click", () => void onMergeTrackerClick());
 copySummaryBtn.addEventListener("click", () => void onCopySummaryClick());

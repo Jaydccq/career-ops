@@ -49,6 +49,7 @@ export function bridgeClient(
     input: EvaluationInput
   ): Promise<EnvelopedResponse<EvaluateCreateResult>>;
   getJob(jobId: JobId): Promise<EnvelopedResponse<JobSnapshot>>;
+  cancelJob(jobId: JobId): Promise<EnvelopedResponse<{ cancelled: true }>>;
   getTracker(limit: number): Promise<EnvelopedResponse<TrackerListResult>>;
   getReport(num: number): Promise<EnvelopedResponse<ReportReadResult>>;
   mergeTracker(dryRun: boolean): Promise<EnvelopedResponse<MergeReport>>;
@@ -196,6 +197,25 @@ export function bridgeClient(
         );
       } catch (err) {
         return failureFromError("job", err);
+      }
+    },
+
+    async cancelJob(jobId: JobId) {
+      try {
+        const res = await fetch(`${base}/v1/jobs/${jobId}`, {
+          method: "DELETE",
+          headers: headers(),
+        });
+        const body = await res.json();
+        if (isSuccess<{ cancelled: true }>(body) || isFailure(body)) {
+          return body;
+        }
+        return failureFromError(
+          "job-cancel",
+          new Error("malformed DELETE /v1/jobs response"),
+        );
+      } catch (err) {
+        return failureFromError("job-cancel", err);
       }
     },
 

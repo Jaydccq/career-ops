@@ -150,6 +150,8 @@ async function handleRequest(req: PopupRequest): Promise<PopupResponse> {
         return handleSubscribeAck(req.jobId);
       case "unsubscribeJob":
         return handleUnsubscribeAck(req.jobId);
+      case "cancelJob":
+        return await handleCancelJob(req.jobId);
       case "openPath":
         return await handleOpenPath(req.absolutePath);
       case "getRecentJobs":
@@ -761,6 +763,22 @@ function handleUnsubscribeAck(_jobId: JobId): PopupResponse {
     ok: true,
     result: { unsubscribed: true },
   };
+}
+
+/**
+ * Ask the bridge to cancel an in-flight evaluation. We intentionally
+ * do NOT touch subscription ports or persisted lastJobId here; the
+ * bridge will emit a `failed` SSE event with code CANCELLED, and the
+ * existing terminal-event handler in openStream() does the cleanup
+ * (clears lastJobId/lastJobUrl, closes ports, fans the failed event
+ * to popup/panel).
+ */
+async function handleCancelJob(jobId: JobId): Promise<PopupResponse> {
+  const { client, error } = await authenticatedClient();
+  if (error) return { kind: "cancelJob", ok: false, error };
+  const res = await client.cancelJob(jobId);
+  if (!res.ok) return { kind: "cancelJob", ok: false, error: res.error };
+  return { kind: "cancelJob", ok: true, result: res.result };
 }
 
 async function handleOpenPath(absolutePath: string): Promise<PopupResponse> {

@@ -105,11 +105,19 @@ export interface PipelineAdapter {
    *
    * Throws ONLY on programmer errors. Every pipeline failure is a
    * returned BridgeError, never an exception.
+   *
+   * If `signal` is provided and gets aborted mid-run, the adapter MUST
+   * terminate the underlying subprocess, clean up partial files, and
+   * return a `BridgeError` with code `CANCELLED`. The adapter must not
+   * throw from the abort path; the cancel manifests as a normal
+   * BridgeError return value so the rest of the bridge pipeline (SSE
+   * fan-out, job-store terminal update) handles it uniformly.
    */
   runEvaluation(
     jobId: JobId,
     input: EvaluationInput,
     onProgress: PipelineProgressHandler,
+    signal?: AbortSignal,
   ): Promise<EvaluationResult | BridgeError>;
 
   /**

@@ -377,6 +377,28 @@ html, body {
   color: var(--fg);
 }
 
+/* Cancel button — muted destructive; subtle until hover. */
+.btn.cancel {
+  color: #bfbfc4;
+  border-color: var(--border);
+}
+.btn.cancel:hover {
+  color: #ef5f5f;
+  border-color: #5a2a2a;
+  background: rgba(239, 95, 95, 0.08);
+}
+.btn.cancel:disabled:hover {
+  color: #bfbfc4;
+  background: transparent;
+  border-color: var(--border);
+}
+
+.running-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Focus visible — all interactive elements */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -533,6 +555,11 @@ html, body {
   border-radius: 3px;
   color: var(--accent);
 }
+
+/* Calm variant used when the "error" screen is showing a user-cancel,
+   not a real failure. Drops the red category so the panel reads as a
+   notice, not an alert. */
+#error.variant-cancelled .error-category { color: var(--fg-muted); }
 
 .muted-body {
   margin: 0;

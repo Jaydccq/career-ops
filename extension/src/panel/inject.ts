@@ -131,6 +131,10 @@ function buildStyles(): string {
 .cta.primary { background: #7aa7ff; color: #000; border-color: #7aa7ff; }
 .cta.primary:hover { background: #5c8eff; border-color: #5c8eff; }
 .cta:disabled { opacity: 0.5; cursor: default; }
+.cta.cancel { color: #bfbfc4; }
+.cta.cancel:hover { color: #ef5f5f; border-color: #5a2a2a; background: rgba(239, 95, 95, 0.08); }
+.cta.cancel:disabled:hover { color: #bfbfc4; background: transparent; border-color: #2a2a2f; }
+.error.variant-cancelled .error-code { color: #bfbfc4; }
 
 .job-id { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #8f8f94; }
 .phase-list { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
@@ -272,6 +276,9 @@ function buildHTML(): string {
       <div class="close-hint hidden" id="close-safe-hint">
         You can navigate away &mdash; we'll notify you when the report is ready.
       </div>
+      <div class="running-actions" style="margin-top:10px;display:flex;justify-content:flex-end;">
+        <button class="cta cancel" id="cancel-btn">Cancel evaluation</button>
+      </div>
     </div>
     <div id="done" class="section hidden">
       <div class="section-title">Evaluation complete</div>
@@ -352,6 +359,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const phaseListEl = $("phase-list");
   const elapsedCounterEl = $("elapsed-counter");
   const closeSafeHintEl = $("close-safe-hint");
+  const cancelBtn = $("cancel-btn") as HTMLButtonElement;
   const crossTabWarningEl = $("cross-tab-warning");
   const viewRunningBtn = $("view-running-btn") as HTMLButtonElement;
   const resultHeaderEl = $("result-header");
@@ -444,6 +452,10 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     doneEl.classList.toggle("hidden", state !== "done");
     errorEl.classList.toggle("hidden", state !== "error");
     newgradScanEl.classList.toggle("hidden", state !== "newgradScan");
+    if (state === "running") {
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = "Cancel evaluation";
+    }
   }
 
   function stopJobPolling(): void {
@@ -822,9 +834,37 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   function renderError(code: string, message: string): void {
     stopJobPolling();
     stopElapsedTimer();
-    errorCodeEl.textContent = code;
-    errorMessageEl.textContent = message;
+    if (code === "CANCELLED") {
+      // User-initiated cancel. Calm variant, no red styling, no
+      // recovery hint. Retry sends us back to the capture flow.
+      errorEl.classList.add("variant-cancelled");
+      errorCodeEl.textContent = "Evaluation cancelled";
+      errorMessageEl.textContent =
+        "You cancelled this run. No partial output is kept.";
+      retryBtn.textContent = "Start a new evaluation";
+    } else {
+      errorEl.classList.remove("variant-cancelled");
+      errorCodeEl.textContent = code;
+      errorMessageEl.textContent = message;
+      retryBtn.textContent = "Try again";
+    }
     show("error");
+  }
+
+  async function onCancelClick(): Promise<void> {
+    if (!currentJobId) return;
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = "Cancelling\u2026";
+    const res = await sendMsg({ kind: "cancelJob", jobId: currentJobId });
+    if (!res?.ok) {
+      // NOT_FOUND = race with natural completion; let SSE deliver the
+      // real terminal event instead of overriding with an error.
+      if (res?.error?.code !== "NOT_FOUND") {
+        renderError(res?.error?.code ?? "INTERNAL", res?.error?.message ?? "cancel failed");
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = "Cancel evaluation";
+      }
+    }
   }
 
   async function loadRecentJobs(): Promise<void> {
@@ -989,7 +1029,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   openReportBtn.addEventListener("click", () => {
     if (currentResult) void sendMsg({ kind: "openPath", absolutePath: currentResult.reportPath });
   });
-  retryBtn.addEventListener("click", () => { currentJobId = null; currentResult = null; void runCapture(); });
+  retryBtn.addEventListener("click", () => { currentJobId = null; currentResult = null; errorEl.classList.remove("variant-cancelled"); void runCapture(); });
+  cancelBtn.addEventListener("click", () => void onCancelClick());
   setupSaveBtn.addEventListener("click", async () => {
     const token = setupTokenInput.value.trim();
     setupSaveBtn.disabled = true;

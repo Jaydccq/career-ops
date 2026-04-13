@@ -130,7 +130,8 @@ export function createFakePipelineAdapter(
     async runEvaluation(
       jobId: JobId,
       input: EvaluationInput,
-      onProgress: PipelineProgressHandler
+      onProgress: PipelineProgressHandler,
+      signal?: AbortSignal
     ): Promise<EvaluationResult | BridgeError> {
       const phases: readonly JobPhase[] = [
         "extracting_jd",
@@ -142,8 +143,24 @@ export function createFakePipelineAdapter(
         "writing_tracker",
       ];
 
+      // Short-circuit if already aborted before we start.
+      if (signal?.aborted) {
+        return {
+          code: "CANCELLED",
+          message: "evaluation cancelled by user",
+          detail: { jobId, input: input.url },
+        };
+      }
+
       for (const phase of phases) {
         await sleep(delay);
+        if (signal?.aborted) {
+          return {
+            code: "CANCELLED",
+            message: "evaluation cancelled by user",
+            detail: { jobId, input: input.url, phase },
+          };
+        }
         onProgress({
           phase,
           at: nowIso(),

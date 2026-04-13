@@ -122,6 +122,17 @@ export function buildServer(args: BuildServerArgs) {
   const { config, adapter } = args;
   const store = createInMemoryJobStore();
 
+  /**
+   * In-memory registry of AbortControllers for jobs currently running.
+   * Populated when /v1/evaluate spawns the background runner. Removed
+   * on every terminal settlement path (success, failure, cancel, timeout)
+   * in runEvaluationInBackground. DELETE /v1/jobs/:id looks up the
+   * controller here to signal cancellation.
+   *
+   * Leaking entries = memory leak; terminal path MUST always delete.
+   */
+  const jobCancellers = new Map<JobId, AbortController>();
+
   const evaluateRateLimit = new RateLimiter(60_000, 3);  // 3 evaluations per minute
   const generalRateLimit = new RateLimiter(60_000, 60);   // 60 requests per minute for everything else
 
@@ -256,12 +267,25 @@ export function buildServer(args: BuildServerArgs) {
     };
     await store.create(initial);
 
+    // Register an AbortController keyed to this jobId so DELETE
+    // /v1/jobs/:id can cancel mid-run. The background runner deletes
+    // this entry on every terminal path; leaking = memory leak.
+    const controller = new AbortController();
+    jobCancellers.set(jobId, controller);
+
     // Kick off the evaluation asynchronously. Do NOT await.
-    runEvaluationInBackground(adapter, store, jobId, env.payload.input, config.evaluationTimeoutSec).catch(
-      (err) => {
-        fastify.log.error({ err, jobId }, "background evaluation crashed");
-      }
-    );
+    runEvaluationInBackground(
+      adapter,
+      store,
+      jobId,
+      env.payload.input,
+      config.evaluationTimeoutSec,
+      controller.signal,
+      jobCancellers,
+    ).catch((err) => {
+      fastify.log.error({ err, jobId }, "background evaluation crashed");
+      jobCancellers.delete(jobId);
+    });
 
     const base = `http://${config.host}:${config.port}`;
     reply.code(202).send(
@@ -286,6 +310,32 @@ export function buildServer(args: BuildServerArgs) {
     }
     reply.code(200).send(success("job-get", snap));
   });
+
+  /* -- DELETE /v1/jobs/:id (cancel in-flight evaluation) ----------------- */
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/v1/jobs/:id",
+    async (req, reply) => {
+      const jobId = req.params.id as JobId;
+      const controller = jobCancellers.get(jobId);
+      if (!controller) {
+        // Two cases collapse to 404: the job never existed, or it
+        // already finished (the cancel-controllers map only tracks
+        // in-flight jobs). The client can differentiate via
+        // GET /v1/jobs/:id if it needs to.
+        return sendFailure(
+          reply,
+          "job-cancel",
+          bridgeError("NOT_FOUND", `job ${jobId} not running`),
+        );
+      }
+      controller.abort();
+      // Do NOT await the underlying run; its abort handler will
+      // settle the adapter promise, which will flow through the
+      // background runner → job-store → SSE fan-out to the client.
+      reply.code(200).send(success("job-cancel", { cancelled: true }));
+    },
+  );
 
   /* -- /v1/jobs/:id/stream (SSE) ---------------------------------------- */
 
@@ -699,7 +749,9 @@ async function runEvaluationInBackground(
   store: ReturnType<typeof createInMemoryJobStore>,
   jobId: JobId,
   input: EvaluationInput,
-  timeoutSec: number
+  timeoutSec: number,
+  signal: AbortSignal,
+  jobCancellers: Map<JobId, AbortController>
 ): Promise<void> {
   const startedAt = Date.now();
   console.log(
@@ -732,17 +784,25 @@ async function runEvaluationInBackground(
     );
     // Fire-and-forget the progress update into the store.
     void store.pushTransition(jobId, transition);
-  });
+  }, signal);
 
-  const result = await Promise.race([evaluation, timeout]);
+  try {
+    const result = await Promise.race([evaluation, timeout]);
 
-  if (isBridgeError(result)) {
-    await store.markFailed(jobId, result);
-    console.log(JSON.stringify({ level: 30, msg: "evaluation finished", jobId, phase: "failed", durationMs: Date.now() - startedAt }));
-    return;
+    if (isBridgeError(result)) {
+      await store.markFailed(jobId, result);
+      console.log(JSON.stringify({ level: 30, msg: "evaluation finished", jobId, phase: "failed", durationMs: Date.now() - startedAt, code: result.code }));
+      return;
+    }
+    await store.markCompleted(jobId, result);
+    console.log(JSON.stringify({ level: 30, msg: "evaluation finished", jobId, phase: "completed", durationMs: Date.now() - startedAt }));
+  } finally {
+    // Always release the controller on every terminal path — success,
+    // failure, cancel, timeout, or thrown exception. Leaking entries
+    // would both grow memory unboundedly and leave orphan controllers
+    // that DELETE /v1/jobs/:id would try to abort uselessly.
+    jobCancellers.delete(jobId);
   }
-  await store.markCompleted(jobId, result);
-  console.log(JSON.stringify({ level: 30, msg: "evaluation finished", jobId, phase: "completed", durationMs: Date.now() - startedAt }));
 }
 
 function isBridgeError(v: unknown): v is BridgeError {

@@ -52,6 +52,42 @@ test("fake adapter emits reading_context / reasoning / assembling in order betwe
   expect(emitted).not.toContain("evaluating");
 });
 
+test("fake adapter returns CANCELLED when signal is aborted before start", async () => {
+  const adapter = createFakePipelineAdapter(makeConfig(), { phaseDelayMs: 0 });
+  const controller = new AbortController();
+  controller.abort();
+
+  const result = await adapter.runEvaluation(
+    "job-fake-cancel-pre" as never,
+    { url: "https://example.com/jobs/cancel-pre" },
+    () => undefined,
+    controller.signal,
+  );
+
+  expect("code" in result && result.code === "CANCELLED").toBe(true);
+});
+
+test("fake adapter returns CANCELLED when signal is aborted mid-run", async () => {
+  // A small but non-zero delay gives us time to abort between phases.
+  const adapter = createFakePipelineAdapter(makeConfig(), { phaseDelayMs: 5 });
+  const controller = new AbortController();
+
+  const emitted: JobPhase[] = [];
+  const run = adapter.runEvaluation(
+    "job-fake-cancel-mid" as never,
+    { url: "https://example.com/jobs/cancel-mid" },
+    (ev) => {
+      emitted.push(ev.phase);
+      // Abort after the first progress event so we exercise the mid-run path.
+      if (emitted.length === 1) controller.abort();
+    },
+    controller.signal,
+  );
+
+  const result = await run;
+  expect("code" in result && result.code === "CANCELLED").toBe(true);
+});
+
 test("fake adapter forced failure now fires during the reasoning sub-phase", async () => {
   const adapter = createFakePipelineAdapter(makeConfig(), {
     phaseDelayMs: 0,
