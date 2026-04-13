@@ -2124,10 +2124,9 @@ function fanEvent(jobId: JobId, event: JobEvent): void {
   // evaluation still completes normally.
   try {
     if (event.kind === "done") {
+      // persistLastResult handles the lastJobUrl clear as part of the
+      // canonical completion side-effect — no need to double-write here.
       void persistLastResult(jobId, event.result);
-      // Job is terminal — drop lastJobUrl so a future popup open on a
-      // different tab doesn't think the *new* tab is the cross-tab case.
-      void clearStateFields(["lastJobUrl"]);
       chrome.notifications.create(
         `career-ops-${jobId}`,
         {
