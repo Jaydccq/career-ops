@@ -14,6 +14,9 @@
 /*  Raw listing data                                                          */
 /* -------------------------------------------------------------------------- */
 
+/** Explicit sponsorship signal extracted from the source page when available. */
+export type SponsorshipStatus = "yes" | "no" | "unknown";
+
 /**
  * One row from the newgrad-jobs.com listing table, as extracted by the
  * content script. Field names mirror the site's column headers.
@@ -45,6 +48,10 @@ export interface NewGradRow {
   qualifications: string | null;
   /** Whether the listing indicates H-1B visa sponsorship. */
   h1bSponsored: boolean;
+  /** Normalized sponsorship support signal from the listing. */
+  sponsorshipSupport: SponsorshipStatus;
+  /** Whether the listing already signals an active secret clearance requirement. */
+  requiresActiveSecurityClearance: boolean;
   /** Whether the listing is tagged as new-grad eligible. */
   isNewGrad: boolean;
 }
@@ -107,8 +114,12 @@ export interface NewGradDetail {
   companyCategories: readonly string[];
   /** Whether the detail page signals likely H1B sponsorship. */
   h1bSponsorLikely: boolean | null;
+  /** Normalized sponsorship support signal from the detail page. */
+  sponsorshipSupport: SponsorshipStatus;
   /** Historical H1B sponsorship counts by year. */
   h1bSponsorshipHistory: readonly { year: string; count: number }[];
+  /** Whether the detail page requires an active secret security clearance. */
+  requiresActiveSecurityClearance: boolean;
   /** Count of visible insider connections on the page. */
   insiderConnections: number | null;
   /** URL of the original listing on the source site. */
@@ -253,6 +264,17 @@ export interface NewGradScanConfig {
   list_threshold: number;
   /** Minimum score required to append an enriched row to pipeline.md. */
   pipeline_threshold: number;
+  /** Profile-driven hard blockers that should skip roles before pipeline write. */
+  hard_filters: {
+    /** Skip roles that explicitly do not provide sponsorship support. */
+    exclude_no_sponsorship: boolean;
+    /** Skip roles that require an active secret security clearance. */
+    exclude_active_security_clearance: boolean;
+    /** Lowercased phrases that indicate sponsorship is unavailable. */
+    no_sponsorship_keywords: readonly string[];
+    /** Lowercased phrases that indicate active secret clearance is required. */
+    clearance_keywords: readonly string[];
+  };
   /** Max number of background tabs to open concurrently. */
   detail_concurrent_tabs: number;
   /** Minimum randomized delay between enrichment batches. */

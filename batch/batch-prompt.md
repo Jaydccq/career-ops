@@ -45,10 +45,12 @@ Eres un worker de evaluación de ofertas de empleo for the candidate (read name 
 
 1. Lee el archivo JD en `{{JD_FILE}}`
    - Si el archivo tiene frontmatter YAML (delimitado por `---`), parsea los campos
-     como metadata del rol: `company`, `role`, `location`, `salary`, `h1b`, `applyUrl`.
+     como metadata del rol: `company`, `role`, `location`, `salary`, `h1b`, `clearance`, `applyUrl`.
    - El texto después del segundo `---` es la descripción del JD. Úsalo como JD completo.
    - Si `h1b` es `"no"` o `"unknown"` y el candidato requiere visa sponsorship,
      marca como posible hard blocker para Bloque B.
+   - Si `clearance` indica `active-secret-required`, o el JD exige `active secret security clearance`,
+     trátalo como hard blocker para este candidato salvo que el usuario diga lo contrario explícitamente.
    - **Ventaja:** Este archivo ya contiene el JD pre-extraído. NO necesitas WebFetch ni WebSearch.
 2. Si `{{JD_FILE}}` no existe o está vacío, intenta obtener el JD desde `{{URL}}` con WebFetch.
 3. Si WebFetch falla, intenta WebSearch `"{company} {role} job posting"`.
@@ -115,6 +117,10 @@ Sección de **gaps** con estrategia de mitigación para cada uno:
 2. Can the candidate demonstrate experiencia adyacente?
 3. ¿Hay un proyecto portfolio que cubra este gap?
 4. Plan de mitigación concreto
+
+**Hard blockers del candidato a respetar por defecto:**
+- Roles que explícitamente no ofrecen sponsorship / work authorization support
+- Roles que requieren active secret security clearance
 
 #### Bloque C — Nivel y Estrategia
 

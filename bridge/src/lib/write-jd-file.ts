@@ -17,6 +17,8 @@ export interface WriteJdFileInput {
   salary?: string;
   /** "yes" | "no" | "unknown" */
   h1b?: string;
+  /** Optional clearance marker for prompt-side hard blockers. */
+  clearance?: string;
   applyUrl?: string;
 }
 
@@ -37,6 +39,7 @@ export function writeJdFile(input: WriteJdFileInput): string | null {
   if (input.location) meta.location = input.location;
   if (input.salary) meta.salary = input.salary;
   if (input.h1b) meta.h1b = input.h1b;
+  if (input.clearance) meta.clearance = input.clearance;
   if (input.applyUrl) meta.applyUrl = input.applyUrl;
   meta.source = "newgrad-scan";
   meta.extractedAt = new Date().toISOString();

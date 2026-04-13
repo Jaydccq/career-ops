@@ -10,6 +10,7 @@ Key sections:
 - **narrative**: Your headline, exit story, superpowers, proof points
 - **compensation**: Target range, minimum, currency
 - **location**: Country, timezone, visa status, on-site availability
+- **newgrad_scan**: Scanner scoring, thresholds, and hard blocker filters
 
 ## Target Roles (modes/_profile.md)
 

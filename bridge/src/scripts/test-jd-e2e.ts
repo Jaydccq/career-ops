@@ -1,5 +1,4 @@
-import { writeJdFile } from "../src/lib/write-jd-file.js";
-import { jdFilename } from "../src/lib/jd-filename.js";
+import { writeJdFile } from "../lib/write-jd-file.js";
 import { join, resolve } from "node:path";
 import { mkdirSync, readFileSync } from "node:fs";
 
@@ -34,7 +33,7 @@ if (result) {
   console.log("");
 
   const match = pipelineLine.match(/\[local:([^\]]+)\]/);
-  if (match) {
+  if (match?.[1]) {
     console.log("=== Batch runner regex extraction ===");
     console.log("Relative path:", match[1]);
     console.log("Absolute path:", join(projectRoot, match[1]));

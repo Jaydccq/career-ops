@@ -28,6 +28,8 @@ export interface NewGradRow {
   industry: string;
   qualifications: string;
   h1bSponsored: boolean;
+  sponsorshipSupport: "yes" | "no" | "unknown";
+  requiresActiveSecurityClearance: boolean;
   isNewGrad: boolean;
 }
 
@@ -58,7 +60,9 @@ export interface NewGradDetail {
   companyFoundedYear: string | null;
   companyCategories: string[];
   h1bSponsorLikely: boolean | null;
+  sponsorshipSupport: "yes" | "no" | "unknown";
   h1bSponsorshipHistory: { year: string; count: number }[];
+  requiresActiveSecurityClearance: boolean;
   insiderConnections: number | null;
   originalPostUrl: string;
   applyNowUrl: string;
@@ -111,7 +115,45 @@ export function extractNewGradList(): NewGradRow[] {
     if (!normalized) return false;
     if (/\b(no|false|not sure|unknown|n\/a)\b/.test(normalized)) return false;
     if (/\b(yes|true)\b/.test(normalized)) return true;
-    return /\b(sponsor(?:ed)?|visa|new[\s-]?grad|entry[\s-]?level)\b/.test(normalized);
+    return /\b(new[\s-]?grad|entry[\s-]?level)\b/.test(normalized);
+  }
+
+  function parseSponsorshipStatus(text: string): "yes" | "no" | "unknown" {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return "unknown";
+    if (/\b(not sure|unknown|n\/a|unclear)\b/.test(normalized)) return "unknown";
+    if (
+      /\b(no|false)\b/.test(normalized) ||
+      normalized.includes("no sponsorship") ||
+      normalized.includes("without sponsorship") ||
+      normalized.includes("unable to sponsor") ||
+      normalized.includes("cannot sponsor") ||
+      normalized.includes("can't sponsor")
+    ) {
+      return "no";
+    }
+    if (
+      /\b(yes|true)\b/.test(normalized) ||
+      normalized.includes("sponsor") ||
+      normalized.includes("visa support") ||
+      normalized.includes("work authorization support")
+    ) {
+      return "yes";
+    }
+    return "unknown";
+  }
+
+  function requiresActiveSecurityClearance(text: string): boolean {
+    const normalized = text.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalized) return false;
+    return (
+      normalized.includes("active secret security clearance") ||
+      normalized.includes("active secret clearance") ||
+      normalized.includes("current secret clearance") ||
+      normalized.includes("must have an active secret clearance") ||
+      normalized.includes("must possess an active secret clearance") ||
+      normalized.includes("requires an active secret clearance")
+    );
   }
 
   function parsePostedAgoMinutes(text: string): number {
@@ -281,6 +323,8 @@ export function extractNewGradList(): NewGradRow[] {
     const qualsText = txt(qualsEl) || (cells[10] ? txt(cells[10]) : "");
     const h1bText = txt(h1bEl) || (cells[11] ? txt(cells[11]) : "");
     const newGradText = txt(newGradEl) || (cells[12] ? txt(cells[12]) : "");
+    const rowText = txt(row);
+    const sponsorshipSupport = parseSponsorshipStatus(h1bText);
 
     // Skip completely empty rows (header, separator, etc.)
     if (!titleText && !companyText) continue;
@@ -299,7 +343,11 @@ export function extractNewGradList(): NewGradRow[] {
       companySize: companySizeText,
       industry: industryText,
       qualifications: qualsText.slice(0, 500),
-      h1bSponsored: parseBooleanText(h1bText),
+      h1bSponsored: sponsorshipSupport === "yes",
+      sponsorshipSupport,
+      requiresActiveSecurityClearance: requiresActiveSecurityClearance(
+        `${titleText} ${qualsText} ${rowText}`,
+      ),
       isNewGrad: parseBooleanText(newGradText),
     });
   }
@@ -383,6 +431,44 @@ export function extractNewGradDetail(): NewGradDetail {
       }
     }
     return "";
+  }
+
+  function parseSponsorshipStatus(text: string): "yes" | "no" | "unknown" {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return "unknown";
+    if (/\b(not sure|unknown|n\/a|unclear)\b/.test(normalized)) return "unknown";
+    if (
+      /\b(no|false)\b/.test(normalized) ||
+      normalized.includes("no sponsorship") ||
+      normalized.includes("without sponsorship") ||
+      normalized.includes("unable to sponsor") ||
+      normalized.includes("cannot sponsor") ||
+      normalized.includes("can't sponsor")
+    ) {
+      return "no";
+    }
+    if (
+      /\b(yes|true)\b/.test(normalized) ||
+      normalized.includes("sponsor") ||
+      normalized.includes("visa support") ||
+      normalized.includes("work authorization support")
+    ) {
+      return "yes";
+    }
+    return "unknown";
+  }
+
+  function requiresActiveSecurityClearance(text: string): boolean {
+    const normalized = text.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalized) return false;
+    return (
+      normalized.includes("active secret security clearance") ||
+      normalized.includes("active secret clearance") ||
+      normalized.includes("current secret clearance") ||
+      normalized.includes("must have an active secret clearance") ||
+      normalized.includes("must possess an active secret clearance") ||
+      normalized.includes("requires an active secret clearance")
+    );
   }
 
   function addCandidate(set: Set<string>, value: string | null | undefined): void {
@@ -848,6 +934,12 @@ export function extractNewGradDetail(): NewGradDetail {
       : bodyText.toLowerCase().includes("h1b sponsor likely")
         ? true
         : null;
+  const sponsorshipSupport =
+    typeof jobResult.isH1bSponsor === "boolean"
+      ? jobResult.isH1bSponsor
+        ? "yes"
+        : "no"
+      : parseSponsorshipStatus(bodyText);
   const h1bSponsorshipHistory = Array.isArray(companyResult.h1bAnnualJobCount)
     ? companyResult.h1bAnnualJobCount
         .map((value) => {
@@ -862,6 +954,14 @@ export function extractNewGradDetail(): NewGradDetail {
   const insiderConnections = Array.isArray(jobResult.socialConnections)
     ? jobResult.socialConnections.length
     : null;
+  const activeSecurityClearanceRequired = requiresActiveSecurityClearance(
+    [
+      bodyText,
+      description,
+      requiredQualifications.join(" "),
+      recommendationTags.join(" "),
+    ].join(" "),
+  );
 
   /* ---- original/apply URLs ---- */
   const origLink = first(
@@ -953,7 +1053,9 @@ export function extractNewGradDetail(): NewGradDetail {
     companyFoundedYear,
     companyCategories,
     h1bSponsorLikely,
+    sponsorshipSupport,
     h1bSponsorshipHistory,
+    requiresActiveSecurityClearance: activeSecurityClearanceRequired,
     insiderConnections,
     originalPostUrl,
     applyNowUrl,

@@ -41,6 +41,7 @@ import type {
 import { loadState, patchState } from "./state.js";
 import { bridgeClientFromState } from "./bridge-client.js";
 import { resolvePermissionOrigin } from "../shared/permissions.js";
+import { extractNewGradList } from "../content/extract-newgrad.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Authenticated client helper — eliminates repeated load+check boilerplate  */
@@ -799,168 +800,12 @@ async function handleNewGradExtractList(): Promise<PopupResponse> {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: sourceTabId },
-      func: () => {
-        const MAX_AGE_MINUTES = 24 * 60;
-
-        function txt(el: Element | null | undefined): string {
-          if (!el) return "";
-          return (
-            (el as HTMLElement).innerText ?? el.textContent ?? ""
-          ).trim();
-        }
-
-        function href(el: Element | null | undefined): string {
-          if (!el) return "";
-          return (el as HTMLAnchorElement).href ?? el.getAttribute("href") ?? "";
-        }
-
-        function first(parent: Element, ...selectors: string[]): Element | null {
-          for (const sel of selectors) {
-            const found = parent.querySelector(sel);
-            if (found) return found;
-          }
-          return null;
-        }
-
-        function allCells(row: Element): Element[] {
-          let cells = Array.from(row.querySelectorAll("td"));
-          if (cells.length === 0)
-            cells = Array.from(
-              row.querySelectorAll("[class*='cell'], [class*='col'], [class*='field']")
-            );
-          return cells;
-        }
-
-        function parseBooleanText(text: string): boolean {
-          const normalized = text.trim().toLowerCase();
-          if (!normalized) return false;
-          if (/\b(no|false|not sure|unknown|n\/a)\b/.test(normalized)) return false;
-          if (/\b(yes|true)\b/.test(normalized)) return true;
-          return /\b(sponsor(?:ed)?|visa|new[\s-]?grad|entry[\s-]?level)\b/.test(normalized);
-        }
-
-        function parsePostedAgoMinutes(text: string): number {
-          const normalized = text.trim().toLowerCase();
-          const longMatch = /^(\d+)\s+([a-z]+)\s+ago$/.exec(normalized);
-          if (longMatch) {
-            const value = Number(longMatch[1]);
-            const unit = longMatch[2];
-            if (unit?.startsWith("minute")) return value;
-            if (unit?.startsWith("hour")) return value * 60;
-            if (unit?.startsWith("day")) return value * 1440;
-            if (unit?.startsWith("week")) return value * 10080;
-          }
-
-          const shortMatch = /^(\d+)([mhdw])\s+ago$/.exec(normalized);
-          if (shortMatch) {
-            const value = Number(shortMatch[1]);
-            const unit = shortMatch[2];
-            if (unit === "m") return value;
-            if (unit === "h") return value * 60;
-            if (unit === "d") return value * 1440;
-            if (unit === "w") return value * 10080;
-          }
-
-          return Number.POSITIVE_INFINITY;
-        }
-
-        let rows = Array.from(document.querySelectorAll("table tbody tr"));
-        if (rows.length === 0) {
-          rows = Array.from(
-            document.querySelectorAll(
-              "[class*='job-row'], [class*='listing-row'], [class*='job'] tr, [class*='listing'] tr"
-            )
-          );
-        }
-        if (rows.length === 0) {
-          rows = Array.from(
-            document.querySelectorAll(
-              "[class*='job-card'], [class*='job-item'], [class*='listing-item']"
-            )
-          );
-        }
-
-        const extractedRows: {
-          position: number;
-          title: string;
-          postedAgo: string;
-          applyUrl: string;
-          detailUrl: string;
-          workModel: string;
-          location: string;
-          company: string;
-          salary: string;
-          companySize: string;
-          industry: string;
-          qualifications: string;
-          h1bSponsored: boolean;
-          isNewGrad: boolean;
-        }[] = [];
-
-        for (const [i, row] of rows.entries()) {
-          const cells = allCells(row);
-          const applyLink = first(
-            row,
-            "a[href*='jobs/info/']",
-            "a[href*='apply']",
-            "a[href*='Apply']",
-            "a[class*='apply']",
-            "a[data-action*='apply']"
-          );
-          const rowHref = href(applyLink);
-          const titleEl = first(
-            row,
-            "[class*='positionTitle']",
-            "[class*='title']",
-            "[class*='position']",
-            "[data-field='title']"
-          );
-
-          const titleText = txt(titleEl) || (cells[1] ? txt(cells[1]) : "");
-          const postedText = cells[2] ? txt(cells[2]) : "";
-          const workModelText = cells[4] ? txt(cells[4]) : "";
-          const locationText = cells[5] ? txt(cells[5]) : "";
-          const companyText = cells[6] ? txt(cells[6]) : "";
-          const salaryText = cells[7] ? txt(cells[7]) : "";
-          const companySizeText = cells[8] ? txt(cells[8]) : "";
-          const industryText = cells[9] ? txt(cells[9]) : "";
-          const qualsText = cells[10] ? txt(cells[10]) : "";
-          const h1bText = cells[11] ? txt(cells[11]) : "";
-          const newGradText = cells[12] ? txt(cells[12]) : "";
-
-          if (!titleText || !companyText || !rowHref) continue;
-          if (parsePostedAgoMinutes(postedText) > MAX_AGE_MINUTES) continue;
-
-          extractedRows.push({
-            position: i + 1,
-            title: titleText,
-            postedAgo: postedText,
-            applyUrl: rowHref,
-            detailUrl: rowHref,
-            workModel: workModelText,
-            location: locationText,
-            company: companyText,
-            salary: salaryText,
-            companySize: companySizeText,
-            industry: industryText,
-            qualifications: qualsText.slice(0, 2000),
-            h1bSponsored: parseBooleanText(h1bText),
-            isNewGrad: parseBooleanText(newGradText),
-          });
-        }
-
-        return {
-          rows: extractedRows,
-          pageInfo: { currentPage: 1, totalRows: extractedRows.length },
-        };
-      },
+      func: extractNewGradList,
     });
 
-    const extracted = results[0]?.result as
-      | { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } }
-      | undefined;
+    const rows = results[0]?.result as NewGradRow[] | undefined;
 
-    if (!extracted) {
+    if (!rows) {
       return {
         kind: "newgradExtractList",
         ok: false,
@@ -968,7 +813,14 @@ async function handleNewGradExtractList(): Promise<PopupResponse> {
       };
     }
 
-    return { kind: "newgradExtractList", ok: true, result: extracted };
+    return {
+      kind: "newgradExtractList",
+      ok: true,
+      result: {
+        rows,
+        pageInfo: { currentPage: 1, totalRows: rows.length },
+      },
+    };
   } finally {
     if (closeSourceTab) {
       await chrome.tabs.remove(sourceTabId).catch(() => undefined);
@@ -1263,6 +1115,44 @@ async function handleNewGradEnrichDetails(
                 .filter(Boolean);
             }
 
+            function parseSponsorshipStatus(text: string): "yes" | "no" | "unknown" {
+              const normalized = text.trim().toLowerCase();
+              if (!normalized) return "unknown";
+              if (/\b(not sure|unknown|n\/a|unclear)\b/.test(normalized)) return "unknown";
+              if (
+                /\b(no|false)\b/.test(normalized) ||
+                normalized.includes("no sponsorship") ||
+                normalized.includes("without sponsorship") ||
+                normalized.includes("unable to sponsor") ||
+                normalized.includes("cannot sponsor") ||
+                normalized.includes("can't sponsor")
+              ) {
+                return "no";
+              }
+              if (
+                /\b(yes|true)\b/.test(normalized) ||
+                normalized.includes("sponsor") ||
+                normalized.includes("visa support") ||
+                normalized.includes("work authorization support")
+              ) {
+                return "yes";
+              }
+              return "unknown";
+            }
+
+            function requiresActiveSecurityClearance(text: string): boolean {
+              const normalized = text.trim().toLowerCase().replace(/\s+/g, " ");
+              if (!normalized) return false;
+              return (
+                normalized.includes("active secret security clearance") ||
+                normalized.includes("active secret clearance") ||
+                normalized.includes("current secret clearance") ||
+                normalized.includes("must have an active secret clearance") ||
+                normalized.includes("must possess an active secret clearance") ||
+                normalized.includes("requires an active secret clearance")
+              );
+            }
+
             function parseJobrightData(): {
               jobResult?: Record<string, unknown>;
               companyResult?: Record<string, unknown>;
@@ -1522,6 +1412,12 @@ async function handleNewGradEnrichDetails(
                 : bodyText.toLowerCase().includes("h1b sponsor likely")
                   ? true
                   : null;
+            const sponsorshipSupport =
+              typeof jobResult.isH1bSponsor === "boolean"
+                ? jobResult.isH1bSponsor
+                  ? "yes"
+                  : "no"
+                : parseSponsorshipStatus(bodyText);
             const h1bSponsorshipHistory = Array.isArray(companyResult.h1bAnnualJobCount)
               ? companyResult.h1bAnnualJobCount
                   .map((value) => {
@@ -1536,6 +1432,14 @@ async function handleNewGradEnrichDetails(
             const insiderConnections = Array.isArray(jobResult.socialConnections)
               ? jobResult.socialConnections.length
               : null;
+            const activeSecurityClearanceRequired = requiresActiveSecurityClearance(
+              [
+                bodyText,
+                description,
+                requiredQualifications.join(" "),
+                recommendationTags.join(" "),
+              ].join(" ")
+            );
 
             /* ---- original/apply URLs ---- */
             const origLink = first(
@@ -1627,7 +1531,9 @@ async function handleNewGradEnrichDetails(
               companyFoundedYear,
               companyCategories,
               h1bSponsorLikely,
+              sponsorshipSupport,
               h1bSponsorshipHistory,
+              requiresActiveSecurityClearance: activeSecurityClearanceRequired,
               insiderConnections,
               originalPostUrl,
               applyNowUrl,

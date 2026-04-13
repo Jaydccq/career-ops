@@ -495,6 +495,8 @@ export function buildServer(args: BuildServerArgs) {
     industry: z.string().nullable(),
     qualifications: z.string().nullable(),
     h1bSponsored: z.boolean(),
+    sponsorshipSupport: z.enum(["yes", "no", "unknown"]),
+    requiresActiveSecurityClearance: z.boolean(),
     isNewGrad: z.boolean(),
   });
 
@@ -576,12 +578,14 @@ export function buildServer(args: BuildServerArgs) {
     companyFoundedYear: z.string().nullable(),
     companyCategories: z.array(z.string()),
     h1bSponsorLikely: z.boolean().nullable(),
+    sponsorshipSupport: z.enum(["yes", "no", "unknown"]),
     h1bSponsorshipHistory: z.array(
       z.object({
         year: z.string(),
         count: z.number().int(),
       })
     ),
+    requiresActiveSecurityClearance: z.boolean(),
     insiderConnections: z.number().int().nullable(),
     originalPostUrl: z.string(),
     applyNowUrl: z.string(),

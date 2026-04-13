@@ -98,6 +98,39 @@ export function parseFreshness(
 /*  Row scoring                                                                */
 /* -------------------------------------------------------------------------- */
 
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesAny(text: string, keywords: readonly string[]): string | null {
+  for (const keyword of keywords) {
+    const normalizedKeyword = normalizeText(keyword);
+    if (normalizedKeyword && text.includes(normalizedKeyword)) {
+      return keyword;
+    }
+  }
+  return null;
+}
+
+function buildFilterText(row: NewGradRow): string {
+  return normalizeText(
+    [
+      row.title,
+      row.company,
+      row.location,
+      row.workModel,
+      row.qualifications,
+      row.industry,
+      row.salary,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
 /**
  * Score a single listing row across three dimensions.
  *
@@ -166,7 +199,9 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
  *
  * **Hard filters** (checked in order, first match wins):
  *   1. `negative_title` — title contains any negative keyword (case-insensitive)
- *   2. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
+ *   2. `no_sponsorship` — role explicitly does not provide sponsorship support
+ *   3. `active_clearance_required` — role requires an active secret clearance
+ *   4. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
  *
  * **Soft filter:**
  *   3. `below_threshold` — score < list_threshold
@@ -192,6 +227,7 @@ export function scoreAndFilter(
 
   for (const row of rows) {
     const titleLower = row.title.toLowerCase();
+    const filterText = buildFilterText(row);
 
     // Hard filter 1: negative title keywords
     const matchedNegative = negativeLower.find((kw) => titleLower.includes(kw));
@@ -204,7 +240,37 @@ export function scoreAndFilter(
       continue;
     }
 
-    // Hard filter 2: already tracked
+    // Hard filter 2: no sponsorship support for a candidate who requires it
+    const matchedNoSponsorship = config.hard_filters.exclude_no_sponsorship
+      ? row.sponsorshipSupport === "no"
+        ? "listing sponsorship signal"
+        : includesAny(filterText, config.hard_filters.no_sponsorship_keywords)
+      : null;
+    if (matchedNoSponsorship !== null) {
+      filtered.push({
+        row,
+        reason: "no_sponsorship",
+        detail: `Role does not provide sponsorship support: "${matchedNoSponsorship}"`,
+      });
+      continue;
+    }
+
+    // Hard filter 3: active secret clearance requirement
+    const matchedClearance = config.hard_filters.exclude_active_security_clearance
+      ? row.requiresActiveSecurityClearance
+        ? "listing clearance signal"
+        : includesAny(filterText, config.hard_filters.clearance_keywords)
+      : null;
+    if (matchedClearance !== null) {
+      filtered.push({
+        row,
+        reason: "active_clearance_required",
+        detail: `Role requires active secret clearance: "${matchedClearance}"`,
+      });
+      continue;
+    }
+
+    // Hard filter 4: already tracked
     const trackingKey = `${row.company.toLowerCase()}|${titleLower}`;
     if (trackedCompanyRoles.has(trackingKey)) {
       filtered.push({

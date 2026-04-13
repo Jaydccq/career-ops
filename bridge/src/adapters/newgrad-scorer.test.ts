@@ -11,11 +11,12 @@ import type { NewGradRow, NewGradScanConfig } from "../contracts/newgrad.js";
 
 type ConfigOverrides = Omit<
   Partial<NewGradScanConfig>,
-  "role_keywords" | "skill_keywords" | "freshness"
+  "role_keywords" | "skill_keywords" | "freshness" | "hard_filters"
 > & {
   role_keywords?: Partial<NewGradScanConfig["role_keywords"]>;
   skill_keywords?: Partial<NewGradScanConfig["skill_keywords"]>;
   freshness?: Partial<NewGradScanConfig["freshness"]>;
+  hard_filters?: Partial<NewGradScanConfig["hard_filters"]>;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -36,6 +37,18 @@ function makeConfig(overrides?: ConfigOverrides): NewGradScanConfig {
     freshness: { within_24h: 2, within_3d: 1, older: 0 },
     list_threshold: 3,
     pipeline_threshold: 5,
+    hard_filters: {
+      exclude_no_sponsorship: false,
+      exclude_active_security_clearance: false,
+      no_sponsorship_keywords: [
+        "no sponsorship",
+        "unable to sponsor",
+      ],
+      clearance_keywords: [
+        "active secret security clearance",
+        "active secret clearance",
+      ],
+    },
     detail_concurrent_tabs: 3,
     detail_delay_min_ms: 2000,
     detail_delay_max_ms: 5000,
@@ -46,6 +59,7 @@ function makeConfig(overrides?: ConfigOverrides): NewGradScanConfig {
     role_keywords: { ...base.role_keywords, ...overrides?.role_keywords },
     skill_keywords: { ...base.skill_keywords, ...overrides?.skill_keywords },
     freshness: { ...base.freshness, ...overrides?.freshness },
+    hard_filters: { ...base.hard_filters, ...overrides?.hard_filters },
   };
 }
 
@@ -64,6 +78,8 @@ function makeRow(overrides?: Partial<NewGradRow>): NewGradRow {
     industry: "Software Development",
     qualifications: "Experience with TypeScript, React, and Node.js",
     h1bSponsored: false,
+    sponsorshipSupport: "unknown",
+    requiresActiveSecurityClearance: false,
     isNewGrad: true,
   };
   if (!overrides) return base;
@@ -299,6 +315,49 @@ describe("scoreAndFilter", () => {
 
     expect(result.filtered).toHaveLength(1);
     expect(result.filtered[0]!.reason).toBe("negative_title");
+  });
+
+  test("explicit no sponsorship is filtered when hard filter is enabled", () => {
+    const config = makeConfig({
+      hard_filters: { exclude_no_sponsorship: true },
+    });
+    const rows = [makeRow({ sponsorshipSupport: "no" })];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(0);
+    expect(result.filtered).toHaveLength(1);
+    expect(result.filtered[0]!.reason).toBe("no_sponsorship");
+  });
+
+  test("active secret clearance requirement is filtered when hard filter is enabled", () => {
+    const config = makeConfig({
+      hard_filters: { exclude_active_security_clearance: true },
+    });
+    const rows = [makeRow({ requiresActiveSecurityClearance: true })];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(0);
+    expect(result.filtered).toHaveLength(1);
+    expect(result.filtered[0]!.reason).toBe("active_clearance_required");
+  });
+
+  test("clearance keyword in qualifications is filtered when hard filter is enabled", () => {
+    const config = makeConfig({
+      hard_filters: { exclude_active_security_clearance: true },
+    });
+    const rows = [
+      makeRow({
+        qualifications: "Must have an active secret security clearance before start date",
+      }),
+    ];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(0);
+    expect(result.filtered).toHaveLength(1);
+    expect(result.filtered[0]!.reason).toBe("active_clearance_required");
   });
 
   test("already tracked company|role is filtered with reason 'already_tracked'", () => {

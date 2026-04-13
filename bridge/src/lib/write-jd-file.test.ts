@@ -26,6 +26,7 @@ describe("writeJdFile", () => {
       location: "Reston, VA",
       salary: "$65,000 - $110,500",
       h1b: "unknown",
+      clearance: "active-secret-required",
       applyUrl: "https://icf.wd5.myworkdayjobs.com/en-US/ICF_Careers/job/123",
     });
 
@@ -37,6 +38,7 @@ describe("writeJdFile", () => {
     expect(content).toContain('"role": "Junior Software Engineer"');
     expect(content).toContain('"salary": "$65,000 - $110,500"');
     expect(content).toContain('"h1b": "unknown"');
+    expect(content).toContain('"clearance": "active-secret-required"');
     // Check description body follows frontmatter
     expect(content).toContain("---\n\nThis is the full JD description text");
   });
@@ -55,6 +57,7 @@ describe("writeJdFile", () => {
     expect(content).not.toContain("salary");
     expect(content).not.toContain("location");
     expect(content).not.toContain("h1b");
+    expect(content).not.toContain("clearance");
     expect(content).not.toContain("applyUrl");
   });
 

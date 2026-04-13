@@ -44,5 +44,7 @@ Scoring is configured in `config/profile.yml → newgrad_scan`. Three dimensions
 Thresholds:
 - `list_threshold` — minimum score to open detail page
 - `pipeline_threshold` — minimum score to add to `data/pipeline.md`
+- `hard_filters` — root-level blocker rules like "no sponsorship" and
+  "active secret clearance required"
 
 To customize: edit `config/profile.yml → newgrad_scan`.

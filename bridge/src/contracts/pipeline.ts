@@ -140,13 +140,15 @@ export interface PipelineAdapter {
   /**
    * Score and filter a batch of newgrad-jobs.com listing rows.
    * Reads scoring config from profile.yml, negative keywords from
-   * portals.yml, and dedup set from applications.md.
+   * portals.yml, hard blocker rules from profile.yml, and dedup set
+   * from applications.md.
    */
   scoreNewGradRows(rows: NewGradRow[]): Promise<NewGradScoreResult>;
 
   /**
    * Enrich scored rows with detail-page data, re-score using description
-   * text, apply pipeline_threshold, and append survivors to pipeline.md.
+   * text, apply pipeline_threshold + hard blockers, and append survivors
+   * to pipeline.md.
    *
    * @param onProgress — optional callback invoked after each row is processed,
    *   enabling SSE streaming endpoints to emit per-row progress events.

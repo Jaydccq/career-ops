@@ -31,7 +31,6 @@ import type {
   EnrichedRow,
   NewGradScoreResult,
   NewGradEnrichResult,
-  NewGradScanConfig,
   PipelineEntry,
 } from "../contracts/newgrad.js";
 
@@ -51,6 +50,12 @@ import { basename, join, resolve } from "node:path";
 import { bridgeError } from "../runtime/errors.js";
 import { scoreAndFilter } from "./newgrad-scorer.js";
 import { pickPipelineEntryUrl } from "./newgrad-links.js";
+import {
+  loadNegativeKeywords,
+  loadNewGradScanConfig,
+  loadPipelineUrls,
+  loadTrackedCompanyRoles,
+} from "./newgrad-config.js";
 import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
 import { writeJdFile } from "../lib/write-jd-file.js";
 
@@ -596,7 +601,15 @@ export function createClaudePipelineAdapter(
           qualifications: [
             enrichedRow.row.row.qualifications ?? "",
             enrichedRow.detail.description,
+            enrichedRow.detail.requiredQualifications.join(" "),
           ].join(" "),
+          sponsorshipSupport:
+            enrichedRow.detail.sponsorshipSupport !== "unknown"
+              ? enrichedRow.detail.sponsorshipSupport
+              : enrichedRow.row.row.sponsorshipSupport,
+          requiresActiveSecurityClearance:
+            enrichedRow.detail.requiresActiveSecurityClearance ||
+            enrichedRow.row.row.requiresActiveSecurityClearance,
         };
 
         const { promoted } = scoreAndFilter(
@@ -634,11 +647,13 @@ export function createClaudePipelineAdapter(
         mkdirSync(jdsDir, { recursive: true });
 
         const h1bValue =
-          enrichedRow.detail.h1bSponsorLikely === true
-            ? "yes"
-            : enrichedRow.detail.h1bSponsorLikely === false
-              ? "no"
-              : "unknown";
+          enrichedRow.detail.sponsorshipSupport !== "unknown"
+            ? enrichedRow.detail.sponsorshipSupport
+            : enrichedRow.detail.h1bSponsorLikely === true
+              ? "yes"
+              : enrichedRow.detail.h1bSponsorLikely === false
+                ? "no"
+                : "unknown";
 
         const jdFile = writeJdFile({
           jdsDir,
@@ -649,6 +664,9 @@ export function createClaudePipelineAdapter(
           ...(enrichedRow.detail.location ? { location: enrichedRow.detail.location } : {}),
           ...(enrichedRow.detail.salaryRange ? { salary: enrichedRow.detail.salaryRange } : {}),
           h1b: h1bValue,
+          ...(enrichedRow.detail.requiresActiveSecurityClearance
+            ? { clearance: "active-secret-required" }
+            : {}),
           ...(enrichedRow.detail.applyNowUrl ? { applyUrl: enrichedRow.detail.applyNowUrl } : {}),
         });
 
@@ -697,198 +715,6 @@ export function createClaudePipelineAdapter(
 /*  Newgrad-scan helpers                                                       */
 /* -------------------------------------------------------------------------- */
 
-function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
-  const profilePath = join(repoRoot, "config/profile.yml");
-  const defaults: NewGradScanConfig = {
-    role_keywords: {
-      positive: ["engineer", "developer", "software"],
-      weight: 3,
-    },
-    skill_keywords: {
-      terms: ["typescript", "react", "node", "python"],
-      weight: 1,
-      max_score: 4,
-    },
-    freshness: { within_24h: 2, within_3d: 1, older: 0 },
-    list_threshold: 3,
-    pipeline_threshold: 5,
-    detail_concurrent_tabs: 3,
-    detail_delay_min_ms: 2000,
-    detail_delay_max_ms: 5000,
-  };
-
-  if (!existsSync(profilePath)) return defaults;
-
-  try {
-    const lines = readFileSync(profilePath, "utf-8").split(/\r?\n/);
-    const section = extractYamlBlock(lines, "newgrad_scan", 0);
-    if (section.length === 0) return defaults;
-
-    const roleBlock = extractYamlBlock(section, "role_keywords", 2);
-    const skillBlock = extractYamlBlock(section, "skill_keywords", 2);
-    const freshnessBlock = extractYamlBlock(section, "freshness", 2);
-
-    const rolePositive = extractYamlArray(roleBlock, "positive", 4);
-    const skillTerms = extractYamlArray(skillBlock, "terms", 4);
-
-    return {
-      role_keywords: {
-        positive: rolePositive.length > 0 ? rolePositive : defaults.role_keywords.positive,
-        weight: extractYamlNumber(roleBlock, "weight", 4, defaults.role_keywords.weight),
-      },
-      skill_keywords: {
-        terms: skillTerms.length > 0 ? skillTerms : defaults.skill_keywords.terms,
-        weight: extractYamlNumber(skillBlock, "weight", 4, defaults.skill_keywords.weight),
-        max_score: extractYamlNumber(skillBlock, "max_score", 4, defaults.skill_keywords.max_score),
-      },
-      freshness: {
-        within_24h: extractYamlNumber(
-          freshnessBlock,
-          "within_24h",
-          4,
-          defaults.freshness.within_24h,
-        ),
-        within_3d: extractYamlNumber(
-          freshnessBlock,
-          "within_3d",
-          4,
-          defaults.freshness.within_3d,
-        ),
-        older: extractYamlNumber(freshnessBlock, "older", 4, defaults.freshness.older),
-      },
-      list_threshold: extractYamlNumber(section, "list_threshold", 2, defaults.list_threshold),
-      pipeline_threshold: extractYamlNumber(
-        section,
-        "pipeline_threshold",
-        2,
-        defaults.pipeline_threshold,
-      ),
-      detail_concurrent_tabs: extractYamlNumber(
-        section,
-        "detail_concurrent_tabs",
-        2,
-        defaults.detail_concurrent_tabs,
-      ),
-      detail_delay_min_ms: extractYamlNumber(
-        section,
-        "detail_delay_min_ms",
-        2,
-        defaults.detail_delay_min_ms,
-      ),
-      detail_delay_max_ms: extractYamlNumber(
-        section,
-        "detail_delay_max_ms",
-        2,
-        defaults.detail_delay_max_ms,
-      ),
-    };
-  } catch {
-    return defaults;
-  }
-}
-
-function extractYamlBlock(lines: readonly string[], key: string, indent: number): string[] {
-  const header = new RegExp(`^${" ".repeat(indent)}${escapeRegExp(key)}:\\s*$`);
-  const start = lines.findIndex((line) => header.test(line));
-  if (start === -1) return [];
-
-  const block: string[] = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (line.trim() === "") {
-      block.push(line);
-      continue;
-    }
-    if (countIndent(line) <= indent) break;
-    block.push(line);
-  }
-  return block;
-}
-
-function extractYamlArray(lines: readonly string[], key: string, indent: number): string[] {
-  const block = extractYamlBlock(lines, key, indent);
-  return block
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("- "))
-    .map((line) => line.slice(2).trim().replace(/^["']|["']$/g, ""));
-}
-
-function extractYamlNumber(
-  lines: readonly string[],
-  key: string,
-  indent: number,
-  fallback: number,
-): number {
-  const pattern = new RegExp(
-    `^${" ".repeat(indent)}${escapeRegExp(key)}:\\s*(-?\\d+(?:\\.\\d+)?)\\s*$`,
-  );
-  const match = lines.find((line) => pattern.test(line))?.match(pattern);
-  return match ? Number(match[1]) : fallback;
-}
-
-function countIndent(line: string): number {
-  return line.length - line.trimStart().length;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function loadNegativeKeywords(repoRoot: string): string[] {
-  const portalsPath = join(repoRoot, "portals.yml");
-  if (!existsSync(portalsPath)) return [];
-
-  try {
-    const content = readFileSync(portalsPath, "utf-8");
-    const negMatch = /negative:\s*\n((?:\s+-\s+.+\n?)*)/m.exec(content);
-    if (!negMatch) return [];
-    return [...negMatch[1]!.matchAll(/^\s+-\s+(.+)$/gm)].map(m => m[1]!.trim().replace(/^["']|["']$/g, ""));
-  } catch {
-    return [];
-  }
-}
-
-function loadTrackedCompanyRoles(repoRoot: string): Set<string> {
-  const trackerPath = join(repoRoot, "data/applications.md");
-  const tracked = new Set<string>();
-  if (!existsSync(trackerPath)) return tracked;
-
-  try {
-    const content = readFileSync(trackerPath, "utf-8");
-    for (const line of content.split("\n")) {
-      if (!line.startsWith("|") || line.includes("---") || line.includes("Company")) continue;
-      const cols = line.split("|").map(s => s.trim());
-      if (cols.length >= 5) {
-        const company = cols[3]?.toLowerCase() ?? "";
-        const role = cols[4]?.toLowerCase() ?? "";
-        if (company && role) {
-          tracked.add(`${company}|${role}`);
-        }
-      }
-    }
-  } catch { /* ignore */ }
-  return tracked;
-}
-
-function loadPipelineUrls(repoRoot: string): Set<string> {
-  const pipelinePath = join(repoRoot, "data/pipeline.md");
-  const urls = new Set<string>();
-  if (!existsSync(pipelinePath)) return urls;
-
-  try {
-    const content = readFileSync(pipelinePath, "utf-8");
-    for (const line of content.split("\n")) {
-      const match = /^\s*-\s+\[[ xX]?\]\s+(\S+)/.exec(line);
-      if (match?.[1]) {
-        urls.add(match[1]);
-      }
-    }
-  } catch {
-    return urls;
-  }
-
-  return urls;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
