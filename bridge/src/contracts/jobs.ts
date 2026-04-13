@@ -9,11 +9,17 @@
  *
  *   queued
  *     └─> extracting_jd
- *           └─> evaluating
- *                 └─> writing_report
- *                       └─> generating_pdf
- *                             └─> writing_tracker
- *                                   └─> completed
+ *           └─> reading_context
+ *                 └─> reasoning
+ *                       └─> assembling
+ *                             └─> writing_report
+ *                                   └─> generating_pdf
+ *                                         └─> writing_tracker
+ *                                               └─> completed
+ *
+ * (evaluating is a deprecated alias for reading_context + reasoning +
+ * assembling; kept so older SSE payloads don't crash newer popups — see
+ * Task 3 migration.)
  *
  * Any phase can transition directly to `failed` with a BridgeError.
  *

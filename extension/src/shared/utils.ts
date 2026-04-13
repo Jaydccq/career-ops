@@ -36,7 +36,7 @@ export const PHASE_LABEL: Record<JobPhase, string> = {
   extracting_jd: "Extracting job description",
   reading_context: "Reading your CV + portfolio",
   reasoning: "Scoring A\u2013F blocks",
-  assembling: "Finalizing report",
+  assembling: "Compiling findings",
   writing_report: "Writing report",
   generating_pdf: "PDF step",
   writing_tracker: "Writing tracker row",

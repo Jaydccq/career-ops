@@ -19,10 +19,17 @@ describe("evaluating sub-phases", () => {
   it("labels each sub-phase with user-facing copy", () => {
     expect(PHASE_LABEL.reading_context).toBe("Reading your CV + portfolio");
     expect(PHASE_LABEL.reasoning).toMatch(/Scoring/);
-    expect(PHASE_LABEL.assembling).toBe("Finalizing report");
+    expect(PHASE_LABEL.assembling).toBe("Compiling findings");
   });
 
-  it("keeps deprecated 'evaluating' entry so older popups do not crash", () => {
-    expect(PHASE_LABEL.evaluating).toBeDefined();
+  it("keeps deprecated 'evaluating' entry as a human-readable fallback", () => {
+    const label = PHASE_LABEL.evaluating;
+    expect(typeof label).toBe("string");
+    expect(label.length).toBeGreaterThan(0);
+    expect(label).not.toBe("evaluating");  // must not render as the raw key
+  });
+
+  it("keeps 'evaluating' out of the happy-path timeline", () => {
+    expect(PHASE_ORDER).not.toContain("evaluating");
   });
 });
