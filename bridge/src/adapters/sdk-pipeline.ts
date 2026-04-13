@@ -166,6 +166,8 @@ export function createSdkPipelineAdapter(
       try {
         onProgress({ phase: "extracting_jd", at: nowIso(), note: "loading context" });
 
+        onProgress({ phase: "reading_context", at: nowIso(), note: "reading cv + system prompt" });
+
         const systemPrompt = buildSystemPrompt(config.repoRoot);
         const cvContent = safeRead(join(config.repoRoot, "cv.md"), "");
         const jdText = input.pageText?.trim() || `URL: ${input.url}\nTitle: ${input.title ?? "(untitled)"}`;
@@ -178,7 +180,7 @@ export function createSdkPipelineAdapter(
         const reportNumberText = String(reportNumber).padStart(3, "0");
         const today = todayDate();
 
-        onProgress({ phase: "evaluating", at: nowIso(), note: `sdk eval (${model})` });
+        onProgress({ phase: "reasoning", at: nowIso(), note: `sdk eval (${model})` });
 
         const userContent = [
           `## Candidate CV\n\n${cvContent}`,
@@ -196,6 +198,8 @@ export function createSdkPipelineAdapter(
           system: systemPrompt,
           messages: [{ role: "user", content: userContent }],
         });
+
+        onProgress({ phase: "assembling", at: nowIso(), note: "parsing structured output" });
 
         onProgress({ phase: "writing_report", at: nowIso() });
 

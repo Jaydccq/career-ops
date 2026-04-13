@@ -134,7 +134,9 @@ export function createFakePipelineAdapter(
     ): Promise<EvaluationResult | BridgeError> {
       const phases: readonly JobPhase[] = [
         "extracting_jd",
-        "evaluating",
+        "reading_context",
+        "reasoning",
+        "assembling",
         "writing_report",
         "generating_pdf",
         "writing_tracker",
@@ -148,12 +150,14 @@ export function createFakePipelineAdapter(
           note: `fake: ${phase}`,
         });
 
-        // Simulate a mid-run failure when requested.
-        if (options.forceFailure && phase === "evaluating") {
+        // Simulate a mid-run failure when requested. Failure now maps to the
+        // "reasoning" sub-phase — the slow model-inference step that is the
+        // most realistic failure surface in production.
+        if (options.forceFailure && phase === "reasoning") {
           await sleep(delay);
           return {
             code: "EVAL_FAILED",
-            message: "fake adapter: forced failure at phase=evaluating",
+            message: "fake adapter: forced failure at phase=reasoning",
             detail: { jobId, input: input.url },
           };
         }

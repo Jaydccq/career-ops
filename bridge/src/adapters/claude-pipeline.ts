@@ -239,6 +239,12 @@ export function createClaudePipelineAdapter(
               : "captured page text is short; Claude may fetch missing details",
         });
 
+        onProgress({
+          phase: "reading_context",
+          at: nowIso(),
+          note: "preparing prompt + JD context",
+        });
+
         writeFileSync(jdPath, buildJdText(input), "utf-8");
         writeFileSync(
           promptPath,
@@ -262,7 +268,7 @@ export function createClaudePipelineAdapter(
         appendJobLog(logPath, "bridge", `promptPath=${promptPath}`);
 
         onProgress({
-          phase: "evaluating",
+          phase: "reasoning",
           at: nowIso(),
           note: `${realExecutor === "codex" ? "codex exec" : "claude -p"} report ${reportNumberText}`,
         });
@@ -451,6 +457,12 @@ export function createClaudePipelineAdapter(
             { logPath, reportNumber }
           );
         }
+
+        onProgress({
+          phase: "assembling",
+          at: nowIso(),
+          note: "parsing terminal JSON",
+        });
 
         const finalized = finalizeEvaluationFromArtifacts({
           repoRoot: config.repoRoot,
