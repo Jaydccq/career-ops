@@ -47,4 +47,10 @@ Thresholds:
 - `hard_filters` — root-level blocker rules like "no sponsorship" and
   "active secret clearance required"
 
+Company-level memory:
+- Manual company blocklists live in `config/profile.yml -> newgrad_scan -> hard_filters`
+- Auto-remembered companies live in `data/newgrad-company-memory.yml`
+- Once a company is remembered for `no_sponsorship` or
+  `active_clearance_required`, future scans skip it before detail enrichment
+
 To customize: edit `config/profile.yml → newgrad_scan`.

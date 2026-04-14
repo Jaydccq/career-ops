@@ -84,9 +84,17 @@ newgrad_scan:
       - "does not provide sponsorship"
       - "sponsorship not available"
       - "must be authorized to work without sponsorship"
+    # Optional company-level skip list. Use this when you've already confirmed
+    # that a company consistently does not sponsor.
+    no_sponsorship_companies:
+      - "Example Company"
     clearance_keywords:
       - "active secret security clearance"
       - "active secret clearance"
       - "current secret clearance"
       - "must have an active secret clearance"
       - "must possess an active secret clearance"
+    # Optional company-level skip list for defense contractors or teams that
+    # consistently require an active clearance.
+    active_security_clearance_companies:
+      - "Example Defense Contractor"

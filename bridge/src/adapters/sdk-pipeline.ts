@@ -39,6 +39,7 @@ import type {
   EvaluationInput,
   EvaluationResult,
   JobId,
+  TrackerMergeSummary,
   TrackerRow,
   TrackerStatus,
 } from "../contracts/jobs.js";
@@ -70,6 +71,7 @@ import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
   loadPipelineUrls,
+  persistBlockedCompanies,
   loadTrackedCompanyRoles,
 } from "./newgrad-config.js";
 
@@ -83,12 +85,15 @@ const evaluationOutputSchema = z.object({
   archetype: z.string().describe("Detected archetype"),
   score: z.number().min(0).max(5).describe("Overall match score 0-5"),
   tldr: z.string().describe("One-sentence TL;DR of the evaluation"),
+  legitimacy: z.string().describe("Posting legitimacy assessment tier"),
   blockA: z.string().describe("Block A: Role summary in markdown"),
   blockB: z.string().describe("Block B: CV match analysis in markdown"),
   blockC: z.string().describe("Block C: Level strategy in markdown"),
   blockD: z.string().describe("Block D: Comp and demand research in markdown"),
   blockE: z.string().describe("Block E: CV personalization plan in markdown"),
   blockF: z.string().describe("Block F: Interview preparation in markdown"),
+  blockG: z.string().describe("Block G: Posting legitimacy analysis in markdown"),
+  draftAnswers: z.string().optional().describe("Markdown for section H draft application answers when score >= 4.5; omit or empty otherwise"),
   keywords: z.array(z.string()).describe("15-20 ATS keywords from the JD"),
 });
 
@@ -106,6 +111,7 @@ export interface SdkPipelineOptions {
 export const __internal = {
   extractJsonFromText,
   buildSystemPrompt,
+  buildReport,
 };
 
 export function createSdkPipelineAdapter(
@@ -189,8 +195,8 @@ export function createSdkPipelineAdapter(
           `## Candidate CV\n\n${cvContent}`,
           `## Job Description\n\nURL: ${input.url}\nTitle: ${input.title ?? "(untitled)"}\n\n${jdText}`,
           `## Instructions`,
-          `Evaluate this job offer using the A-F block system from your instructions.`,
-          `Return your evaluation as a structured JSON object with fields: company, role, archetype, score (number 0-5), tldr, blockA through blockF (each a markdown string), and keywords (array of 15-20 strings).`,
+          `Evaluate this job offer using the full A-G oferta system from your instructions.`,
+          `Return your evaluation as a structured JSON object with fields: company, role, archetype, score (number 0-5), tldr, legitimacy, blockA through blockG (each a markdown string), draftAnswers (markdown string only when score >= 4.5, otherwise omit or empty), and keywords (array of 15-20 strings).`,
           `Wrap the JSON in a \`\`\`json code fence.`,
         ].join("\n\n");
 
@@ -247,6 +253,8 @@ export function createSdkPipelineAdapter(
 
         writeTrackerTsv(config.repoRoot, reportNumber, slug, trackerRow);
 
+        const trackerMergeSummary = attemptTrackerMerge(config);
+
         return {
           reportNumber,
           reportPath,
@@ -257,6 +265,8 @@ export function createSdkPipelineAdapter(
           archetype: evalOutput.archetype,
           tldr: evalOutput.tldr,
           trackerRow,
+          trackerMerged: trackerMergeSummary !== null,
+          ...(trackerMergeSummary ? { trackerMergeSummary } : {}),
         };
       } catch (err) {
         if (err instanceof Anthropic.RateLimitError) {
@@ -307,11 +317,8 @@ export function createSdkPipelineAdapter(
           encoding: "utf-8",
           timeout: 30_000,
         });
-        const m = /\+(\d+)\s+added,\s+🔄(\d+)\s+updated,\s+⏭️(\d+)\s+skipped/u.exec(out);
         return {
-          added: Number(m?.[1] ?? 0),
-          updated: Number(m?.[2] ?? 0),
-          skipped: Number(m?.[3] ?? 0),
+          ...parseMergeSummary(out),
           dryRun,
         };
       } catch {
@@ -324,6 +331,7 @@ export function createSdkPipelineAdapter(
       const negativeKeywords = loadNegativeKeywords(config.repoRoot);
       const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
       const { promoted, filtered } = scoreAndFilter(rows, scanConfig, negativeKeywords, trackedSet);
+      persistBlockedCompanies(config.repoRoot, filtered);
       return { promoted, filtered };
     },
 
@@ -359,12 +367,13 @@ export function createSdkPipelineAdapter(
             enrichedRow.row.row.requiresActiveSecurityClearance,
         };
 
-        const { promoted } = scoreAndFilter(
+        const { promoted, filtered } = scoreAndFilter(
           [augmentedRow],
           scanConfig,
           negativeKeywords,
           trackedSet,
         );
+        persistBlockedCompanies(config.repoRoot, filtered);
 
         if (promoted.length === 0) {
           skipped++;
@@ -477,14 +486,15 @@ function extractJsonFromText(text: string): unknown {
 }
 
 function buildReport(output: EvaluationOutput, input: EvaluationInput, date: string): string {
-  return [
+  const sections = [
     `# Evaluación: ${output.company} — ${output.role}`,
     "",
     `**Fecha:** ${date}`,
     `**Arquetipo:** ${output.archetype}`,
     `**Score:** ${output.score.toFixed(1)}/5`,
+    `**Legitimacy:** ${output.legitimacy}`,
     `**URL:** ${input.url}`,
-    `**PDF:** pendiente`,
+    `**PDF:** pending explicit confirmation`,
     `**Adapter:** sdk (direct API)`,
     "",
     "---",
@@ -495,10 +505,46 @@ function buildReport(output: EvaluationOutput, input: EvaluationInput, date: str
     "## D) Comp y Demanda", output.blockD, "",
     "## E) Plan de Personalización", output.blockE, "",
     "## F) Plan de Entrevistas", output.blockF, "",
-    "---", "",
+    "## G) Posting Legitimacy", output.blockG,
+  ];
+
+  if (output.score >= 4.5 && output.draftAnswers?.trim()) {
+    sections.push("", "## H) Draft Application Answers", output.draftAnswers.trim());
+  }
+
+  sections.push(
+    "",
+    "---",
+    "",
     "## Keywords extraídas",
     output.keywords.map(k => `- ${k}`).join("\n"),
-  ].join("\n");
+  );
+
+  return sections.join("\n");
+}
+
+function attemptTrackerMerge(config: PipelineConfig): TrackerMergeSummary | null {
+  const args = [join(config.repoRoot, "merge-tracker.mjs")];
+  try {
+    const out = execFileSync(config.nodeBin, args, {
+      cwd: config.repoRoot,
+      encoding: "utf-8",
+      timeout: 30_000,
+    });
+    return parseMergeSummary(out);
+  } catch {
+    return null;
+  }
+}
+
+function parseMergeSummary(stdout: string): TrackerMergeSummary {
+  const match =
+    /\+(\d+)\s+added,\s+🔄(\d+)\s+updated,\s+⏭️(\d+)\s+skipped/u.exec(stdout);
+  return {
+    added: Number(match?.[1] ?? 0),
+    updated: Number(match?.[2] ?? 0),
+    skipped: Number(match?.[3] ?? 0),
+  };
 }
 
 function buildFallbackReport(input: EvaluationInput, date: string, rawText: string): string {

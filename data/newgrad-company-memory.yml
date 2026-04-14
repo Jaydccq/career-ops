@@ -1,0 +1,8 @@
+# Auto-maintained by newgrad-scan.
+# Companies remembered here are skipped at company level in future scans.
+
+no_sponsorship_companies:
+  - "Momentic"
+
+active_security_clearance_companies:
+  - "Booz Allen Hamilton"

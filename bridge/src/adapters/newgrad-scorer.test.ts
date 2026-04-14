@@ -44,10 +44,12 @@ function makeConfig(overrides?: ConfigOverrides): NewGradScanConfig {
         "no sponsorship",
         "unable to sponsor",
       ],
+      no_sponsorship_companies: [],
       clearance_keywords: [
         "active secret security clearance",
         "active secret clearance",
       ],
+      active_security_clearance_companies: [],
     },
     detail_concurrent_tabs: 3,
     detail_delay_min_ms: 2000,
@@ -330,6 +332,23 @@ describe("scoreAndFilter", () => {
     expect(result.filtered[0]!.reason).toBe("no_sponsorship");
   });
 
+  test("company on the no sponsorship blocklist is filtered before scoring", () => {
+    const config = makeConfig({
+      hard_filters: {
+        exclude_no_sponsorship: true,
+        no_sponsorship_companies: ["Momentic"],
+      },
+    });
+    const rows = [makeRow({ company: "Momentic", sponsorshipSupport: "unknown" })];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(0);
+    expect(result.filtered).toHaveLength(1);
+    expect(result.filtered[0]!.reason).toBe("no_sponsorship");
+    expect(result.filtered[0]!.detail).toContain("blocklist");
+  });
+
   test("active secret clearance requirement is filtered when hard filter is enabled", () => {
     const config = makeConfig({
       hard_filters: { exclude_active_security_clearance: true },
@@ -341,6 +360,28 @@ describe("scoreAndFilter", () => {
     expect(result.promoted).toHaveLength(0);
     expect(result.filtered).toHaveLength(1);
     expect(result.filtered[0]!.reason).toBe("active_clearance_required");
+  });
+
+  test("company on the active clearance blocklist is filtered before scoring", () => {
+    const config = makeConfig({
+      hard_filters: {
+        exclude_active_security_clearance: true,
+        active_security_clearance_companies: ["Booz Allen Hamilton"],
+      },
+    });
+    const rows = [
+      makeRow({
+        company: "Booz Allen Hamilton",
+        requiresActiveSecurityClearance: false,
+      }),
+    ];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(0);
+    expect(result.filtered).toHaveLength(1);
+    expect(result.filtered[0]!.reason).toBe("active_clearance_required");
+    expect(result.filtered[0]!.detail).toContain("blocklist");
   });
 
   test("clearance keyword in qualifications is filtered when hard filter is enabled", () => {

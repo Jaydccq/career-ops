@@ -1,7 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { NewGradScanConfig } from "../contracts/newgrad.js";
+import type { FilteredRow, NewGradScanConfig } from "../contracts/newgrad.js";
+
+const COMPANY_MEMORY_PATH = "data/newgrad-company-memory.yml";
+
+interface BlockedCompanyMemory {
+  no_sponsorship_companies: string[];
+  active_security_clearance_companies: string[];
+}
 
 const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
   role_keywords: {
@@ -31,6 +38,7 @@ const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
       "no visa sponsorship",
       "must be authorized to work without sponsorship",
     ],
+    no_sponsorship_companies: [],
     clearance_keywords: [
       "active secret security clearance",
       "active secret clearance",
@@ -39,6 +47,7 @@ const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
       "must possess an active secret clearance",
       "requires an active secret clearance",
     ],
+    active_security_clearance_companies: [],
   },
   detail_concurrent_tabs: 3,
   detail_delay_min_ms: 2000,
@@ -46,13 +55,44 @@ const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
 };
 
 export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
+  const companyMemory = loadBlockedCompanyMemory(repoRoot);
   const profilePath = join(repoRoot, "config/profile.yml");
-  if (!existsSync(profilePath)) return DEFAULT_SCAN_CONFIG;
+  if (!existsSync(profilePath)) {
+    return {
+      ...DEFAULT_SCAN_CONFIG,
+      hard_filters: {
+        ...DEFAULT_SCAN_CONFIG.hard_filters,
+        no_sponsorship_companies: mergeUniqueStrings(
+          DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
+          companyMemory.no_sponsorship_companies,
+        ),
+        active_security_clearance_companies: mergeUniqueStrings(
+          DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
+          companyMemory.active_security_clearance_companies,
+        ),
+      },
+    };
+  }
 
   try {
     const lines = readFileSync(profilePath, "utf-8").split(/\r?\n/);
     const section = extractYamlBlock(lines, "newgrad_scan", 0);
-    if (section.length === 0) return DEFAULT_SCAN_CONFIG;
+    if (section.length === 0) {
+      return {
+        ...DEFAULT_SCAN_CONFIG,
+        hard_filters: {
+          ...DEFAULT_SCAN_CONFIG.hard_filters,
+          no_sponsorship_companies: mergeUniqueStrings(
+            DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
+            companyMemory.no_sponsorship_companies,
+          ),
+          active_security_clearance_companies: mergeUniqueStrings(
+            DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
+            companyMemory.active_security_clearance_companies,
+          ),
+        },
+      };
+    }
 
     const roleBlock = extractYamlBlock(section, "role_keywords", 2);
     const skillBlock = extractYamlBlock(section, "skill_keywords", 2);
@@ -66,9 +106,19 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
       "no_sponsorship_keywords",
       4,
     );
+    const noSponsorshipCompanies = extractYamlArray(
+      hardFiltersBlock,
+      "no_sponsorship_companies",
+      4,
+    );
     const clearanceKeywords = extractYamlArray(
       hardFiltersBlock,
       "clearance_keywords",
+      4,
+    );
+    const activeSecurityClearanceCompanies = extractYamlArray(
+      hardFiltersBlock,
+      "active_security_clearance_companies",
       4,
     );
 
@@ -152,10 +202,18 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
           noSponsorshipKeywords.length > 0
             ? noSponsorshipKeywords
             : DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_keywords,
+        no_sponsorship_companies: mergeUniqueStrings(
+          noSponsorshipCompanies,
+          companyMemory.no_sponsorship_companies,
+        ),
         clearance_keywords:
           clearanceKeywords.length > 0
             ? clearanceKeywords
             : DEFAULT_SCAN_CONFIG.hard_filters.clearance_keywords,
+        active_security_clearance_companies: mergeUniqueStrings(
+          activeSecurityClearanceCompanies,
+          companyMemory.active_security_clearance_companies,
+        ),
       },
       detail_concurrent_tabs: extractYamlNumber(
         section,
@@ -177,7 +235,20 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
       ),
     };
   } catch {
-    return DEFAULT_SCAN_CONFIG;
+    return {
+      ...DEFAULT_SCAN_CONFIG,
+      hard_filters: {
+        ...DEFAULT_SCAN_CONFIG.hard_filters,
+        no_sponsorship_companies: mergeUniqueStrings(
+          DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
+          companyMemory.no_sponsorship_companies,
+        ),
+        active_security_clearance_companies: mergeUniqueStrings(
+          DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
+          companyMemory.active_security_clearance_companies,
+        ),
+      },
+    };
   }
 }
 
@@ -240,6 +311,123 @@ export function loadPipelineUrls(repoRoot: string): Set<string> {
   }
 
   return urls;
+}
+
+export function persistBlockedCompanies(
+  repoRoot: string,
+  filteredRows: readonly FilteredRow[],
+): void {
+  const memory = loadBlockedCompanyMemory(repoRoot);
+  let changed = false;
+
+  for (const filteredRow of filteredRows) {
+    const company = filteredRow.row.company.trim();
+    if (!company) continue;
+
+    if (filteredRow.reason === "no_sponsorship") {
+      changed =
+        insertUniqueCompany(memory.no_sponsorship_companies, company) || changed;
+      continue;
+    }
+
+    if (filteredRow.reason === "active_clearance_required") {
+      changed =
+        insertUniqueCompany(
+          memory.active_security_clearance_companies,
+          company,
+        ) || changed;
+    }
+  }
+
+  if (!changed) return;
+
+  memory.no_sponsorship_companies.sort(compareCaseInsensitive);
+  memory.active_security_clearance_companies.sort(compareCaseInsensitive);
+  writeBlockedCompanyMemory(repoRoot, memory);
+}
+
+function loadBlockedCompanyMemory(repoRoot: string): BlockedCompanyMemory {
+  const memoryPath = join(repoRoot, COMPANY_MEMORY_PATH);
+  if (!existsSync(memoryPath)) {
+    return {
+      no_sponsorship_companies: [],
+      active_security_clearance_companies: [],
+    };
+  }
+
+  try {
+    const lines = readFileSync(memoryPath, "utf-8").split(/\r?\n/);
+    return {
+      no_sponsorship_companies: extractYamlArray(
+        lines,
+        "no_sponsorship_companies",
+        0,
+      ),
+      active_security_clearance_companies: extractYamlArray(
+        lines,
+        "active_security_clearance_companies",
+        0,
+      ),
+    };
+  } catch {
+    return {
+      no_sponsorship_companies: [],
+      active_security_clearance_companies: [],
+    };
+  }
+}
+
+function writeBlockedCompanyMemory(
+  repoRoot: string,
+  memory: BlockedCompanyMemory,
+): void {
+  const memoryPath = join(repoRoot, COMPANY_MEMORY_PATH);
+  mkdirSync(join(repoRoot, "data"), { recursive: true });
+  const lines = [
+    "# Auto-maintained by newgrad-scan.",
+    "# Companies remembered here are skipped at company level in future scans.",
+    "",
+    "no_sponsorship_companies:",
+    ...renderYamlArray(memory.no_sponsorship_companies),
+    "",
+    "active_security_clearance_companies:",
+    ...renderYamlArray(memory.active_security_clearance_companies),
+    "",
+  ];
+  writeFileSync(memoryPath, lines.join("\n"), "utf-8");
+}
+
+function renderYamlArray(values: readonly string[]): string[] {
+  return values.map((value) => `  - ${JSON.stringify(value)}`);
+}
+
+function mergeUniqueStrings(...groups: ReadonlyArray<readonly string[]>): string[] {
+  const merged: string[] = [];
+  for (const group of groups) {
+    for (const value of group) {
+      insertUniqueCompany(merged, value);
+    }
+  }
+  return merged.sort(compareCaseInsensitive);
+}
+
+function insertUniqueCompany(values: string[], company: string): boolean {
+  const normalizedCompany = normalizeCompanyName(company);
+  if (!normalizedCompany) return false;
+  const exists = values.some(
+    (value) => normalizeCompanyName(value) === normalizedCompany,
+  );
+  if (exists) return false;
+  values.push(company.trim());
+  return true;
+}
+
+function normalizeCompanyName(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function compareCaseInsensitive(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { sensitivity: "base" });
 }
 
 function extractYamlBlock(lines: readonly string[], key: string, indent: number): string[] {

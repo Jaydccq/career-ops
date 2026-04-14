@@ -10,7 +10,7 @@ Key sections:
 - **narrative**: Your headline, exit story, superpowers, proof points
 - **compensation**: Target range, minimum, currency
 - **location**: Country, timezone, visa status, on-site availability
-- **newgrad_scan**: Scanner scoring, thresholds, and hard blocker filters
+- **newgrad_scan**: Scanner scoring, thresholds, manual company blocklists, and hard blocker filters
 
 ## Target Roles (modes/_profile.md)
 
@@ -33,6 +33,22 @@ Copy from `templates/portals.example.yml` and customize:
 2. **title_filter.negative**: Tech stacks or domains to exclude
 3. **search_queries**: WebSearch queries for job boards (Ashby, Greenhouse, Lever)
 4. **tracked_companies**: Companies to check directly
+
+## newgrad Company Memory
+
+The newgrad scanner has two layers of company-level memory:
+
+- Manual lists in `config/profile.yml -> newgrad_scan -> hard_filters`
+- Auto-learned lists in `data/newgrad-company-memory.yml`
+
+Use the manual lists for companies you already know you never want to revisit.
+The scanner will also remember companies it filters for:
+
+- `no_sponsorship`
+- `active_clearance_required`
+
+Once a company lands in that memory file, future scans skip it at the company
+level before detail enrichment.
 
 ## CV Template (templates/cv-template.html)
 

@@ -272,8 +272,12 @@ export interface NewGradScanConfig {
     exclude_active_security_clearance: boolean;
     /** Lowercased phrases that indicate sponsorship is unavailable. */
     no_sponsorship_keywords: readonly string[];
+    /** Company names that should be skipped because they do not sponsor. */
+    no_sponsorship_companies: readonly string[];
     /** Lowercased phrases that indicate active secret clearance is required. */
     clearance_keywords: readonly string[];
+    /** Company names that should be skipped because they require active clearance. */
+    active_security_clearance_companies: readonly string[];
   };
   /** Max number of background tabs to open concurrently. */
   detail_concurrent_tabs: number;

@@ -115,6 +115,16 @@ function includesAny(text: string, keywords: readonly string[]): string | null {
   return null;
 }
 
+function equalsAny(value: string, candidates: readonly string[]): string | null {
+  const normalizedValue = normalizeText(value);
+  for (const candidate of candidates) {
+    if (normalizedValue && normalizeText(candidate) === normalizedValue) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function buildFilterText(row: NewGradRow): string {
   return normalizeText(
     [
@@ -199,9 +209,11 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
  *
  * **Hard filters** (checked in order, first match wins):
  *   1. `negative_title` — title contains any negative keyword (case-insensitive)
- *   2. `no_sponsorship` — role explicitly does not provide sponsorship support
- *   3. `active_clearance_required` — role requires an active secret clearance
- *   4. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
+ *   2. `no_sponsorship` — company is on the no-sponsorship blocklist
+ *   3. `active_clearance_required` — company is on the clearance blocklist
+ *   4. `no_sponsorship` — role explicitly does not provide sponsorship support
+ *   5. `active_clearance_required` — role requires an active secret clearance
+ *   6. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
  *
  * **Soft filter:**
  *   3. `below_threshold` — score < list_threshold
@@ -240,7 +252,36 @@ export function scoreAndFilter(
       continue;
     }
 
-    // Hard filter 2: no sponsorship support for a candidate who requires it
+    // Hard filter 2: company-level no sponsorship blocklist
+    const blockedNoSponsorshipCompany = config.hard_filters.exclude_no_sponsorship
+      ? equalsAny(row.company, config.hard_filters.no_sponsorship_companies)
+      : null;
+    if (blockedNoSponsorshipCompany !== null) {
+      filtered.push({
+        row,
+        reason: "no_sponsorship",
+        detail: `Company is on the no-sponsorship blocklist: "${blockedNoSponsorshipCompany}"`,
+      });
+      continue;
+    }
+
+    // Hard filter 3: company-level active clearance blocklist
+    const blockedActiveClearanceCompany = config.hard_filters.exclude_active_security_clearance
+      ? equalsAny(
+          row.company,
+          config.hard_filters.active_security_clearance_companies,
+        )
+      : null;
+    if (blockedActiveClearanceCompany !== null) {
+      filtered.push({
+        row,
+        reason: "active_clearance_required",
+        detail: `Company is on the active-clearance blocklist: "${blockedActiveClearanceCompany}"`,
+      });
+      continue;
+    }
+
+    // Hard filter 4: no sponsorship support for a candidate who requires it
     const matchedNoSponsorship = config.hard_filters.exclude_no_sponsorship
       ? row.sponsorshipSupport === "no"
         ? "listing sponsorship signal"
@@ -255,7 +296,7 @@ export function scoreAndFilter(
       continue;
     }
 
-    // Hard filter 3: active secret clearance requirement
+    // Hard filter 5: active secret clearance requirement
     const matchedClearance = config.hard_filters.exclude_active_security_clearance
       ? row.requiresActiveSecurityClearance
         ? "listing clearance signal"
@@ -270,7 +311,7 @@ export function scoreAndFilter(
       continue;
     }
 
-    // Hard filter 4: already tracked
+    // Hard filter 6: already tracked
     const trackingKey = `${row.company.toLowerCase()}|${titleLower}`;
     if (trackedCompanyRoles.has(trackingKey)) {
       filtered.push({

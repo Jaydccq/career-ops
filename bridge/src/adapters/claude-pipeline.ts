@@ -22,6 +22,7 @@ import type {
   EvaluationInput,
   EvaluationResult,
   JobId,
+  TrackerMergeSummary,
   TrackerRow,
   TrackerStatus,
 } from "../contracts/jobs.js";
@@ -54,6 +55,7 @@ import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
   loadPipelineUrls,
+  persistBlockedCompanies,
   loadTrackedCompanyRoles,
 } from "./newgrad-config.js";
 import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
@@ -105,6 +107,11 @@ interface ExecutionPlan {
   stdinText?: string;
   terminalFilePath?: string;
   cleanupPaths: string[];
+}
+
+interface TrackerMergeAttempt {
+  merged: boolean;
+  summary?: TrackerMergeSummary;
 }
 
 export const __internal = {
@@ -380,7 +387,7 @@ export function createClaudePipelineAdapter(
               "bridge",
               "artifact recovery succeeded after timeout"
             );
-            return recovered;
+            return await syncTrackerAfterEvaluation(config, recovered, logPath);
           }
           appendJobLog(logPath, "bridge", "artifact recovery failed after timeout");
           return bridgeError("TIMEOUT", "evaluation timed out", {
@@ -411,7 +418,7 @@ export function createClaudePipelineAdapter(
               "bridge",
               "artifact recovery succeeded after non-zero exit"
             );
-            return recovered;
+            return await syncTrackerAfterEvaluation(config, recovered, logPath);
           }
           appendJobLog(
             logPath,
@@ -473,7 +480,7 @@ export function createClaudePipelineAdapter(
             "bridge",
             `evaluation finalized reportPath=${finalized.reportPath} pdfPath=${finalized.pdfPath ?? "null"}`
           );
-          return finalized;
+          return await syncTrackerAfterEvaluation(config, finalized, logPath);
         }
 
         appendJobLog(
@@ -558,14 +565,8 @@ export function createClaudePipelineAdapter(
         );
       }
 
-      const summaryMatch = /\+(\d+)\s+added,\s+🔄(\d+)\s+updated,\s+⏭️(\d+)\s+skipped/u.exec(
-        result.stdout
-      );
-
       return {
-        added: Number(summaryMatch?.[1] ?? 0),
-        updated: Number(summaryMatch?.[2] ?? 0),
-        skipped: Number(summaryMatch?.[3] ?? 0),
+        ...parseMergeSummary(result.stdout),
         dryRun,
       };
     },
@@ -575,6 +576,7 @@ export function createClaudePipelineAdapter(
       const negativeKeywords = loadNegativeKeywords(config.repoRoot);
       const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
       const { promoted, filtered } = scoreAndFilter(rows, scanConfig, negativeKeywords, trackedSet);
+      persistBlockedCompanies(config.repoRoot, filtered);
       return { promoted, filtered };
     },
 
@@ -612,12 +614,13 @@ export function createClaudePipelineAdapter(
             enrichedRow.row.row.requiresActiveSecurityClearance,
         };
 
-        const { promoted } = scoreAndFilter(
+        const { promoted, filtered } = scoreAndFilter(
           [augmentedRow],
           scanConfig,
           negativeKeywords,
           trackedSet,
         );
+        persistBlockedCompanies(config.repoRoot, filtered);
 
         if (promoted.length === 0) {
           skipped++;
@@ -1304,6 +1307,66 @@ function resolveOptionalArtifactPath(
   return resolved && existsSync(resolved) ? resolved : null;
 }
 
+async function syncTrackerAfterEvaluation(
+  config: PipelineConfig,
+  result: EvaluationResult,
+  logPath?: string
+): Promise<EvaluationResult> {
+  const merge = await attemptTrackerMerge(config, logPath);
+  if (logPath) {
+    appendJobLog(
+      logPath,
+      "bridge",
+      merge.merged
+        ? `tracker merge succeeded added=${merge.summary?.added ?? 0} updated=${merge.summary?.updated ?? 0} skipped=${merge.summary?.skipped ?? 0}`
+        : "tracker merge failed; leaving TSV pending for manual recovery"
+    );
+  }
+  return {
+    ...result,
+    trackerMerged: merge.merged,
+    ...(merge.summary ? { trackerMergeSummary: merge.summary } : {}),
+  };
+}
+
+async function attemptTrackerMerge(
+  config: PipelineConfig,
+  logPath?: string
+): Promise<TrackerMergeAttempt> {
+  const command = await runCommand(
+    config.nodeBin,
+    [join(config.repoRoot, "merge-tracker.mjs")],
+    config.repoRoot,
+    config.evaluationTimeoutSec * 1000
+  );
+
+  if (command.timedOut || command.exitCode !== 0) {
+    if (logPath) {
+      appendJobLog(
+        logPath,
+        "bridge",
+        `merge-tracker failed exitCode=${command.exitCode ?? "null"} timedOut=${command.timedOut} stderr=${tailText(command.stderr || command.stdout, 2000)}`
+      );
+    }
+    return { merged: false };
+  }
+
+  return {
+    merged: true,
+    summary: parseMergeSummary(command.stdout),
+  };
+}
+
+function parseMergeSummary(stdout: string): TrackerMergeSummary {
+  const summaryMatch =
+    /\+(\d+)\s+added,\s+🔄(\d+)\s+updated,\s+⏭️(\d+)\s+skipped/u.exec(stdout);
+  return {
+    added: Number(summaryMatch?.[1] ?? 0),
+    updated: Number(summaryMatch?.[2] ?? 0),
+    skipped: Number(summaryMatch?.[3] ?? 0),
+  };
+}
+
 function finalizeEvaluationFromArtifacts(args: {
   repoRoot: string;
   trackerDir: string;
@@ -1397,6 +1460,7 @@ function finalizeEvaluationFromArtifacts(args: {
     archetype,
     tldr,
     trackerRow,
+    trackerMerged: false,
   };
 }
 

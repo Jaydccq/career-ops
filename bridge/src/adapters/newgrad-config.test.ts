@@ -1,0 +1,121 @@
+import { afterEach, describe, expect, test } from "vitest";
+
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  loadNewGradScanConfig,
+  persistBlockedCompanies,
+} from "./newgrad-config.js";
+
+import type { FilteredRow, NewGradRow } from "../contracts/newgrad.js";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("newgrad-config", () => {
+  test("loadNewGradScanConfig merges manual and remembered company blocklists", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "config/profile.yml"),
+      [
+        "newgrad_scan:",
+        "  hard_filters:",
+        "    no_sponsorship_companies:",
+        '      - "Momentic"',
+        "    active_security_clearance_companies:",
+        '      - "Booz Allen Hamilton"',
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    writeFileSync(
+      join(repoRoot, "data/newgrad-company-memory.yml"),
+      [
+        "no_sponsorship_companies:",
+        '  - "RemoteHunter"',
+        "",
+        "active_security_clearance_companies:",
+        '  - "Shield AI"',
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const config = loadNewGradScanConfig(repoRoot);
+
+    expect(config.hard_filters.no_sponsorship_companies).toEqual([
+      "Momentic",
+      "RemoteHunter",
+    ]);
+    expect(config.hard_filters.active_security_clearance_companies).toEqual([
+      "Booz Allen Hamilton",
+      "Shield AI",
+    ]);
+  });
+
+  test("persistBlockedCompanies writes deduped company memory", () => {
+    const repoRoot = makeRepoRoot();
+
+    persistBlockedCompanies(repoRoot, [
+      makeFilteredRow("no_sponsorship", "Momentic"),
+      makeFilteredRow("no_sponsorship", "momentic"),
+      makeFilteredRow("active_clearance_required", "Booz Allen Hamilton"),
+    ]);
+
+    const content = readFileSync(
+      join(repoRoot, "data/newgrad-company-memory.yml"),
+      "utf-8",
+    );
+
+    expect(content).toContain('"Momentic"');
+    expect(content).toContain('"Booz Allen Hamilton"');
+    expect(content.match(/Momentic/g)).toHaveLength(1);
+  });
+});
+
+function makeRepoRoot(): string {
+  const repoRoot = mkdtempSync(join(tmpdir(), "career-ops-newgrad-config-"));
+  tempDirs.push(repoRoot);
+  mkdirSync(join(repoRoot, "config"), { recursive: true });
+  mkdirSync(join(repoRoot, "data"), { recursive: true });
+  return repoRoot;
+}
+
+function makeFilteredRow(
+  reason: FilteredRow["reason"],
+  company: string,
+): FilteredRow {
+  return {
+    row: makeRow({ company }),
+    reason,
+  };
+}
+
+function makeRow(overrides?: Partial<NewGradRow>): NewGradRow {
+  const base: NewGradRow = {
+    position: 1,
+    title: "Software Engineer",
+    postedAgo: "2 hours ago",
+    applyUrl: "https://example.com/apply",
+    detailUrl: "https://newgrad-jobs.com/detail/1",
+    workModel: "Remote",
+    location: "San Francisco, CA",
+    company: "Acme Corp",
+    salary: "$120k - $150k",
+    companySize: "51-200",
+    industry: "Software Development",
+    qualifications: "Experience with TypeScript, React, and Node.js",
+    h1bSponsored: false,
+    sponsorshipSupport: "unknown",
+    requiresActiveSecurityClearance: false,
+    isNewGrad: true,
+  };
+  return { ...base, ...overrides };
+}
