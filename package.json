@@ -14,9 +14,28 @@
     "update": "node update-system.mjs apply",
     "rollback": "node update-system.mjs rollback",
     "liveness": "node check-liveness.mjs",
-    "cover-letter": "node generate-cover-letter.mjs"
+    "cover-letter": "node generate-cover-letter.mjs",
+    "scan": "node scan.mjs",
+    "pending:warm-cache": "node scripts/warm-legacy-pending-cache.mjs",
+    "dashboard": "node web/build-dashboard.mjs",
+    "ext:build": "npm --prefix extension run build",
+    "ext:bridge": "node scripts/bridge-start.mjs real-codex",
+    "ext:bridge:claude": "node scripts/bridge-start.mjs real-claude",
+    "ext:bridge:fake": "node scripts/bridge-start.mjs fake",
+    "ext:bridge:sdk": "node scripts/bridge-start.mjs sdk",
+    "ext:start": "npm run ext:build && node scripts/bridge-start.mjs real-codex",
+    "ext:start:claude": "npm run ext:build && node scripts/bridge-start.mjs real-claude",
+    "ext:start:fake": "npm run ext:build && node scripts/bridge-start.mjs fake",
+    "ext:start:sdk": "npm run ext:build && node scripts/bridge-start.mjs sdk",
+    "ext:launcher": "node scripts/extension-launcher.mjs"
   },
-  "keywords": ["ai", "job-search", "claude-code", "career", "automation"],
+  "keywords": [
+    "ai",
+    "job-search",
+    "claude-code",
+    "career",
+    "automation"
+  ],
   "author": "Santiago Fernández de Valderrama <hi@santifer.io> (https://santifer.io)",
   "homepage": "https://santifer.io",
   "repository": {
@@ -25,6 +44,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "js-yaml": "^4.1.1",
     "playwright": "^1.58.1"
   }
 }

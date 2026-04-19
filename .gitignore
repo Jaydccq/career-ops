@@ -10,7 +10,7 @@ batch/logs/*
 !batch/logs/.gitkeep
 batch/batch-state.tsv
 batch/batch-input.tsv
-batch/tracker-additions/*.tsv
+batch/tracker-additions/**/*.tsv
 !batch/tracker-additions/.gitkeep
 jds/*
 !jds/.gitkeep
@@ -27,6 +27,7 @@ modes/_profile.md
 # Generated
 .resolved-prompt-*
 node_modules/
+bun.lock
 
 # OS
 .DS_Store
@@ -35,6 +36,36 @@ node_modules/
 
 # Claude Code local
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 .claude/memory/
+.claude/projects/
 career-dashboard
 package-lock.json
+
+# Bridge
+bridge/.bridge-token
+bridge/node_modules/
+bridge/dist/
+bridge/package-lock.json
+
+# Extension
+extension/node_modules/
+extension/dist/
+extension/package-lock.json
+
+# Session artifacts
+.agents/
+**/CLAUDE.md
+!/CLAUDE.md
+batch/.bridge-prompt-*.md
+data/newgrad-skill-stats.json
+
+batch/.report-number-reservations
+docs/exec-plans/*
+!docs/exec-plans/README.md
+!docs/exec-plans/active/
+!docs/exec-plans/active/*.md
+!docs/exec-plans/archive/
+!docs/exec-plans/archive/*.md
+!docs/exec-plans/summaries/
+!docs/exec-plans/summaries/*.md

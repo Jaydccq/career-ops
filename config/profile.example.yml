@@ -69,3 +69,35 @@ location:
   visa_status: "No sponsorship needed"
   # For remote roles outside your country:
   # onsite_availability: "1 week/month in any city"
+
+newgrad_scan:
+  hard_filters:
+    # Always skip these companies, regardless of sponsorship or clearance.
+    blocked_companies:
+      - "Example Company"
+    # Skip roles that explicitly do not provide sponsorship support.
+    exclude_no_sponsorship: false
+    # Skip roles that require an active secret security clearance.
+    exclude_active_security_clearance: false
+    no_sponsorship_keywords:
+      - "no sponsorship"
+      - "without sponsorship"
+      - "unable to sponsor"
+      - "cannot sponsor"
+      - "does not provide sponsorship"
+      - "sponsorship not available"
+      - "must be authorized to work without sponsorship"
+    # Optional company-level skip list. Use this when you've already confirmed
+    # that a company consistently does not sponsor.
+    no_sponsorship_companies:
+      - "Example Company"
+    clearance_keywords:
+      - "active secret security clearance"
+      - "active secret clearance"
+      - "current secret clearance"
+      - "must have an active secret clearance"
+      - "must possess an active secret clearance"
+    # Optional company-level skip list for defense contractors or teams that
+    # consistently require an active clearance.
+    active_security_clearance_companies:
+      - "Example Defense Contractor"
