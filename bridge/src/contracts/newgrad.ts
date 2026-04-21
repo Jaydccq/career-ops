@@ -22,6 +22,8 @@ export type SponsorshipStatus = "yes" | "no" | "unknown";
  * content script. Field names mirror the site's column headers.
  */
 export interface NewGradRow {
+  /** Source site identifier, e.g. "newgrad-jobs.com" or "builtin.com". */
+  source?: string;
   /** Row position in the listing table (1-based). */
   position: number;
   /** Job title as displayed in the listing. */
@@ -249,6 +251,41 @@ export interface NewGradPendingEntry extends PipelineEntry {
 export interface NewGradPendingResult {
   /** Pending newgrad-scan entries that are not already in the tracker. */
   entries: readonly NewGradPendingEntry[];
+  /** Total count before any caller-side display limit. */
+  total: number;
+}
+
+/**
+ * One unchecked Built In entry recovered from data/pipeline.md.
+ *
+ * Built In CLI scans currently write legacy pipe rows:
+ *   - [ ] https://builtin.com/job/... | Company | Role
+ *
+ * Rich `builtin-scan` rows from the extension may include score/value metadata,
+ * so those fields remain optional here.
+ */
+export interface BuiltInPendingEntry {
+  /** The Built In job URL from data/pipeline.md. */
+  url: string;
+  /** Company name. */
+  company: string;
+  /** Job title / role. */
+  role: string;
+  /** Source identifier normalized for extension/bridge consumers. */
+  source: "builtin.com";
+  /** 1-based line number in data/pipeline.md for user-facing diagnostics. */
+  lineNumber: number;
+  /** Optional rich scanner score, present only on extension-promoted rows. */
+  score?: number;
+  /** Optional detail value score, present only on extension-promoted rows. */
+  valueScore?: number;
+  /** Optional compact local reasons that explain the value-score decision. */
+  valueReasons?: readonly string[];
+}
+
+export interface BuiltInPendingResult {
+  /** Pending Built In entries that are not already tracked/evaluated. */
+  entries: readonly BuiltInPendingEntry[];
   /** Total count before any caller-side display limit. */
   total: number;
 }

@@ -31,6 +31,7 @@ import type {
   TrackerRow,
 } from "./jobs.js";
 import type {
+  BuiltInPendingResult,
   NewGradRow,
   EnrichedRow,
   NewGradScoreResult,
@@ -72,6 +73,7 @@ export type EndpointId =
   | "jobGet"
   | "trackerList"
   | "reportRead"
+  | "builtInPending"
   | "newgradPendingBackfill"
   | "newgradScore"
   | "newgradEnrich";
@@ -165,6 +167,26 @@ export const LIVENESS: EndpointDescriptor<
   phase: 2,
   idempotent: true,
   errors: ["UNAUTHORIZED", "BAD_REQUEST", "TIMEOUT", "INTERNAL"],
+};
+
+/* -------------------------------------------------------------------------- */
+/*  /builtin-scan/pending — read Built In rows from pipeline.md                */
+/* -------------------------------------------------------------------------- */
+
+export interface BuiltInPendingRequest {
+  limit?: number;
+}
+
+export const BUILTIN_PENDING: EndpointDescriptor<
+  RequestEnvelope<BuiltInPendingRequest>,
+  Response<BuiltInPendingResult>
+> = {
+  id: "builtInPending",
+  method: "POST",
+  path: "/v1/builtin-scan/pending",
+  phase: 2,
+  idempotent: true,
+  errors: ["UNAUTHORIZED", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL"],
 };
 
 /* -------------------------------------------------------------------------- */

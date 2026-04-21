@@ -1,4 +1,8 @@
 import type { NewGradDetail, NewGradRow } from "../contracts/newgrad.js";
+import {
+  canonicalLinkedInJobViewUrl,
+  isLinkedInJobsUrl,
+} from "./linkedin-scan-normalizer.js";
 
 const JOBRIGHT_HOST = "jobright.ai";
 const ATS_HOST_PATTERNS = [
@@ -13,6 +17,7 @@ const ATS_HOST_PATTERNS = [
   "icims.com",
 ];
 const NOISE_HOST_PATTERNS = [
+  "accounts.google.com",
   "linkedin.com",
   "crunchbase.com",
   "glassdoor.com",
@@ -48,6 +53,10 @@ const APPLY_QUERY_HINTS = [
   "ashby_jid",
   "token=",
 ];
+const JOBRIGHT_NON_JOB_PATHS = [
+  "/jobs/recommend",
+];
+const MIN_ACCEPTABLE_SCORE = -99;
 
 function normalizeUrlCandidate(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -90,27 +99,44 @@ function scoreUrlCandidate(url: string | null | undefined): number {
     const path = parsed.pathname.toLowerCase();
     const full = `${host}${path}${parsed.search.toLowerCase()}`;
 
+    if (isLinkedInJobsUrl(normalized)) return 70;
+
     if (hasPattern(host, NOISE_HOST_PATTERNS)) return -100;
 
     let score = 0;
 
-    if (hasPattern(host, ATS_HOST_PATTERNS)) score += 100;
-    if (hasPattern(full, APPLY_QUERY_HINTS)) score += 24;
-    if (hasPattern(path, JOB_PATH_HINTS)) score += 18;
-    if (/\b(apply|job|jobs|career|careers|position|opening|opportunit)\b/.test(full)) {
+    const hasAtsHost = hasPattern(host, ATS_HOST_PATTERNS);
+    const hasApplyQuery = hasPattern(full, APPLY_QUERY_HINTS);
+    const hasJobPath = hasPattern(path, JOB_PATH_HINTS);
+    const hasJobText = /\b(apply|job|jobs|career|careers|position|opening|opportunit)\b/.test(full);
+
+    if (isJobrightUrl(normalized) && JOBRIGHT_NON_JOB_PATHS.includes(path)) {
+      return -120;
+    }
+
+    if (hasAtsHost) score += 100;
+    if (hasApplyQuery) score += 24;
+    if (hasJobPath) score += 18;
+    if (hasJobText) {
       score += 12;
     }
 
     if (isJobrightUrl(normalized)) {
       score -= 80;
       if (path.startsWith("/jobs/info/")) score -= 30;
-    } else {
+    } else if (hasAtsHost || hasApplyQuery || hasJobPath || hasJobText) {
       score += 40;
+    } else {
+      score -= 80;
     }
 
-    const lastSegment = path.split("/").filter(Boolean).at(-1) ?? "";
-    if (!lastSegment || ["", "home", "about", "company"].includes(lastSegment)) {
-      score -= 10;
+    const pathSegments = path.split("/").filter(Boolean);
+    const lastSegment = pathSegments.at(-1) ?? "";
+    if (
+      pathSegments.length === 0 ||
+      ["home", "about", "company"].includes(lastSegment)
+    ) {
+      score -= 200;
     }
 
     return score;
@@ -130,9 +156,9 @@ export function pickBestNewGradUrl(
     if (!normalized) continue;
 
     const score = scoreUrlCandidate(normalized);
-    if (score > bestScore) {
+    if (score > bestScore && score > MIN_ACCEPTABLE_SCORE) {
       bestScore = score;
-      bestUrl = normalized;
+      bestUrl = canonicalLinkedInJobViewUrl(normalized) ?? normalized;
     }
   }
 

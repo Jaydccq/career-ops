@@ -41,6 +41,7 @@ import type {
   NewGradEnrichResult,
   PipelineEntry,
 } from "../contracts/newgrad.js";
+import { scanSourceForRow } from "./newgrad-source.js";
 
 const DEFAULT_DELAY_MS = 400;
 
@@ -251,7 +252,7 @@ export function createFakePipelineAdapter(
           company: r.row.row.company,
           role: r.row.row.title,
           score: r.row.score,
-          source: "newgrad-jobs.com",
+          source: scanSourceForRow(r.row.row),
         });
         onProgress?.(i + 1, rows.length, r);
         // Simulate processing delay in fake mode
@@ -266,6 +267,10 @@ export function createFakePipelineAdapter(
     },
 
     async readNewGradPendingEntries(_limit: number) {
+      return { entries: [], total: 0 };
+    },
+
+    async readBuiltInPendingEntries(_limit: number) {
       return { entries: [], total: 0 };
     },
 

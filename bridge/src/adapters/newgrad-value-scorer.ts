@@ -62,7 +62,7 @@ export function scoreEnrichedRowValue(
   const penalties: string[] = [];
 
   const listScore = scoreListSignal(row);
-  const siteMatch = scoreSiteMatch(row, reasons);
+  const siteMatch = scoreSiteMatch(row, reasons, penalties);
   const structuredSkills = scoreStructuredSkills(row, config, reasons);
   const seniority = scoreSeniority(row, reasons, penalties);
   const compensation = scoreCompensation(row, config, reasons, penalties);
@@ -104,20 +104,31 @@ function scoreListSignal(row: EnrichedRow): number {
   return clamp((row.row.score / maxScore) * 1.6, 0, 1.6);
 }
 
-function scoreSiteMatch(row: EnrichedRow, reasons: string[]): number {
+function scoreSiteMatch(row: EnrichedRow, reasons: string[], penalties: string[]): number {
   const { detail } = row;
-  let score = 0;
+  const weightedAverage = weightedSiteAverage(detail);
+  if (weightedAverage === null) return 0;
 
-  score += scorePercentage(detail.matchScore, 1.1);
-  score += scorePercentage(detail.expLevelMatch, 0.7);
-  score += scorePercentage(detail.skillMatch, 0.7);
-  score += scorePercentage(detail.industryExpMatch, 0.3);
+  let score = baseSiteAlignmentScore(weightedAverage);
 
   if ((detail.matchScore ?? 0) >= 85) reasons.push("strong_match_score");
   if ((detail.expLevelMatch ?? 0) >= 85) reasons.push("strong_experience_match");
   if ((detail.skillMatch ?? 0) >= 85) reasons.push("strong_skill_match");
+  if (weightedAverage >= 85) {
+    reasons.push("strong_site_alignment");
+  }
 
-  return clamp(score, 0, 2.6);
+  const weakOverall = detail.matchScore !== null && detail.matchScore < 75;
+  const weakSkill = detail.skillMatch !== null && detail.skillMatch < 75;
+  if (weakOverall && weakSkill) {
+    penalties.push("site_match_below_bar");
+    score -= 1.6;
+  } else if (weakOverall || weakSkill) {
+    penalties.push("site_signal_mixed");
+    score -= 0.8;
+  }
+
+  return clamp(score, -1.2, 2.8);
 }
 
 function scoreStructuredSkills(
@@ -252,14 +263,34 @@ function bestSponsorshipSignal(row: EnrichedRow): SponsorshipStatus {
   return "unknown";
 }
 
-function scorePercentage(value: number | null, maxPoints: number): number {
-  if (value === null || !Number.isFinite(value)) return 0;
-  if (value >= 90) return maxPoints;
-  if (value >= 80) return maxPoints * 0.85;
-  if (value >= 70) return maxPoints * 0.65;
-  if (value >= 60) return maxPoints * 0.45;
-  if (value >= 40) return maxPoints * 0.2;
-  return 0;
+function weightedSiteAverage(detail: EnrichedRow["detail"]): number | null {
+  const weightedSignals: Array<[number | null, number]> = [
+    [detail.matchScore, 0.4],
+    [detail.expLevelMatch, 0.25],
+    [detail.skillMatch, 0.25],
+    [detail.industryExpMatch, 0.1],
+  ];
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const [value, weight] of weightedSignals) {
+    if (value === null || !Number.isFinite(value)) continue;
+    weightedSum += value * weight;
+    totalWeight += weight;
+  }
+
+  if (totalWeight === 0) return null;
+  return weightedSum / totalWeight;
+}
+
+function baseSiteAlignmentScore(weightedAverage: number): number {
+  if (weightedAverage >= 90) return 2.8;
+  if (weightedAverage >= 85) return 2.4;
+  if (weightedAverage >= 80) return 1.9;
+  if (weightedAverage >= 75) return 1.3;
+  if (weightedAverage >= 70) return 0.5;
+  if (weightedAverage >= 65) return -0.3;
+  return -1.1;
 }
 
 function parseSalaryRangeUsd(value: string | null): SalaryRangeUsd | null {

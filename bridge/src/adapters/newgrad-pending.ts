@@ -25,9 +25,10 @@ import {
   loadNewGradScanConfig,
   loadTrackedCompanyRoles,
 } from "./newgrad-config.js";
+import { sourceFromPipelineTag } from "./newgrad-source.js";
 
 const PENDING_LINE_RE =
-  /^-\s+\[\s\]\s+(?<url>https?:\/\/\S+)\s+—\s+(?<company>.+?)\s+\|\s+(?<role>.+?)\s+\(via newgrad-scan, score:\s*(?<score>[0-9.]+)\/[0-9.]+(?:,\s+value:\s*(?<valueScore>[0-9.]+)\/10)?\)(?:\s+\[value-reasons:(?<valueReasons>[^\]]+)\])?(?:\s+\[local:(?<localJdPath>[^\]]+)\])?/;
+  /^-\s+\[\s\]\s+(?<url>https?:\/\/\S+)\s+—\s+(?<company>.+?)\s+\|\s+(?<role>.+?)\s+\(via (?<sourceTag>newgrad-scan|builtin-scan|linkedin-scan), score:\s*(?<score>[0-9.]+)\/[0-9.]+(?:,\s+value:\s*(?<valueScore>[0-9.]+)\/10)?\)(?:\s+\[value-reasons:(?<valueReasons>[^\]]+)\])?(?:\s+\[local:(?<localJdPath>[^\]]+)\])?/;
 const LOCAL_JD_CACHE_MAX_CHARS = 8_000;
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 100;
@@ -124,6 +125,7 @@ export function backfillNewGradPendingCache(
         role: input.role,
         url: input.url,
         description: input.pageText.trim(),
+        source: match.groups?.sourceTag ?? "newgrad-scan",
       });
       if (!jdFile) {
         outcomes.push({
@@ -218,7 +220,7 @@ function readPipelineEntries(
       score,
       ...(groups.valueScore ? { valueScore: Number(groups.valueScore) } : {}),
       ...(valueReasons ? { valueReasons } : {}),
-      source: "newgrad-jobs.com",
+      source: sourceFromPipelineTag(groups.sourceTag),
       lineNumber: index + 1,
       ...(localJdPath ? { localJdPath } : {}),
       ...(pageText ? { pageText } : {}),

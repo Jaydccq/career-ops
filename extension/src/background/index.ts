@@ -45,6 +45,7 @@ import type {
 import { loadState, patchState } from "./state.js";
 import { bridgeClientFromState } from "./bridge-client.js";
 import { resolvePermissionOrigin } from "../shared/permissions.js";
+import { extractBuiltInDetail, extractBuiltInList } from "../content/extract-builtin.js";
 import { extractNewGradList } from "../content/extract-newgrad.js";
 
 /* -------------------------------------------------------------------------- */
@@ -528,6 +529,21 @@ function isNewGradJobsUrl(url: string | null | undefined): boolean {
   }
 }
 
+function isBuiltInUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeUrlCandidate(url);
+  if (!normalized) return false;
+
+  try {
+    const parsed = new URL(normalized);
+    return (
+      parsed.hostname === "builtin.com" ||
+      parsed.hostname.endsWith(".builtin.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function scoreUrlCandidate(url: string | null | undefined): number {
   const normalized = normalizeUrlCandidate(url);
   if (!normalized) return Number.NEGATIVE_INFINITY;
@@ -994,19 +1010,21 @@ async function handleNewGradExtractList(): Promise<PopupResponse> {
   }
   if (
     !tab.url.includes("newgrad-jobs.com") &&
-    !tab.url.includes("jobright.ai/minisites-jobs")
+    !tab.url.includes("jobright.ai/minisites-jobs") &&
+    !isBuiltInUrl(tab.url)
   ) {
     return {
       kind: "newgradExtractList",
       ok: false,
       error: {
         code: "BAD_REQUEST",
-        message: `active tab is not on the supported newgrad scan source: ${tab.url}`,
+        message: `active tab is not on a supported scan source: ${tab.url}`,
       },
     };
   }
   let sourceTabId = tab.id;
   let closeSourceTab = false;
+  let listExtractor: () => Promise<NewGradRow[]> = extractNewGradList;
 
   if (tab.url.includes("newgrad-jobs.com")) {
     const iframeResults = await chrome.scripting.executeScript({
@@ -1087,12 +1105,14 @@ async function handleNewGradExtractList(): Promise<PopupResponse> {
     closeSourceTab = true;
     await waitForTabComplete(sourceTabId);
     await new Promise((resolve) => setTimeout(resolve, 1000));
+  } else if (isBuiltInUrl(tab.url)) {
+    listExtractor = extractBuiltInList as () => Promise<NewGradRow[]>;
   }
 
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: sourceTabId },
-      func: extractNewGradList,
+      func: listExtractor,
     });
 
     const rows = results[0]?.result as NewGradRow[] | undefined;
@@ -1318,10 +1338,14 @@ async function handleNewGradEnrichDetails(
 
         await waitForTabComplete(tab.id);
 
-        // Inject detail extractor — FULLY self-contained inline function.
-        const scriptResults = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
+        const scriptResults = isBuiltInUrl(scored.row.detailUrl)
+          ? await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: extractBuiltInDetail,
+          })
+          : await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
             const MAX_DESC_CHARS = 20000;
 
             /* ---- helpers (inlined — no closures) ---- */
@@ -3009,10 +3033,19 @@ function hasStructuredClearanceRequirement(
   );
 }
 
+function scanSignalSource(
+  entry: DirectEvaluationEntry,
+  matchedRow: EnrichedRow | undefined,
+): string {
+  const source = matchedRow?.row.row.source ?? entry.source;
+  return source?.toLowerCase().includes("builtin") ? "builtin-scan" : "newgrad-scan";
+}
+
 function buildStructuredEvaluationSignals(
   entry: DirectEvaluationEntry,
   matchedRow: EnrichedRow | undefined,
 ): StructuredJobSignals {
+  const source = scanSignalSource(entry, matchedRow);
   if (matchedRow) {
     const { detail, row } = matchedRow;
     const valueScore = entry.valueScore;
@@ -3040,7 +3073,7 @@ function buildStructuredEvaluationSignals(
     const companySize = detail.companySize || row.row.companySize || null;
 
     return {
-      source: "newgrad-scan",
+      source,
       company: detail.company || row.row.company,
       role: detail.title || row.row.title,
       ...(location ? { location } : {}),
@@ -3081,7 +3114,7 @@ function buildStructuredEvaluationSignals(
   ]));
 
   return {
-    source: "newgrad-scan",
+    source,
     company: entry.company,
     role: entry.role,
     ...(workModel ? { workModel } : {}),
@@ -3220,7 +3253,7 @@ async function runDirectNewGradEvaluations(
       detection: {
         label: "job_posting" as const,
         confidence: 1,
-        signals: ["newgrad-scan"],
+        signals: [structuredSignals.source ?? "newgrad-scan"],
       },
       ...(evaluationPageText
         ? { pageText: evaluationPageText }

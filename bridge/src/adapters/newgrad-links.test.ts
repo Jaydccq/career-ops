@@ -23,6 +23,24 @@ test("pickBestNewGradUrl ignores noisy social/company metadata links", () => {
   expect(best).toBe("https://company.example/careers/software-engineer");
 });
 
+test("pickBestNewGradUrl returns null when every candidate is social or company noise", () => {
+  const best = pickBestNewGradUrl(
+    "https://www.linkedin.com/company/example",
+    "https://www.linkedin.com/in/example",
+    "https://www.facebook.com/example",
+  );
+
+  expect(best).toBeNull();
+});
+
+test("pickBestNewGradUrl canonicalizes LinkedIn search-result job URLs", () => {
+  const best = pickBestNewGradUrl(
+    "https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&refId=abc",
+  );
+
+  expect(best).toBe("https://www.linkedin.com/jobs/view/4347121472/");
+});
+
 test("pickPipelineEntryUrl falls back to row.applyUrl when detail links stay on Jobright", () => {
   const best = pickPipelineEntryUrl(
     {
@@ -55,6 +73,72 @@ test("pickPipelineEntryUrl still returns Jobright when no better candidate exist
   expect(best).toBe("https://jobright.ai/jobs/info/internal-2");
   expect(isJobrightUrl(best)).toBe(true);
   expect(hasExternalNewGradUrl(best)).toBe(false);
+});
+
+test("pickPipelineEntryUrl prefers concrete Jobright detail over Jobright recommendations", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://jobright.ai/jobs/recommend",
+      applyNowUrl: "https://jobright.ai/jobs/recommend",
+      applyFlowUrls: [],
+    },
+    {
+      applyUrl: "https://jobright.ai/jobs/recommend",
+      detailUrl: "https://jobright.ai/jobs/info/sun-west-role",
+    },
+  );
+
+  expect(best).toBe("https://jobright.ai/jobs/info/sun-west-role");
+});
+
+test("pickPipelineEntryUrl does not prefer bare company homepage over Jobright detail", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.goldmansachs.com/",
+      applyNowUrl: "https://www.goldmansachs.com/",
+      applyFlowUrls: [],
+    },
+    {
+      applyUrl: "https://jobright.ai/jobs/info/goldman-role",
+      detailUrl: "https://jobright.ai/jobs/info/goldman-role",
+    },
+  );
+
+  expect(best).toBe("https://jobright.ai/jobs/info/goldman-role");
+});
+
+test("pickPipelineEntryUrl accepts LinkedIn job views but ignores LinkedIn company pages", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.linkedin.com/company/example",
+      applyNowUrl: "https://www.linkedin.com/in/recruiter",
+      applyFlowUrls: [],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+    },
+  );
+
+  expect(best).toBe("https://www.linkedin.com/jobs/view/4347121472/");
+});
+
+test("pickPipelineEntryUrl ignores auth and analytics URLs captured during apply probing", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://accounts.google.com/gsi/log?client_id=abc&event=onetap",
+      applyNowUrl: "",
+      applyFlowUrls: [
+        "https://accounts.google.com/gsi/log?client_id=abc&event=onetap",
+      ],
+    },
+    {
+      applyUrl: "https://jobright.ai/jobs/info/twitch-role",
+      detailUrl: "https://jobright.ai/jobs/info/twitch-role",
+    },
+  );
+
+  expect(best).toBe("https://jobright.ai/jobs/info/twitch-role");
 });
 
 test("pickPipelineEntryUrl prefers a traced apply-flow URL over Jobright detail links", () => {

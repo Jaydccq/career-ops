@@ -2,34 +2,41 @@
 
 ## Aesthetic Direction
 
-Industrial-utilitarian dark UI. Calm surfaces, tight type hierarchy,
-maximum information density in 360px. Every pixel earns its place.
+Signal Desk UI. The extension should feel like a compact task-control surface:
+sharp, readable, slightly editorial, and built for quick judgment inside a
+crowded browser page. It keeps a dark overlay base for host-page contrast, but
+uses brighter signal colors, stronger section rhythm, and fewer generic stacked
+card cues than the earlier industrial dark panel.
 
 ## Color Tokens
 
-| Token            | Value     | Usage                            |
-|------------------|-----------|----------------------------------|
-| `--bg`           | `#0f0f10` | Page background                  |
-| `--bg-primary`   | `#1c1c1e` | Elevated panels (primary tier)   |
-| `--bg-input`     | `#111112` | Input fields, code blocks        |
-| `--fg`           | `#e8e8ea` | Primary text                     |
-| `--fg-muted`     | `#8f8f94` | Secondary text, metadata         |
-| `--fg-dim`       | `#5a5a5e` | Tertiary text, labels, icons     |
-| `--border`       | `#2a2a2e` | Panel borders, primary dividers  |
-| `--border-subtle`| `#1f1f22` | Secondary dividers, row borders  |
-| `--accent`       | `#7aa7ff` | Links, active states, CTAs       |
-| `--accent-strong`| `#5c8eff` | Hover accent                     |
-| `--ok`           | `#4ecb71` | Success, healthy, completed      |
-| `--warn`         | `#e5b93c` | Warnings, caution                |
-| `--err`          | `#ef5f5f` | Errors, failures                 |
+| Token             | Value     | Usage                             |
+|-------------------|-----------|-----------------------------------|
+| `--bg`            | `#10120f` | Panel background                  |
+| `--surface`       | `#171915` | Main functional sections          |
+| `--surface-raised`| `#1f231d` | Hover and raised controls         |
+| `--surface-soft`  | `#151713` | Status strips and nested controls |
+| `--field`         | `#0b0d0b` | Inputs and code blocks            |
+| `--text`          | `#eef2ea` | Primary text                      |
+| `--muted`         | `#a3ad9e` | Secondary text and metadata       |
+| `--dim`           | `#6f796a` | Labels and tertiary text          |
+| `--border`        | `#32382f` | Section and row dividers          |
+| `--border-strong` | `#4a5345` | Outer panel and strong controls   |
+| `--accent`        | `#37d7d2` | Primary CTA, active scanner state |
+| `--accent-strong` | `#8df0ed` | Hover accent                      |
+| `--lime`          | `#c8f05a` | Brand kicker and high-signal tags |
+| `--ok`            | `#62d883` | Success, healthy, completed       |
+| `--warn`          | `#efc75e` | Warnings, caution                 |
+| `--err`           | `#ff7668` | Errors, failures                  |
 
 ## Surface Tiers
 
-| Tier      | Background       | Border                    | Usage                           |
-|-----------|------------------|---------------------------|---------------------------------|
-| Chrome    | transparent      | none                      | Header, bridge chip, footer     |
-| Primary   | `--bg-primary`   | `1px solid var(--border)` | Job capture, results, progress  |
-| Secondary | transparent      | top divider only          | Recent evaluations              |
+| Tier       | Background          | Border                         | Usage                          |
+|------------|---------------------|--------------------------------|--------------------------------|
+| Chrome     | `--surface`         | bottom divider                 | Header, health chip, close     |
+| Section    | `--surface`         | `1px solid var(--border)`      | Capture, mode, scanner blocks  |
+| Nested     | `--surface-soft`    | `1px solid var(--border)`      | Status strips, keyword cards   |
+| Field      | `--field`           | `1px solid var(--border)`      | Inputs, code, commands         |
 
 ## Spacing Scale (4px base)
 
@@ -39,28 +46,29 @@ maximum information density in 360px. Every pixel earns its place.
 
 | Token          | Size  | Usage                                |
 |----------------|-------|--------------------------------------|
-| `--fs-caption` | 10px  | Footer, section labels               |
-| `--fs-small`   | 11px  | Metadata, URLs, hints, mono content  |
-| `--fs-body`    | 13px  | Primary body text, buttons           |
-| `--fs-title`   | 13px  | Section titles (weight distinguishes)|
-| `--fs-score`   | 30px  | Score hero in evaluation result      |
+| `--fs-caption` | 10px  | Footer, section labels, source meta |
+| `--fs-small`   | 11px  | Metadata, URLs, hints, mono content |
+| `--fs-body`    | 13px  | Primary body text, buttons          |
+| `--fs-title`   | 14px  | Panel title                         |
+| `--fs-score`   | 30px  | Score hero in evaluation result     |
 
 ## Font Stacks
 
-- **Sans:** `-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif`
-- **Mono:** `ui-monospace, Menlo, "Cascadia Mono", monospace`
+- **Sans:** `"Aptos", "Fira Sans", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+- **Mono:** `"Fira Code", "SFMono-Regular", ui-monospace, Menlo, monospace`
 
 ## Border Radii
 
 - `--r-sm` (4px): Buttons, inputs, inline code, row hover
-- `--r-md` (6px): Panels
-- `100px`: Bridge chip (pill shape)
+- `--r-md` (8px): Panel shell and functional sections
+- `999px`: Health and source badges only
 
 ## Interaction Patterns
 
 ### Bridge Chip
-Status indicator in header. Shows health dot + label. Click toggles the
-full bridge mode panel. Uses `aria-expanded` / `aria-controls`.
+Status indicator in header. Shows health dot + label. Click toggles a compact
+bridge summary that only states the current mode. Uses `aria-expanded` /
+`aria-controls`.
 
 ### Stepper (Progress)
 Vertical list with `::before` icons: `○` pending, `●` active (pulsing),
@@ -80,13 +88,21 @@ Scrollable with `max-height: 240px`. Fade mask at bottom when overflowing
 (via `::after` sticky gradient). Each row: `role="button"`, `tabindex="0"`,
 Enter/Space keyboard handler.
 
+### Scanner Surface
+Scanner pages use one workflow section rather than several unrelated cards:
+source title, status strip, optional source search card, primary scan CTA,
+results, pending candidates, and evaluation progress. Built In keyword search
+uses a nested source card with a source badge, all-location meta label, keyword
+input, shortcut chips, and concise helper text.
+
 ## Accessibility
 
 - `aria-live="polite"` on health status and phase list
 - `aria-live="assertive"` on evaluation result score
 - `.sr-only` class for screen-reader-only text
 - `:focus-visible` outlines on all interactive elements
-- Button padding targets ~40px effective height
+- Button padding targets compact desktop use while preserving visible focus and
+  cursor affordance
 - `role="alert"` on offline banner and error section
 
 ## Score Color Thresholds

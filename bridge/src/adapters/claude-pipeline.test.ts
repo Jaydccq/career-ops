@@ -6,7 +6,12 @@ import { join } from "node:path";
 
 import { createClaudePipelineAdapter } from "./claude-pipeline.js";
 import { __internal } from "./claude-pipeline.js";
-import type { NewGradRow } from "../contracts/newgrad.js";
+import type {
+  EnrichedRow,
+  NewGradDetail,
+  NewGradRow,
+  ScoredRow,
+} from "../contracts/newgrad.js";
 
 test("extractTerminalJsonObject returns the final Claude JSON payload", () => {
   const stdout = [
@@ -79,6 +84,62 @@ test("scoreNewGradRows does not mark promoted rows as already scanned before enr
     const history = readFileSync(join(repoRoot, "data/scan-history.tsv"), "utf-8");
     expect(history).not.toContain("Promoted Co");
     expect(history).toContain("Filtered Co");
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("enrichNewGradRows writes LinkedIn rows with linkedin-scan source tag", async () => {
+  const repoRoot = makeRepoRoot();
+  try {
+    const adapter = createClaudePipelineAdapter({
+      repoRoot,
+      claudeBin: "claude",
+      codexBin: "codex",
+      nodeBin: process.execPath,
+      realExecutor: "codex",
+      evaluationTimeoutSec: 60,
+      livenessTimeoutSec: 20,
+      allowDangerousClaudeFlags: true,
+    });
+
+    const result = await adapter.enrichNewGradRows([
+      makeEnrichedRow({
+        row: {
+          source: "linkedin.com",
+          title: "Software Engineer I",
+          company: "LinkedIn Test Co",
+          applyUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          detailUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          salary: "$140,000 - $180,000",
+          qualifications: "TypeScript React Python Node AWS",
+        },
+        scored: {
+          score: 9,
+          maxScore: 9,
+          skillKeywordsMatched: ["typescript", "react", "python", "node"],
+        },
+        detail: {
+          title: "Software Engineer I",
+          company: "LinkedIn Test Co",
+          originalPostUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          applyNowUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          applyFlowUrls: ["https://www.linkedin.com/jobs/view/4347121472/"],
+        },
+      }),
+    ]);
+
+    expect(result.added).toBe(1);
+    expect(result.entries[0]).toMatchObject({
+      url: "https://www.linkedin.com/jobs/view/4347121472/",
+      company: "LinkedIn Test Co",
+      role: "Software Engineer I",
+      source: "linkedin.com",
+    });
+
+    const pipeline = readFileSync(join(repoRoot, "data/pipeline.md"), "utf-8");
+    expect(pipeline).toContain("https://www.linkedin.com/jobs/view/4347121472/");
+    expect(pipeline).toContain("(via linkedin-scan, score: 9/9");
   } finally {
     rmSync(repoRoot, { recursive: true, force: true });
   }
@@ -590,5 +651,88 @@ function makeNewGradRow(overrides: Partial<NewGradRow>): NewGradRow {
     confirmedRequiresActiveSecurityClearance: false,
     isNewGrad: true,
     ...overrides,
+  };
+}
+
+function makeEnrichedRow(overrides?: {
+  row?: Partial<NewGradRow>;
+  scored?: Partial<ScoredRow> & { skillKeywordsMatched?: string[] };
+  detail?: Partial<NewGradDetail>;
+}): EnrichedRow {
+  const row = makeNewGradRow({
+    title: "Software Engineer I",
+    postedAgo: "2 hours ago",
+    applyUrl: "https://jobs.example.com/apply",
+    detailUrl: "https://jobs.example.com/detail",
+    salary: "$140,000 - $180,000",
+    qualifications: "TypeScript React Python Node AWS",
+    isNewGrad: true,
+    ...overrides?.row,
+  });
+
+  const scored: ScoredRow = {
+    row,
+    score: overrides?.scored?.score ?? 9,
+    maxScore: overrides?.scored?.maxScore ?? 9,
+    breakdown: {
+      roleMatch: 3,
+      skillHits: 4,
+      skillKeywordsMatched: overrides?.scored?.skillKeywordsMatched ?? [
+        "typescript",
+        "react",
+        "python",
+        "node",
+      ],
+      freshness: 2,
+    },
+  };
+
+  const detail: NewGradDetail = {
+    position: 1,
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    employmentType: "Full-time",
+    workModel: "Remote",
+    seniorityLevel: "Entry level",
+    salaryRange: "$140,000 - $180,000",
+    matchScore: 90,
+    expLevelMatch: 92,
+    skillMatch: 95,
+    industryExpMatch: 85,
+    description: "Build production software with TypeScript, React, Python, Node, and AWS.",
+    industries: ["Software"],
+    recommendationTags: ["Great Match"],
+    responsibilities: ["Build customer-facing product features."],
+    requiredQualifications: ["TypeScript, React, Python, Node, AWS"],
+    skillTags: ["TypeScript", "React", "Python", "Node", "AWS"],
+    taxonomy: ["Software Engineering"],
+    companyWebsite: null,
+    companyDescription: null,
+    companySize: "51-200",
+    companyLocation: "Remote, USA",
+    companyFoundedYear: null,
+    companyCategories: ["Software"],
+    h1bSponsorLikely: null,
+    sponsorshipSupport: "yes",
+    confirmedSponsorshipSupport: "yes",
+    h1bSponsorshipHistory: [],
+    requiresActiveSecurityClearance: false,
+    confirmedRequiresActiveSecurityClearance: false,
+    insiderConnections: null,
+    originalPostUrl: row.applyUrl,
+    applyNowUrl: row.applyUrl,
+    applyFlowUrls: [],
+    ...overrides?.detail,
+  };
+
+  return {
+    row: {
+      ...scored,
+      ...(overrides?.scored?.score !== undefined ? { score: overrides.scored.score } : {}),
+      ...(overrides?.scored?.maxScore !== undefined ? { maxScore: overrides.scored.maxScore } : {}),
+      row,
+    },
+    detail,
   };
 }

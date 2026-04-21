@@ -3,9 +3,9 @@
 /**
  * scan.mjs — Zero-token portal scanner
  *
- * Fetches Greenhouse, Ashby, and Lever APIs directly, applies title
- * filters from portals.yml, deduplicates against existing history,
- * and appends new offers to pipeline.md + scan-history.tsv.
+ * Fetches Greenhouse, Ashby, Lever APIs, and configured Built In keyword
+ * searches, applies title filters from portals.yml, deduplicates against
+ * existing history, and appends new offers to pipeline.md + scan-history.tsv.
  *
  * Zero Claude API tokens — pure HTTP + JSON.
  *
@@ -13,6 +13,8 @@
  *   node scan.mjs                  # scan all enabled companies
  *   node scan.mjs --dry-run        # preview without writing files
  *   node scan.mjs --company Cohere # scan a single company
+ *   node scan.mjs --no-builtin     # skip Built In keyword searches
+ *   node scan.mjs --builtin-only   # scan only Built In keyword searches
  */
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
@@ -30,6 +32,17 @@ const APPLICATIONS_PATH = 'data/applications.md';
 mkdirSync('data', { recursive: true });
 const CONCURRENCY = 10;
 const FETCH_TIMEOUT_MS = 10_000;
+const BUILTIN_SOURCE = 'builtin-scan';
+const BUILTIN_BASE_URL = 'https://builtin.com';
+const BUILTIN_DEFAULT_PATH = '/jobs/hybrid/national/dev-engineering';
+const DEFAULT_BUILTIN_SEARCHES = [
+  { name: 'Built In — Software Engineering', keyword: 'Software Engineering', enabled: true },
+  { name: 'Built In — Software Engineer', keyword: 'Software Engineer', enabled: true },
+  { name: 'Built In — Full Stack Engineer', keyword: 'Full Stack Engineer', enabled: true },
+  { name: 'Built In — Backend Engineer', keyword: 'Backend Engineer', enabled: true },
+  { name: 'Built In — AI Engineer', keyword: 'AI Engineer', enabled: true },
+  { name: 'Built In — Machine Learning Engineer', keyword: 'Machine Learning Engineer', enabled: true },
+];
 
 // ── API detection ───────────────────────────────────────────────────
 
@@ -117,6 +130,190 @@ async function fetchJson(url) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchText(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Built In keyword search ────────────────────────────────────────
+
+function loadBuiltInSearches(config) {
+  const raw = Array.isArray(config.builtin_searches)
+    ? config.builtin_searches
+    : DEFAULT_BUILTIN_SEARCHES;
+
+  return raw
+    .map((entry) => normalizeBuiltInSearch(entry))
+    .filter((entry) => entry.enabled !== false && entry.keyword);
+}
+
+function normalizeBuiltInSearch(entry) {
+  if (typeof entry === 'string') {
+    return { name: `Built In — ${entry}`, keyword: entry, enabled: true };
+  }
+
+  const keyword = entry.keyword || entry.search || entry.query || entry.name || '';
+  return {
+    name: entry.name || `Built In — ${keyword}`,
+    keyword,
+    path: entry.path || BUILTIN_DEFAULT_PATH,
+    url: entry.url || null,
+    enabled: entry.enabled !== false,
+  };
+}
+
+function builtInSearchUrl(search) {
+  const url = search.url
+    ? new URL(search.url)
+    : new URL(search.path || BUILTIN_DEFAULT_PATH, BUILTIN_BASE_URL);
+
+  url.searchParams.set('search', search.keyword);
+  url.searchParams.set('allLocations', 'true');
+  url.searchParams.delete('city');
+  url.searchParams.delete('state');
+  url.searchParams.delete('country');
+  return url.toString();
+}
+
+function parseBuiltInJobs(html) {
+  const jobs = [];
+  const seenUrls = new Set();
+  const cardRe = /<div id="job-card-\d+"[\s\S]*?(?=<div id="job-card-\d+"|<div class="pagination|<\/main>|$)/g;
+  const cards = [...html.matchAll(cardRe)].map(match => match[0]);
+
+  for (const card of cards) {
+    const titleLink = matchTitleLink(card);
+    if (!titleLink) continue;
+
+    const url = absoluteBuiltInUrl(titleLink.href);
+    if (!url || seenUrls.has(url)) continue;
+    seenUrls.add(url);
+
+    const text = htmlText(card);
+    jobs.push({
+      title: titleLink.title,
+      url,
+      company: extractBuiltInCompany(card) || 'Unknown Company',
+      location: extractBuiltInLocation(card) || '',
+      workModel: extractBuiltInWorkModel(card) || '',
+      postedAgo: extractBuiltInPostedAgo(text) || '',
+      description: extractBuiltInDescription(card) || '',
+      source: BUILTIN_SOURCE,
+    });
+  }
+
+  if (jobs.length > 0) return jobs;
+  return parseBuiltInJsonLdJobs(html);
+}
+
+function matchTitleLink(card) {
+  const match = card.match(/<a\b(?=[^>]*data-id="job-card-title")(?=[^>]*href="([^"]+)")[^>]*>([\s\S]*?)<\/a>/i);
+  if (!match) return null;
+  const title = htmlText(match[2] || '');
+  if (!title) return null;
+  return { href: decodeHtml(match[1] || ''), title };
+}
+
+function extractBuiltInCompany(card) {
+  const titleMatch = card.match(/<a\b(?=[^>]*data-id="company-title")[^>]*>([\s\S]*?)<\/a>/i);
+  const title = titleMatch ? htmlText(titleMatch[1] || '') : '';
+  if (title) return title;
+
+  const altMatch = card.match(/alt="([^"]+?)\s+Logo"/i);
+  return altMatch ? decodeHtml(altMatch[1] || '').trim() : '';
+}
+
+function extractBuiltInLocation(card) {
+  const match = card.match(/fa-location-dot[\s\S]{0,700}?<span[^>]*class="font-barlow text-gray-04"[^>]*>([\s\S]*?)<\/span>/i);
+  return match ? htmlText(match[1] || '') : '';
+}
+
+function extractBuiltInWorkModel(card) {
+  const match = card.match(/fa-house-building[\s\S]{0,500}?<span[^>]*class="font-barlow text-gray-04"[^>]*>([\s\S]*?)<\/span>/i);
+  return match ? htmlText(match[1] || '') : '';
+}
+
+function extractBuiltInPostedAgo(text) {
+  const match = text.match(/\b(?:Reposted\s+)?(?:An|\d+)\s+\w+\s+Ago\b|\bYesterday\b/i);
+  return match ? match[0].replace(/^Reposted\s+/i, '').trim() : '';
+}
+
+function extractBuiltInDescription(card) {
+  const match = card.match(/<div class="fs-sm fw-regular mb-md text-gray-04">([\s\S]*?)<\/div>/i);
+  return match ? htmlText(match[1] || '') : '';
+}
+
+function parseBuiltInJsonLdJobs(html) {
+  const jobs = [];
+  const scripts = [...html.matchAll(/<script[^>]*type="application\/ld[^"]*"[^>]*>([\s\S]*?)<\/script>/gi)];
+
+  for (const script of scripts) {
+    try {
+      const parsed = JSON.parse(decodeHtml(script[1] || '').trim());
+      const graph = Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed];
+      for (const item of graph) {
+        if (item?.['@type'] !== 'ItemList' || !Array.isArray(item.itemListElement)) continue;
+        for (const listItem of item.itemListElement) {
+          if (!listItem?.url || !listItem?.name) continue;
+          jobs.push({
+            title: String(listItem.name),
+            url: absoluteBuiltInUrl(String(listItem.url)),
+            company: 'Unknown Company',
+            location: '',
+            workModel: '',
+            postedAgo: '',
+            description: String(listItem.description || ''),
+            source: BUILTIN_SOURCE,
+          });
+        }
+      }
+    } catch {
+      // Ignore malformed JSON-LD blocks.
+    }
+  }
+
+  return jobs;
+}
+
+function absoluteBuiltInUrl(value) {
+  if (!value) return '';
+  try {
+    const url = new URL(decodeHtml(value), BUILTIN_BASE_URL);
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function htmlText(value) {
+  return decodeHtml(String(value)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function decodeHtml(value) {
+  return String(value)
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
 // ── Title filter ────────────────────────────────────────────────────
@@ -251,6 +448,8 @@ async function parallelFetch(tasks, limit) {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const noBuiltIn = args.includes('--no-builtin');
+  const builtInOnly = args.includes('--builtin-only');
   const companyFlag = args.indexOf('--company');
   const filterCompany = companyFlag !== -1 ? args[companyFlag + 1]?.toLowerCase() : null;
 
@@ -263,6 +462,9 @@ async function main() {
   const config = parseYaml(readFileSync(PORTALS_PATH, 'utf-8'));
   const companies = config.tracked_companies || [];
   const titleFilter = buildTitleFilter(config.title_filter);
+  const builtInSearches = (!noBuiltIn && (!filterCompany || 'builtin'.includes(filterCompany)))
+    ? loadBuiltInSearches(config)
+    : [];
 
   // 2. Filter to enabled companies with detectable APIs
   const targets = companies
@@ -270,10 +472,12 @@ async function main() {
     .filter(c => !filterCompany || c.name.toLowerCase().includes(filterCompany))
     .map(c => ({ ...c, _api: detectApi(c) }))
     .filter(c => c._api !== null);
+  const apiTargets = builtInOnly ? [] : targets;
 
-  const skippedCount = companies.filter(c => c.enabled !== false).length - targets.length;
+  const skippedCount = builtInOnly ? 0 : companies.filter(c => c.enabled !== false).length - targets.length;
 
-  console.log(`Scanning ${targets.length} companies via API (${skippedCount} skipped — no API detected)`);
+  console.log(`Scanning ${apiTargets.length} companies via API (${skippedCount} skipped — no API detected)`);
+  console.log(`Scanning ${builtInSearches.length} Built In keyword searches`);
   if (dryRun) console.log('(dry run — no files will be written)\n');
 
   // 3. Load dedup sets
@@ -288,7 +492,7 @@ async function main() {
   const newOffers = [];
   const errors = [];
 
-  const tasks = targets.map(company => async () => {
+  const tasks = apiTargets.map(company => async () => {
     const { type, url } = company._api;
     try {
       const json = await fetchJson(url);
@@ -319,6 +523,38 @@ async function main() {
     }
   });
 
+  for (const search of builtInSearches) {
+    tasks.push(async () => {
+      const url = builtInSearchUrl(search);
+      try {
+        const html = await fetchText(url);
+        const jobs = parseBuiltInJobs(html);
+        totalFound += jobs.length;
+
+        for (const job of jobs) {
+          if (!titleFilter(job.title)) {
+            totalFiltered++;
+            continue;
+          }
+          if (seenUrls.has(job.url)) {
+            totalDupes++;
+            continue;
+          }
+          const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
+          if (seenCompanyRoles.has(key)) {
+            totalDupes++;
+            continue;
+          }
+          seenUrls.add(job.url);
+          seenCompanyRoles.add(key);
+          newOffers.push({ ...job, source: BUILTIN_SOURCE });
+        }
+      } catch (err) {
+        errors.push({ company: search.name, error: err.message });
+      }
+    });
+  }
+
   await parallelFetch(tasks, CONCURRENCY);
 
   // 5. Write results
@@ -331,7 +567,8 @@ async function main() {
   console.log(`\n${'━'.repeat(45)}`);
   console.log(`Portal Scan — ${date}`);
   console.log(`${'━'.repeat(45)}`);
-  console.log(`Companies scanned:     ${targets.length}`);
+  console.log(`Companies scanned:     ${apiTargets.length}`);
+  console.log(`Built In searches:     ${builtInSearches.length}`);
   console.log(`Total jobs found:      ${totalFound}`);
   console.log(`Filtered by title:     ${totalFiltered} removed`);
   console.log(`Duplicates:            ${totalDupes} skipped`);

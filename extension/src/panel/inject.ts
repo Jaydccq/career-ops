@@ -19,8 +19,6 @@ import {
   PHASE_ORDER,
   PHASE_LABEL,
   pct,
-  presetCommand,
-  presetDescription,
   presetDisplayName,
   presetFromHealth,
   scoreColor,
@@ -179,174 +177,400 @@ function formatNewGradSkipBreakdown(breakdown: Readonly<Record<string, number>> 
 
 function buildStyles(): string {
   return `
-:host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+:host {
+  all: initial;
+  --bg: #10120f;
+  --surface: #171915;
+  --surface-raised: #1f231d;
+  --surface-soft: #151713;
+  --field: #0b0d0b;
+  --border: #32382f;
+  --border-strong: #4a5345;
+  --text: #eef2ea;
+  --muted: #a3ad9e;
+  --dim: #6f796a;
+  --accent: #37d7d2;
+  --accent-strong: #8df0ed;
+  --accent-ink: #071212;
+  --lime: #c8f05a;
+  --ok: #62d883;
+  --warn: #efc75e;
+  --err: #ff7668;
+  --shadow: rgba(0,0,0,0.46);
+  --font: "Aptos", "Fira Sans", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "Fira Code", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  --r-sm: 4px;
+  --r-md: 8px;
+  font-family: var(--font);
+}
 * { box-sizing: border-box; }
 
 .panel-container {
   width: 380px;
-  background: #0f0f10;
-  color: #e8e8ea;
-  border: 1px solid #26262a;
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  background:
+    linear-gradient(180deg, rgba(55,215,210,0.08), transparent 72px),
+    var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 18px 54px var(--shadow);
   font-size: 13px;
+  font-family: var(--font);
   line-height: 1.45;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   max-height: 80vh;
+  color-scheme: dark;
 }
 
 .drag-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: #181819;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(23,25,21,0.96);
   cursor: grab;
   user-select: none;
-  border-bottom: 1px solid #26262a;
+  border-bottom: 1px solid var(--border);
 }
 .drag-bar:active { cursor: grabbing; }
-.drag-bar h1 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: #e8e8ea; }
+.brand-lockup { min-width: 0; }
+.brand-kicker {
+  color: var(--lime);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.drag-bar h1 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+.drag-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-.health { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #8f8f94; }
-.health .dot { width: 7px; height: 7px; border-radius: 50%; background: #8f8f94; }
-.health[data-state="ok"] .dot { background: #4ecb71; }
-.health[data-state="bad"] .dot { background: #ef5f5f; }
-.health[data-state="warn"] .dot { background: #e5b93c; }
+.health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+}
+.health .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+.health[data-state="ok"] .dot { background: var(--ok); }
+.health[data-state="bad"] .dot { background: var(--err); }
+.health[data-state="warn"] .dot { background: var(--warn); }
 
 .close-btn {
-  background: none; border: none; color: #8f8f94; font-size: 16px;
-  cursor: pointer; padding: 0 4px; line-height: 1;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.close-btn:hover { color: #e8e8ea; }
+.close-btn:hover { background: var(--surface-raised); border-color: var(--border); color: var(--text); }
 
 .panel-body {
-  padding: 12px;
+  padding: 10px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .section {
-  background: #181819;
-  border: 1px solid #26262a;
-  border-radius: 6px;
-  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .section-title {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; color: #8f8f94;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .hidden { display: none !important; }
 
-.capture-url { font-size: 11px; color: #8f8f94; word-break: break-all; }
-.capture-title { font-size: 13px; font-weight: 500; }
-.capture-detection { font-size: 11px; color: #8f8f94; }
+.capture-url { color: var(--muted); font-size: 11px; word-break: break-all; }
+.capture-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.capture-detection { color: var(--muted); font-size: 11px; }
 
 .cta {
-  appearance: none; background: transparent; color: #e8e8ea;
-  border: 1px solid #26262a; border-radius: 4px; padding: 7px 10px;
-  font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  appearance: none;
+  min-height: 34px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
-.cta:hover { background: #202024; }
-.cta.primary { background: #7aa7ff; color: #000; border-color: #7aa7ff; }
-.cta.primary:hover { background: #5c8eff; border-color: #5c8eff; }
-.cta:disabled { opacity: 0.5; cursor: default; }
+.cta:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+.cta:active {
+  transform: translateY(1px);
+}
+.cta.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.cta.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
 
-.job-id { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #8f8f94; }
-.phase-list { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-.phase-list li { color: #8f8f94; }
-.phase-list li.active { color: #e8e8ea; font-weight: 500; }
-.phase-list li.completed { color: #4ecb71; }
-.phase-list li.failed { color: #ef5f5f; }
+.job-id { color: var(--dim); font-family: var(--mono); font-size: 11px; }
+.phase-list {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  list-style: none;
+}
+.phase-list li {
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 8px;
+}
+.phase-list li.active { color: var(--text); border-left-color: var(--accent); font-weight: 650; }
+.phase-list li.completed { color: var(--ok); border-left-color: var(--ok); }
+.phase-list li.failed { color: var(--err); border-left-color: var(--err); }
 
 .result { font-size: 13px; font-weight: 500; }
-.result .score { color: #7aa7ff; font-weight: 600; }
-.result-tldr { font-size: 11px; color: #8f8f94; line-height: 1.5; }
+.result .score { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.result-tldr { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .result-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.error-code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #ef5f5f; }
+.error-code { color: var(--err); font-family: var(--mono); font-size: 11px; }
 .error-message { font-size: 12px; }
+.muted-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 .offline-banner {
-  background: #2a1a1a; border: 1px solid #ef5f5f; border-radius: 4px;
-  padding: 6px 10px; font-size: 11px; color: #ef5f5f;
+  background: rgba(255,118,104,0.12);
+  border: 1px solid rgba(255,118,104,0.42);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  color: var(--err);
+  font-size: 11px;
 }
-.offline-banner code { color: #e8e8ea; }
+.offline-banner code { color: var(--text); }
 
-.setup-hint { margin: 0; font-size: 11px; color: #8f8f94; line-height: 1.5; }
-.setup-cmd { font-family: ui-monospace, Menlo, monospace; background: #000; padding: 2px 6px; border-radius: 3px; color: #7aa7ff; }
+.setup-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.setup-cmd {
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--accent);
+  font-family: var(--mono);
+  padding: 2px 6px;
+}
 .setup-input {
-  appearance: none; background: #000; color: #e8e8ea;
-  border: 1px solid #26262a; border-radius: 4px; padding: 7px 10px;
-  font-family: ui-monospace, Menlo, monospace; font-size: 11px; outline: none; width: 100%;
+  appearance: none;
+  width: 100%;
+  min-height: 34px;
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.setup-input:focus { border-color: #7aa7ff; }
+.setup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(55,215,210,0.14); }
 
-.mode-field { display: flex; flex-direction: column; gap: 6px; }
-.mode-label { font-size: 11px; color: #8f8f94; }
-.mode-select {
-  appearance: none; background: #000; color: #e8e8ea;
-  border: 1px solid #26262a; border-radius: 4px; padding: 7px 10px;
-  font-family: inherit; font-size: 12px; outline: none;
+.mode-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
-.mode-select:focus { border-color: #7aa7ff; }
-.mode-meta { display: flex; flex-direction: column; gap: 2px; }
-.mode-current, .mode-match, .mode-help {
-  font-size: 11px; color: #8f8f94; line-height: 1.5;
+.mode-current {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
-.mode-match[data-match="yes"] { color: #4ecb71; }
-.mode-match[data-match="no"] { color: #e5b93c; }
-.mode-command {
-  display: block; background: #000; color: #7aa7ff;
-  border: 1px solid #26262a; border-radius: 4px; padding: 8px 10px;
-  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
-  white-space: pre-wrap; word-break: break-word;
-}
+.mode-current[data-state="offline"] { color: var(--err); }
+.mode-current[data-state="unknown"] { color: var(--muted); }
 
 .recent-list { display: flex; flex-direction: column; gap: 3px; }
-.recent-empty { font-size: 11px; color: #8f8f94; }
+.recent-empty { color: var(--muted); font-size: 11px; }
 .recent-item {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 11px; padding: 3px 0; border-bottom: 1px solid #26262a; cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 5px 4px;
+  transition: background 120ms ease, color 120ms ease;
 }
 .recent-item:last-child { border-bottom: none; }
-.recent-item:hover .company { color: #7aa7ff; }
-.recent-item .company { font-weight: 500; color: #e8e8ea; }
-.recent-item .role { color: #8f8f94; margin-left: 4px; }
-.recent-item .score { color: #7aa7ff; font-weight: 600; white-space: nowrap; }
+.recent-item:hover { background: rgba(55,215,210,0.06); }
+.recent-item:hover .company { color: var(--accent-strong); }
+.recent-item .company { color: var(--text); font-weight: 650; }
+.recent-item .role { color: var(--muted); margin-left: 4px; }
+.recent-item .score {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scanner-status,
+.metric,
+.help-text,
+.fine-print {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.scanner-status {
+  min-height: 20px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+}
+.metric.ok { color: var(--ok); }
+.metric.warn { color: var(--warn); }
+
+.keyword-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.source-card {
+  background:
+    linear-gradient(135deg, rgba(200,240,90,0.10), transparent 42%),
+    var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 8px;
+}
+.source-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  background: rgba(55,215,210,0.12);
+  border: 1px solid rgba(55,215,210,0.36);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.source-meta {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.keyword-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.keyword-row .setup-input { flex: 1; min-width: 0; }
+.keyword-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
+.keyword-chip {
+  min-height: 28px;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
 
 .newgrad-promoted-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 4px;
-  border-top: 1px solid #26262a;
+  border-top: 1px solid var(--border);
   padding-top: 6px;
 }
 .newgrad-promoted-item {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  background: rgba(238,242,234,0.03);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
   font-size: 11px;
   line-height: 1.35;
+  padding: 6px;
 }
 .newgrad-promoted-item a {
-  color: #e8e8ea;
+  color: var(--text);
   text-decoration: none;
   word-break: break-word;
 }
-.newgrad-promoted-item a:hover { color: #7aa7ff; }
-.newgrad-promoted-item .meta { color: #8f8f94; }
-.newgrad-promoted-item .score { color: #7aa7ff; font-weight: 600; white-space: nowrap; }
+.newgrad-promoted-item a:hover { color: var(--accent-strong); }
+.newgrad-promoted-item .meta { color: var(--muted); }
+.newgrad-promoted-item .score {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .newgrad-eval-list {
   display: flex;
@@ -355,8 +579,9 @@ function buildStyles(): string {
   margin-top: 6px;
 }
 .newgrad-eval-item {
-  border: 1px solid #26262a;
-  border-radius: 4px;
+  background: rgba(238,242,234,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
   padding: 6px 8px;
   font-size: 11px;
 }
@@ -365,13 +590,42 @@ function buildStyles(): string {
   justify-content: space-between;
   gap: 8px;
 }
-.newgrad-eval-item .title { color: #e8e8ea; font-weight: 500; }
-.newgrad-eval-item .phase { color: #7aa7ff; white-space: nowrap; }
-.newgrad-eval-item .meta { color: #8f8f94; margin-top: 2px; }
-.newgrad-eval-item[data-status="completed"] .phase { color: #4ecb71; }
-.newgrad-eval-item[data-status="failed"] .phase { color: #ef5f5f; }
+.newgrad-eval-item .title { color: var(--text); font-weight: 650; }
+.newgrad-eval-item .phase { color: var(--accent); white-space: nowrap; }
+.newgrad-eval-item .meta { color: var(--muted); margin-top: 2px; }
+.newgrad-eval-item[data-status="completed"] .phase { color: var(--ok); }
+.newgrad-eval-item[data-status="failed"] .phase { color: var(--err); }
 
-.footer { text-align: center; font-size: 10px; color: #8f8f94; padding: 4px 0; }
+.scan-results,
+.pending-block,
+.enrich-results {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 2px;
+}
+.action-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.footer {
+  color: var(--dim);
+  font-size: 10px;
+  padding: 4px 0;
+  text-align: center;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cta,
+  .close-btn,
+  .recent-item {
+    transition: none;
+  }
+}
 `;
 }
 
@@ -379,35 +633,27 @@ function buildHTML(): string {
   return `
 <div class="panel-container">
   <div class="drag-bar" id="drag-bar">
-    <h1>career-ops</h1>
-    <div class="health" id="health" data-state="unknown">
-      <span class="dot"></span>
-      <span class="label">checking…</span>
+    <div class="brand-lockup">
+      <div class="brand-kicker">career-ops</div>
+      <h1>Signal desk</h1>
     </div>
-    <button class="close-btn" id="close-btn" title="Close">&times;</button>
+    <div class="drag-actions">
+      <div class="health" id="health" data-state="unknown">
+        <span class="dot"></span>
+        <span class="label">checking…</span>
+      </div>
+      <button class="close-btn" id="close-btn" title="Close">&times;</button>
+    </div>
   </div>
   <div class="panel-body">
     <div id="offline-banner" class="offline-banner hidden">
       Bridge not reachable. Run: <code>cd bridge && npm run start</code>
     </div>
     <div id="mode-panel" class="section">
-      <div class="section-title">Bridge Mode</div>
-      <label class="mode-field">
-        <span class="mode-label">Preferred mode</span>
-        <select id="mode-select" class="mode-select">
-          <option value="real-codex">real / codex</option>
-          <option value="real-claude">real / claude</option>
-          <option value="sdk">sdk</option>
-          <option value="fake">fake</option>
-        </select>
-      </label>
-      <div class="mode-meta">
-        <div class="mode-current" id="mode-current">Current bridge: unknown</div>
-        <div class="mode-match" id="mode-match">Select a preset to see the startup command.</div>
+      <div class="mode-summary">
+        <div class="section-title">Bridge</div>
+        <div class="mode-current" id="mode-current" data-state="unknown" aria-live="polite">Mode: unknown</div>
       </div>
-      <div class="mode-help" id="mode-help"></div>
-      <code class="mode-command" id="mode-command"></code>
-      <button class="cta" id="mode-copy-btn">Copy start command</button>
     </div>
     <div id="setup" class="section hidden">
       <div class="section-title">First-time setup</div>
@@ -424,7 +670,7 @@ function buildHTML(): string {
     </div>
     <div id="not-detected" class="section hidden">
       <div class="section-title">No job posting detected</div>
-      <p style="margin:0;font-size:12px;color:#8f8f94;">This page doesn't look like a job posting. If it is, you can still evaluate it.</p>
+      <p class="muted-body">This page doesn't look like a job posting. If it is, you can still evaluate it.</p>
       <button class="cta" id="evaluate-anyway-btn">Evaluate anyway</button>
     </div>
     <div id="running" class="section hidden">
@@ -449,33 +695,56 @@ function buildHTML(): string {
       <button class="cta" id="retry-btn">Try again</button>
     </div>
     <div id="newgrad-scan" class="section hidden">
-      <div class="section-title">newgrad-jobs.com Scanner</div>
-      <div id="ng-status" style="font-size:12px;color:#8f8f94;margin-bottom:6px;"></div>
-      <button class="cta primary" id="ng-scan-btn">Scan & Score</button>
-      <div id="ng-results" class="hidden" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
-        <div id="ng-promoted" style="font-size:12px;color:#4ecb71;"></div>
-        <div id="ng-filtered" style="font-size:12px;color:#8f8f94;"></div>
-        <div id="ng-deduped" style="font-size:12px;color:#8f8f94;"></div>
-        <div id="ng-promoted-list" class="newgrad-promoted-list hidden"></div>
-        <button class="cta primary" id="ng-enrich-btn" style="margin-top:4px;">Enrich detail pages</button>
+      <div id="ng-scan-title" class="section-title">newgrad-jobs.com Scanner</div>
+      <div id="ng-status" class="scanner-status"></div>
+      <div id="ng-builtin-search" class="keyword-search hidden">
+        <div class="source-card">
+          <div class="source-card-head">
+            <span class="source-badge">Built In</span>
+            <span class="source-meta">All locations</span>
+          </div>
+          <div class="keyword-row">
+            <input id="ng-builtin-keyword" class="setup-input" value="Software Engineering" />
+            <button class="cta" id="ng-builtin-open-btn">Open</button>
+          </div>
+          <div class="keyword-chips">
+            <button class="cta keyword-chip" data-builtin-keyword="Software Engineering">Software Engineering</button>
+            <button class="cta keyword-chip" data-builtin-keyword="Software Engineer">Software Engineer</button>
+            <button class="cta keyword-chip" data-builtin-keyword="Full Stack Engineer">Full Stack</button>
+            <button class="cta keyword-chip" data-builtin-keyword="Backend Engineer">Backend</button>
+            <button class="cta keyword-chip" data-builtin-keyword="AI Engineer">AI Engineer</button>
+            <button class="cta keyword-chip" data-builtin-keyword="Machine Learning Engineer">ML Engineer</button>
+          </div>
+          <div class="help-text">
+            Opens Built In engineering results across all locations. Adjust filters there, then Scan & Score.
+          </div>
+        </div>
       </div>
-      <div id="ng-pending" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+      <button class="cta primary" id="ng-scan-btn">Scan & Score</button>
+      <div id="ng-results" class="scan-results hidden">
+        <div id="ng-promoted" class="metric ok"></div>
+        <div id="ng-filtered" class="metric"></div>
+        <div id="ng-deduped" class="metric"></div>
+        <div id="ng-promoted-list" class="newgrad-promoted-list hidden"></div>
+        <button class="cta primary" id="ng-enrich-btn">Enrich detail pages</button>
+      </div>
+      <div id="ng-pending" class="pending-block">
         <div class="section-title">Pending candidates</div>
-        <div id="ng-pending-status" style="font-size:12px;color:#8f8f94;">Not loaded</div>
+        <div id="ng-pending-status" class="metric">Not loaded</div>
         <div id="ng-pending-list" class="newgrad-promoted-list hidden"></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <div class="action-row">
           <button class="cta" id="ng-load-pending-btn">Load pending</button>
           <button class="cta hidden" id="ng-warm-pending-btn">Warm legacy cache</button>
           <button class="cta primary hidden" id="ng-evaluate-pending-btn">Evaluate all pending</button>
         </div>
       </div>
-      <div id="ng-enrich-progress" class="hidden" style="font-size:12px;color:#8f8f94;margin-top:8px;"></div>
-      <div id="ng-enrich-results" class="hidden" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
-        <div id="ng-added" style="font-size:12px;color:#4ecb71;"></div>
-        <div id="ng-skipped" style="font-size:12px;color:#8f8f94;"></div>
-        <div id="ng-eval-progress" class="hidden" style="font-size:12px;color:#8f8f94;margin-top:4px;"></div>
+      <div id="ng-enrich-progress" class="metric hidden"></div>
+      <div id="ng-enrich-results" class="enrich-results hidden">
+        <div id="ng-added" class="metric ok"></div>
+        <div id="ng-skipped" class="metric"></div>
+        <div id="ng-eval-progress" class="metric hidden"></div>
         <div id="ng-eval-list" class="newgrad-eval-list hidden"></div>
-        <div style="font-size:11px;color:#8f8f94;margin-top:6px;">
+        <div class="fine-print">
           Promoted rows are evaluated directly and synced to the tracker automatically.
         </div>
       </div>
@@ -502,12 +771,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const closeBtn = $("close-btn");
   const healthEl = $("health");
   const offlineBanner = $("offline-banner");
-  const modeSelect = $("mode-select") as HTMLSelectElement;
   const modeCurrentEl = $("mode-current");
-  const modeMatchEl = $("mode-match");
-  const modeHelpEl = $("mode-help");
-  const modeCommandEl = $("mode-command");
-  const modeCopyBtn = $("mode-copy-btn") as HTMLButtonElement;
   const setupEl = $("setup");
   const setupTokenInput = $("setup-token") as HTMLInputElement;
   const setupSaveBtn = $("setup-save-btn") as HTMLButtonElement;
@@ -533,7 +797,11 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const copySummaryBtn = $("copy-summary-btn") as HTMLButtonElement;
   const evaluateAnywayBtn = $("evaluate-anyway-btn") as HTMLButtonElement;
   const newgradScanEl = $("newgrad-scan");
+  const ngScanTitleEl = $("ng-scan-title");
   const ngStatusEl = $("ng-status");
+  const ngBuiltInSearchEl = $("ng-builtin-search");
+  const ngBuiltInKeywordInput = $("ng-builtin-keyword") as HTMLInputElement;
+  const ngBuiltInOpenBtn = $("ng-builtin-open-btn") as HTMLButtonElement;
   const ngScanBtn = $("ng-scan-btn") as HTMLButtonElement;
   const ngResultsEl = $("ng-results");
   const ngPromotedEl = $("ng-promoted");
@@ -624,7 +892,6 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   let currentJobId: string | null = null;
   let currentResult: any = null;
   let activePort: chrome.runtime.Port | null = null;
-  let preferredPreset: BridgePreset = "real-codex";
   let currentBridgePreset: BridgePreset | null = null;
   let jobPollTimer: number | null = null;
   let batchEvaluationPollTimer: number | null = null;
@@ -708,31 +975,18 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   // pct, scoreColor imported from shared/utils
 
-  // presetFromHealth, presetDisplayName, presetDescription, presetCommand imported from shared/utils
-
-  function renderModePanel(health?: any): void {
-    modeSelect.value = preferredPreset;
-    modeHelpEl.textContent = presetDescription(preferredPreset);
-    modeCommandEl.textContent = presetCommand(preferredPreset);
-
-    const currentText = currentBridgePreset
-      ? "Current bridge: " + presetDisplayName(currentBridgePreset)
+  function renderModePanel(health?: any, state: "unknown" | "offline" = "unknown"): void {
+    const modeLabel = currentBridgePreset
+      ? "Mode: " + presetDisplayName(currentBridgePreset)
       : health?.execution?.mode
-        ? "Current bridge: " + health.execution.mode
-        : "Current bridge: unknown";
-    modeCurrentEl.textContent = currentText;
-
-    if (!currentBridgePreset) {
-      modeMatchEl.dataset.match = "no";
-      modeMatchEl.textContent = "Restart the local bridge with the command below if you want this preset.";
-      return;
-    }
-
-    const matches = currentBridgePreset === preferredPreset;
-    modeMatchEl.dataset.match = matches ? "yes" : "no";
-    modeMatchEl.textContent = matches
-      ? "Bridge already matches your preferred preset."
-      : "Bridge is running a different preset. Restart it with the command below to switch.";
+        ? "Mode: " + health.execution.mode
+        : state === "offline"
+          ? "Mode: offline"
+          : "Mode: unknown";
+    modeCurrentEl.textContent = modeLabel;
+    modeCurrentEl.dataset.state = currentBridgePreset || health?.execution?.mode
+      ? "ok"
+      : state;
   }
 
   async function refreshHealth(): Promise<void> {
@@ -755,33 +1009,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       setHealth("bad", res?.error?.code ?? "offline");
       offlineBanner.classList.remove("hidden");
       currentBridgePreset = null;
-      renderModePanel();
+      renderModePanel(undefined, "offline");
     }
-  }
-
-  async function onModeChange(): Promise<void> {
-    preferredPreset = modeSelect.value as BridgePreset;
-    renderModePanel();
-    const res = await sendMsg({ kind: "setModePreference", preset: preferredPreset });
-    if (!res?.ok) {
-      renderError(res?.error?.code ?? "INTERNAL", res?.error?.message ?? "failed to save mode");
-      return;
-    }
-    preferredPreset = res.result.preset;
-    renderModePanel();
-  }
-
-  async function onCopyModeCommand(): Promise<void> {
-    const text = presetCommand(preferredPreset);
-    try {
-      await navigator.clipboard.writeText(text);
-      modeCopyBtn.textContent = "Copied";
-    } catch {
-      modeCopyBtn.textContent = "Copy failed";
-    }
-    setTimeout(() => {
-      modeCopyBtn.textContent = "Copy start command";
-    }, 1500);
   }
 
   // Tracks the origin we're currently waiting for the user to authorize
@@ -816,8 +1045,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     errorMessageEl.appendChild(p);
     const btn = document.createElement("button");
     btn.textContent = `Authorize ${label}`;
-    btn.style.cssText =
-      "margin-top:10px;padding:6px 12px;border-radius:6px;border:1px solid #7ec5ff;background:#7ec5ff;color:#001628;font-weight:600;cursor:pointer;";
+    btn.className = "cta primary";
+    btn.style.marginTop = "10px";
     btn.addEventListener("click", () => {
       void sendMsg({ kind: "openPermissionTab", origin, label });
     });
@@ -847,6 +1076,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
         ? "likely job posting (" + pct(cap.detection.confidence) + ")"
         : "not a job posting (heuristic)";
     captureDetectionEl.textContent = label;
+    captureDetectionEl.style.color = "";
     if (cap.detection?.label === "not_job_posting") { show("notDetected"); return; }
     show("captured");
   }
@@ -862,7 +1092,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       evaluateBtn.disabled = false;
       evaluateBtn.textContent = "Evaluate this job";
       captureDetectionEl.textContent = "⚠ This posting appears to be expired.";
-      captureDetectionEl.style.color = "#ef5f5f";
+      captureDetectionEl.style.color = "var(--err)";
       const proceed = confirm(
         "This posting appears to be expired.\n\n" +
         "Reason: " + (livenessRes.result?.reason ?? "unknown") + "\n\n" +
@@ -1092,10 +1322,47 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   }
 
   // --- Newgrad scan logic ---
+  type ScanSource = "newgrad" | "builtin";
+  let activeScanSource: ScanSource = "newgrad";
   let storedPromotedRows: any[] = [];
   let pendingNewGradEntries: any[] = [];
   let activeEvaluationSessionId: string | null = null;
   const evaluationRows = new Map<string, any>();
+
+  function scanSourceLabel(): string {
+    return activeScanSource === "builtin" ? "Built In" : "newgrad-jobs.com";
+  }
+
+  function setScanSource(source: ScanSource): void {
+    activeScanSource = source;
+    ngScanTitleEl.textContent = scanSourceLabel() + " Scanner";
+    ngBuiltInSearchEl.classList.toggle("hidden", source !== "builtin");
+    if (source === "builtin" && !ngStatusEl.textContent.trim()) {
+      ngStatusEl.textContent = "Open an all-location keyword search, then scan the visible Built In results.";
+    }
+  }
+
+  function builtInKeywordSearchUrl(keyword: string): string {
+    const url = new URL("https://builtin.com/jobs/hybrid/national/dev-engineering");
+    url.searchParams.set("search", keyword.trim() || "Software Engineering");
+    url.searchParams.set("allLocations", "true");
+    return url.toString();
+  }
+
+  function syncBuiltInKeywordFromUrl(rawUrl: string): void {
+    try {
+      const parsed = new URL(rawUrl);
+      const search = parsed.searchParams.get("search");
+      if (search?.trim()) ngBuiltInKeywordInput.value = search.trim();
+    } catch {
+      // Keep the default keyword.
+    }
+  }
+
+  function openBuiltInKeywordSearch(keyword: string): void {
+    const url = builtInKeywordSearchUrl(keyword);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   function clearPromotedList(): void {
     while (ngPromotedListEl.firstChild) ngPromotedListEl.removeChild(ngPromotedListEl.firstChild);
@@ -1203,7 +1470,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     pendingNewGradEntries = [...(res.result.entries ?? [])];
     const legacyCount = countLegacyPendingEntries(pendingNewGradEntries);
     ngPendingStatusEl.textContent = pendingNewGradEntries.length === 0
-      ? "No pending newgrad candidates in pipeline.md"
+      ? "No pending scan candidates in pipeline.md"
       : "Found " + pendingNewGradEntries.length + " pending candidates" +
         (res.result.total > pendingNewGradEntries.length ? " (" + res.result.total + " total)" : "") +
         (legacyCount > 0 ? " · " + legacyCount + " missing local cache" : " · all locally cached");
@@ -1389,7 +1656,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       return;
     }
     const rows = extractRes.result.rows;
-    ngStatusEl.textContent = "Extracted " + rows.length + " listings from the page; filtering recent/unscanned rows...";
+    ngStatusEl.textContent = "Extracted " + rows.length + " " + scanSourceLabel() +
+      " listings from the page; filtering recent/unscanned rows...";
 
     // Step 2: Score the rows
     const scoreRes = await sendMsg({ kind: "newgradScore", rows });
@@ -1416,7 +1684,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     );
     const recentUnscanned = promoted.length + filtered.length;
 
-    ngStatusEl.textContent = "Found " + recentUnscanned + " recent, not previously scanned listings";
+    ngStatusEl.textContent = "Found " + recentUnscanned + " recent, not previously scanned " +
+      scanSourceLabel() + " listings";
 
     ngPromotedEl.textContent = "\u2713 " + promoted.length + " passed filter (score \u2265 threshold)";
     ngFilteredEl.textContent = "\u2717 " + filtered.length + " filtered out by fit rules";
@@ -1557,6 +1826,21 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   ngLoadPendingBtn.addEventListener("click", () => void loadPendingNewGradEntries());
   ngWarmPendingBtn.addEventListener("click", () => void warmPendingNewGradCache());
   ngEvaluatePendingBtn.addEventListener("click", () => void evaluatePendingNewGradEntries());
+  ngBuiltInOpenBtn.addEventListener("click", () => {
+    openBuiltInKeywordSearch(ngBuiltInKeywordInput.value);
+  });
+  ngBuiltInKeywordInput.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    openBuiltInKeywordSearch(ngBuiltInKeywordInput.value);
+  });
+  for (const chip of Array.from(shadow.querySelectorAll<HTMLButtonElement>("[data-builtin-keyword]"))) {
+    chip.addEventListener("click", () => {
+      const keyword = chip.dataset.builtinKeyword ?? "Software Engineering";
+      ngBuiltInKeywordInput.value = keyword;
+      openBuiltInKeywordSearch(keyword);
+    });
+  }
   evaluateBtn.addEventListener("click", () => void onEvaluateClick());
   evaluateAnywayBtn.addEventListener("click", () => {
     if (capturedData) { show("captured"); void onEvaluateClick(); }
@@ -1576,8 +1860,6 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     void refreshHealth();
     await runCapture();
   });
-  modeSelect.addEventListener("change", () => { void onModeChange(); });
-  modeCopyBtn.addEventListener("click", () => { void onCopyModeCommand(); });
   mergeTrackerBtn.addEventListener("click", async () => {
     mergeTrackerBtn.disabled = true;
     mergeTrackerBtn.textContent = "Merging…";
@@ -1598,10 +1880,6 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
 
   // Init
   void (async () => {
-    const preferenceRes = await sendMsg({ kind: "getModePreference" });
-    if (preferenceRes?.ok) {
-      preferredPreset = preferenceRes.result.preset;
-    }
     renderModePanel();
 
     const tokenRes = await sendMsg({ kind: "hasToken" });
@@ -1613,12 +1891,21 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     void refreshHealth();
     await runCapture();
 
-    // Detect newgrad-jobs.com and show scan UI instead of single-JD flow
+    // Detect supported scan sources and show scan UI instead of single-JD flow
     try {
       const capturedUrl = (capturedData as { url?: string } | null)?.url;
       if (capturedUrl) {
         const currentHost = new URL(capturedUrl).hostname;
         if (currentHost.includes("newgrad-jobs.com")) {
+          setScanSource("newgrad");
+          show("newgradScan");
+          void loadPendingNewGradEntries();
+          void loadRecentJobs();
+          return;
+        }
+        if (currentHost === "builtin.com" || currentHost.endsWith(".builtin.com")) {
+          setScanSource("builtin");
+          syncBuiltInKeywordFromUrl(capturedUrl);
           show("newgradScan");
           void loadPendingNewGradEntries();
           void loadRecentJobs();

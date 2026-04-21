@@ -131,6 +131,35 @@ describe("newgrad-scan-history", () => {
     expect(content.match(/Acme Corp/g)).toHaveLength(1);
   });
 
+  test("appendNewGradScanHistory records BuiltIn rows under builtin-scan", () => {
+    const repoRoot = makeRepoRoot();
+    const row = makeRow({
+      source: "builtin.com",
+      detailUrl: "https://builtin.com/job/software-engineer/123",
+    });
+
+    appendNewGradScanHistory(repoRoot, [row], () => "promoted");
+
+    const content = readFileSync(join(repoRoot, "data/scan-history.tsv"), "utf-8");
+    expect(content).toContain("https://builtin.com/job/software-engineer/123");
+    expect(content).toContain("builtin-scan\tSoftware Engineer\tAcme Corp\tpromoted");
+  });
+
+  test("appendNewGradScanHistory records LinkedIn rows under linkedin-scan", () => {
+    const repoRoot = makeRepoRoot();
+    const row = makeRow({
+      source: "linkedin.com",
+      detailUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+      applyUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+    });
+
+    appendNewGradScanHistory(repoRoot, [row], () => "promoted");
+
+    const content = readFileSync(join(repoRoot, "data/scan-history.tsv"), "utf-8");
+    expect(content).toContain("https://www.linkedin.com/jobs/view/4347121472");
+    expect(content).toContain("linkedin-scan\tSoftware Engineer\tAcme Corp\tpromoted");
+  });
+
   test("wasNewGradRowSeen matches both URL and company-role fallbacks", () => {
     const row = makeRow();
     const seenByUrl = {

@@ -34,8 +34,6 @@ import {
   PHASE_ORDER,
   PHASE_LABEL,
   pct,
-  presetCommand,
-  presetDescription,
   presetDisplayName,
   presetFromHealth,
   scoreColor,
@@ -56,12 +54,7 @@ const modePanelEl = document.getElementById("mode-panel")!;
 const setupEl = document.getElementById("setup")!;
 const setupTokenInput = document.getElementById("setup-token") as HTMLInputElement;
 const setupSaveBtn = document.getElementById("setup-save-btn") as HTMLButtonElement;
-const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
 const modeCurrentEl = document.getElementById("mode-current")!;
-const modeMatchEl = document.getElementById("mode-match")!;
-const modeHelpEl = document.getElementById("mode-help")!;
-const modeCommandEl = document.getElementById("mode-command")!;
-const modeCopyBtn = document.getElementById("mode-copy-btn") as HTMLButtonElement;
 const captureEl = document.getElementById("capture")!;
 const notDetectedEl = document.getElementById("not-detected")!;
 const runningEl = document.getElementById("running")!;
@@ -110,7 +103,6 @@ let captured: CapturedTab | null = null;
 let currentJobId: JobId | null = null;
 let currentResult: EvaluationResult | null = null;
 let activePort: chrome.runtime.Port | null = null;
-let preferredPreset: BridgePreset = "real-codex";
 let currentBridgePreset: BridgePreset | null = null;
 let expiryBypassResolve: ((proceed: boolean) => void) | null = null;
 let lastErrorRetryable = true;
@@ -190,20 +182,14 @@ function sendRequest<K extends PopupRequest["kind"]>(
 async function init(): Promise<void> {
   footerVersionEl.textContent = `v${__EXTENSION_VERSION__} · local bridge`;
 
-  // Phase 1: Read cached state + fire independent background requests in parallel.
-  const [stored, preferenceRes, tokenRes] = await Promise.all([
+  // Phase 1: Read cached state + token in parallel.
+  const [stored, tokenRes] = await Promise.all([
     chrome.storage.local.get(STATE_STORAGE_KEY),
-    sendRequest({ kind: "getModePreference" }),
     sendRequest({ kind: "hasToken" }),
   ]);
 
   // Apply cached state for instant render.
   const state = stored[STATE_STORAGE_KEY] as ExtensionState | undefined;
-  preferredPreset = state?.preferredBridgePreset ?? preferredPreset;
-  if (preferenceRes.ok) {
-    preferredPreset = preferenceRes.result.preset;
-  }
-  modeSelect.value = preferredPreset;
   renderModePanel();
 
   if (state?.lastHealthAt != null && state.lastHealthOk != null) {
@@ -282,7 +268,7 @@ async function refreshHealth(): Promise<void> {
     setHealth("bad", res.error.code);
     offlineBannerEl.classList.remove("hidden");
     currentBridgePreset = null;
-    renderModePanel();
+    renderModePanel(undefined, "offline");
   }
 }
 
@@ -625,61 +611,16 @@ function renderError(code: string, message: string): void {
   show("error");
 }
 
-function renderModePanel(health?: HealthResult): void {
-  modeSelect.value = preferredPreset;
-  modeHelpEl.textContent = presetDescription(preferredPreset);
-  modeCommandEl.textContent = presetCommand(preferredPreset);
-
-  const currentText = currentBridgePreset
-    ? `Current bridge: ${presetDisplayName(currentBridgePreset)}`
+function renderModePanel(health?: HealthResult, state: "unknown" | "offline" = "unknown"): void {
+  const modeLabel = currentBridgePreset
+    ? `Mode: ${presetDisplayName(currentBridgePreset)}`
     : health
-      ? `Current bridge: ${health.execution.mode}`
-      : "Current bridge: unknown";
-  modeCurrentEl.textContent = currentText;
-
-  if (!currentBridgePreset) {
-    modeMatchEl.dataset.match = "no";
-    modeMatchEl.textContent =
-      "Restart the local bridge with the command below if you want this preset.";
-    return;
-  }
-
-  const matches = currentBridgePreset === preferredPreset;
-  modeMatchEl.dataset.match = matches ? "yes" : "no";
-  modeMatchEl.textContent = matches
-    ? "Bridge already matches your preferred preset."
-    : "Bridge is running a different preset. Restart it with the command below to switch.";
-}
-
-async function onModeChange(): Promise<void> {
-  preferredPreset = modeSelect.value as BridgePreset;
-  renderModePanel();
-  const res = await sendRequest({
-    kind: "setModePreference",
-    preset: preferredPreset,
-  });
-  if (!res.ok) {
-    renderError(res.error.code, res.error.message);
-    return;
-  }
-  preferredPreset = res.result.preset;
-  renderModePanel();
-}
-
-async function onCopyModeCommand(): Promise<void> {
-  const text = presetCommand(preferredPreset);
-  try {
-    await navigator.clipboard.writeText(text);
-    modeCopyBtn.textContent = "Copied";
-    setTimeout(() => {
-      modeCopyBtn.textContent = "Copy start command";
-    }, 1500);
-  } catch {
-    modeCopyBtn.textContent = "Copy failed";
-    setTimeout(() => {
-      modeCopyBtn.textContent = "Copy start command";
-    }, 1500);
-  }
+      ? `Mode: ${health.execution.mode}`
+      : state === "offline"
+        ? "Mode: offline"
+        : "Mode: unknown";
+  modeCurrentEl.textContent = modeLabel;
+  modeCurrentEl.dataset.state = currentBridgePreset || health ? "ok" : state;
 }
 
 async function onEvaluateAnywayClick(): Promise<void> {
@@ -827,7 +768,5 @@ copySummaryBtn.addEventListener("click", () => void onCopySummaryClick());
 evaluateAnywayBtn.addEventListener("click", () => void onEvaluateAnywayClick());
 expiryEvaluateBtn.addEventListener("click", onExpiryEvaluate);
 expiryDismissBtn.addEventListener("click", onExpiryDismiss);
-modeSelect.addEventListener("change", () => void onModeChange());
-modeCopyBtn.addEventListener("click", () => void onCopyModeCommand());
 
 void init();

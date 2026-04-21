@@ -87,6 +87,48 @@ describe("readNewGradPendingEntries", () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  test("reads builtin-scan pipeline entries with BuiltIn source", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "data/pipeline.md"),
+      "- [ ] https://builtin.com/job/software-engineer/123 — BuiltIn Co | Software Engineer I (via builtin-scan, score: 6/9)\n",
+      "utf-8",
+    );
+
+    const result = readNewGradPendingEntries(repoRoot, 10);
+
+    expect(result.total).toBe(1);
+    expect(result.entries[0]).toMatchObject({
+      url: "https://builtin.com/job/software-engineer/123",
+      company: "BuiltIn Co",
+      role: "Software Engineer I",
+      score: 6,
+      source: "builtin.com",
+    });
+  });
+
+  test("reads linkedin-scan pipeline entries with LinkedIn source", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "data/pipeline.md"),
+      "- [ ] https://www.linkedin.com/jobs/view/4347121472/ — LinkedIn Co | Software AI Engineer (via linkedin-scan, score: 8/9, value: 7.5/10) [value-reasons:strong_structured_skill_match]\n",
+      "utf-8",
+    );
+
+    const result = readNewGradPendingEntries(repoRoot, 10);
+
+    expect(result.total).toBe(1);
+    expect(result.entries[0]).toMatchObject({
+      url: "https://www.linkedin.com/jobs/view/4347121472/",
+      company: "LinkedIn Co",
+      role: "Software AI Engineer",
+      score: 8,
+      valueScore: 7.5,
+      valueReasons: ["strong_structured_skill_match"],
+      source: "linkedin.com",
+    });
+  });
+
   test("honors display limit while preserving total", () => {
     const repoRoot = makeRepoRoot();
     writeFileSync(

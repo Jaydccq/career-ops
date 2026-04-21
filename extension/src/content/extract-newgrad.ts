@@ -15,6 +15,7 @@
 /* ========================================================================== */
 
 export interface NewGradRow {
+  source?: string;
   position: number;
   title: string;
   postedAgo: string;
@@ -1010,6 +1011,82 @@ export function extractNewGradDetail(): NewGradDetail {
     return Array.from(seen);
   }
 
+  function progressValue(el: Element | null | undefined): number | null {
+    if (!el) return null;
+    const raw = el.getAttribute("aria-valuenow");
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function extractDomMatchScores(): {
+    matchScore: number | null;
+    expLevelMatch: number | null;
+    skillMatch: number | null;
+    industryExpMatch: number | null;
+  } {
+    const panel =
+      first(
+        document,
+        "[class*='jobScoresPanel']",
+        "[class*='overallScore']"
+      )?.closest("[class*='jobScoresPanel']")
+      ?? first(document, "[class*='jobScoresPanel']")
+      ?? first(document, "[class*='overallScore']")?.parentElement
+      ?? null;
+
+    let matchScore: number | null = null;
+    let expLevelMatch: number | null = null;
+    let skillMatch: number | null = null;
+    let industryExpMatch: number | null = null;
+
+    const overallProgress = first(
+      panel ?? document,
+      "[class*='overallScore'] [role='progressbar']",
+      "[class*='overallScore'] [aria-valuenow]",
+      "[class*='jobScoresPanel'] [class*='overallScore'] [role='progressbar']",
+      "[class*='jobScoresPanel'] [class*='overallScore'] [aria-valuenow]"
+    );
+    matchScore = progressValue(overallProgress);
+
+    const itemEls = Array.from(
+      (panel ?? document).querySelectorAll(
+        "[class*='recommendationScoreItem'], [class*='scoreItem']"
+      )
+    );
+
+    for (const item of itemEls) {
+      const value = progressValue(
+        first(item, "[role='progressbar']", "[aria-valuenow]")
+      );
+      if (value === null) continue;
+
+      const label = (
+        txt(first(item, "[class*='scoreDisplayName']", "[class*='label']")) ||
+        txt(item).replace(/^\s*\d+\s*%?/, "").trim()
+      ).toLowerCase();
+
+      if (!expLevelMatch && /\b(exp\.?|experience)\s*level\b/.test(label)) {
+        expLevelMatch = value;
+        continue;
+      }
+      if (!skillMatch && /\bskill\b/.test(label)) {
+        skillMatch = value;
+        continue;
+      }
+      if (!industryExpMatch && /\bindustry\b/.test(label)) {
+        industryExpMatch = value;
+      }
+    }
+
+    return {
+      matchScore,
+      expLevelMatch,
+      skillMatch,
+      industryExpMatch,
+    };
+  }
+
   function splitValues(value: string | null | undefined): string[] {
     if (!value) return [];
     return value
@@ -1148,6 +1225,7 @@ export function extractNewGradDetail(): NewGradDetail {
 
   /* ---- Jobright match scores ---- */
   const bodyText = document.body?.innerText ?? "";
+  const domScores = extractDomMatchScores();
 
   function extractPercentage(pattern: RegExp): number | null {
     const m = bodyText.match(pattern);
@@ -1158,24 +1236,24 @@ export function extractNewGradDetail(): NewGradDetail {
     return null;
   }
 
-  // Overall match: "85% GOOD MATCH" or "92% GREAT MATCH"
-  const matchScore = extractPercentage(
-    /(\d+)\s*%\s*(?:GOOD\s+MATCH|GREAT\s+MATCH|MATCH)/i
+  // Overall match: "85% GOOD MATCH", "92% GREAT MATCH", "69% FAIR MATCH"
+  const matchScore = domScores.matchScore ?? extractPercentage(
+    /(\d+)\s*%\s*(?:(?:FAIR|GOOD|GREAT)\s+)?MATCH/i
   );
 
-  // Sub-scores: "Experience Level Match 80%" or "Experience Level: 80%"
-  const expLevelMatch = extractPercentage(
-    /experience\s+level\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+  // Sub-scores: "Experience Level Match 80%", "Exp. Level 80%"
+  const expLevelMatch = domScores.expLevelMatch ?? extractPercentage(
+    /(?:experience|exp\.?)\s*level\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
   );
 
-  // "Skill Match 75%" or "Skills: 75%"
-  const skillMatch = extractPercentage(
-    /skills?\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+  // "Skill Match 75%" or "Skill 75%"
+  const skillMatch = domScores.skillMatch ?? extractPercentage(
+    /\bskills?\b\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
   );
 
-  // "Industry Experience Match 60%"
-  const industryExpMatch = extractPercentage(
-    /industry\s*(?:experience)?\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
+  // "Industry Experience Match 60%" or "Industry Exp. 60%"
+  const industryExpMatch = domScores.industryExpMatch ?? extractPercentage(
+    /industry\s*(?:exp(?:erience)?\.?)?\s*(?:match)?\s*[:\s]*(\d+)\s*%/i
   );
 
   /* ---- description ---- */

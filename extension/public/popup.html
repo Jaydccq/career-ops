@@ -13,7 +13,7 @@
       <div class="header-right">
         <button class="bridge-chip" id="bridge-chip" type="button"
                 aria-expanded="false" aria-controls="mode-panel"
-                title="Bridge configuration">
+                title="Bridge mode summary">
           <span class="dot" id="health-dot"></span>
           <span class="bridge-chip-label" id="bridge-chip-label">checking…</span>
         </button>
@@ -27,24 +27,11 @@
       Bridge not reachable. Run: <code>cd bridge &amp;&amp; npm run start</code>
     </div>
 
-    <section id="mode-panel" class="mode-panel hidden" aria-label="Bridge configuration">
-      <div class="section-label">Bridge Mode</div>
-      <label class="mode-field">
-        <span class="mode-label">Preferred mode</span>
-        <select id="mode-select" class="mode-select">
-          <option value="real-codex">real / codex</option>
-          <option value="real-claude">real / claude</option>
-          <option value="sdk">sdk</option>
-          <option value="fake">fake</option>
-        </select>
-      </label>
-      <div class="mode-meta">
-        <div class="mode-current" id="mode-current">Current bridge: unknown</div>
-        <div class="mode-match" id="mode-match">Select a preset to see the startup command.</div>
+    <section id="mode-panel" class="mode-panel hidden" aria-label="Bridge mode summary">
+      <div class="mode-summary">
+        <div class="section-label">Bridge</div>
+        <div class="mode-current" id="mode-current" data-state="unknown" aria-live="polite">Mode: unknown</div>
       </div>
-      <div class="mode-help" id="mode-help"></div>
-      <code class="mode-command" id="mode-command"></code>
-      <button class="btn" id="mode-copy-btn" type="button">Copy start command</button>
     </section>
 
     <section id="setup" class="panel primary hidden">

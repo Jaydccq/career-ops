@@ -12,7 +12,7 @@
 #   1. Copy this file to portals.yml in the project root
 #   2. Edit title_filter.positive with YOUR target role keywords
 #   3. Add/remove companies in tracked_companies
-#   4. Adjust search_queries for your preferred job boards
+#   4. Adjust search_queries and builtin_searches for your preferred job boards
 #   5. Set enabled: false on companies you don't care about
 
 # -- Title filter --
@@ -271,6 +271,30 @@ search_queries:
 
   - name: HN Who's Hiring — Remote AI
     query: 'site:news.ycombinator.com OR site:hnrss.org "AI Engineer" OR "Forward Deployed" OR "DevRel" OR "Founding Engineer" remote'
+    enabled: true
+
+# -- Built In searches --
+# /career-ops scan fetches these Built In keyword searches directly with
+# allLocations=true and without fixed city/state/country constraints.
+
+builtin_searches:
+  - name: Built In — Software Engineering
+    keyword: Software Engineering
+    enabled: true
+  - name: Built In — Software Engineer
+    keyword: Software Engineer
+    enabled: true
+  - name: Built In — Full Stack Engineer
+    keyword: Full Stack Engineer
+    enabled: true
+  - name: Built In — Backend Engineer
+    keyword: Backend Engineer
+    enabled: true
+  - name: Built In — AI Engineer
+    keyword: AI Engineer
+    enabled: true
+  - name: Built In — Machine Learning Engineer
+    keyword: Machine Learning Engineer
     enabled: true
 
 # -- Tracked companies --

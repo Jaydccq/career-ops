@@ -24,6 +24,7 @@ import type {
 } from "./jobs.js";
 import type { BridgeError } from "./envelope.js";
 import type {
+  BuiltInPendingResult,
   NewGradRow,
   EnrichedRow,
   NewGradScoreResult,
@@ -164,6 +165,12 @@ export interface PipelineAdapter {
    * roles already present in the tracker. Pure filesystem read.
    */
   readNewGradPendingEntries(limit: number): Promise<NewGradPendingResult>;
+
+  /**
+   * Read unchecked Built In candidates from data/pipeline.md, including
+   * legacy pipe rows written by `scan.mjs --builtin-only`. Pure filesystem read.
+   */
+  readBuiltInPendingEntries(limit: number): Promise<BuiltInPendingResult>;
 
   /**
    * Persist richer local JD cache for legacy pending rows by writing a

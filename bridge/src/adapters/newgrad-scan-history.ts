@@ -10,10 +10,10 @@ import { dirname, join } from "node:path";
 import type { NewGradRow } from "../contracts/newgrad.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { parsePostedAgo } from "./newgrad-scorer.js";
+import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 
 const SCAN_HISTORY_PATH = "data/scan-history.tsv";
 const SCAN_HISTORY_HEADER = "url\tfirst_seen\tportal\ttitle\tcompany\tstatus\n";
-const NEWGRAD_PORTAL = "newgrad-scan";
 const MAX_RECENT_MINUTES = 24 * 60;
 
 export interface NewGradSeenKeys {
@@ -77,9 +77,9 @@ export function appendNewGradScanHistory(
     seenInBatch.add(dedupeKey);
 
     lines.push([
-      url || `newgrad-scan:${companyRole}`,
+      url || `${pipelineTagForSource(scanSourceForRow(row))}:${companyRole}`,
       today,
-      NEWGRAD_PORTAL,
+      pipelineTagForSource(scanSourceForRow(row)),
       row.title,
       row.company,
       statusForRow(row),

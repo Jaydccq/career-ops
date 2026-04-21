@@ -29,6 +29,7 @@ import {
   type RequestEnvelope,
 } from "./contracts/envelope.js";
 import {
+  type EvaluationResult,
   type EvaluationInput,
   type JobEvent,
   type JobId,
@@ -288,15 +289,25 @@ export function buildServer(args: BuildServerArgs) {
 
     void evaluationWorkerPool
       .enqueue(async () => {
-        await runEvaluationInBackground(
-          adapter,
-          store,
-          jobId,
-          env.payload.input,
-          config.evaluationTimeoutSec,
-        );
+        try {
+          await runEvaluationInBackground(
+            adapter,
+            store,
+            jobId,
+            env.payload.input,
+            config.evaluationTimeoutSec,
+          );
+        } catch (err) {
+          const failure = evaluationCrashError(err);
+          await store.markFailed(jobId, failure);
+          fastify.log.error({ err, jobId }, "background evaluation crashed");
+        }
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        const failure = evaluationCrashError(err);
+        await store.markFailed(jobId, failure).catch((markErr) => {
+          fastify.log.error({ err: markErr, jobId }, "failed to mark crashed evaluation failed");
+        });
         fastify.log.error({ err, jobId }, "background evaluation crashed");
       });
 
@@ -519,6 +530,7 @@ export function buildServer(args: BuildServerArgs) {
   /* -- POST /v1/newgrad-scan/score --------------------------------------- */
 
   const newGradRowSchema = z.object({
+    source: z.string().max(64).optional(),
     position: z.number().int(),
     title: z.string(),
     postedAgo: z.string(),
@@ -586,6 +598,37 @@ export function buildServer(args: BuildServerArgs) {
 
     try {
       const result = await adapter.readNewGradPendingEntries(env.payload.limit ?? 100);
+      reply.code(200).send(success(env.requestId, result));
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+  });
+
+  fastify.post("/v1/builtin-scan/pending", async (req, reply) => {
+    if (!generalRateLimit.check("general")) {
+      return sendFailure(reply, requestIdFromBody(req.body),
+        bridgeError("RATE_LIMITED", "too many requests"));
+    }
+
+    const parsed = newGradPendingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendFailure(
+        reply,
+        requestIdFromBody(req.body),
+        bridgeError("BAD_REQUEST", "invalid envelope", {
+          issues: parsed.error.issues,
+        })
+      );
+    }
+    const env = parsed.data as RequestEnvelope<{ limit?: number }>;
+    try {
+      assertProtocol(env);
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+
+    try {
+      const result = await adapter.readBuiltInPendingEntries(env.payload.limit ?? 100);
       reply.code(200).send(success(env.requestId, result));
     } catch (e) {
       return sendFailure(reply, env.requestId, toBridgeError(e));
@@ -874,7 +917,15 @@ async function runEvaluationInBackground(
     void store.pushTransition(jobId, transition);
   });
 
-  const result = await Promise.race([evaluation, timeout]);
+  let result: EvaluationResult | BridgeError;
+  try {
+    result = await Promise.race([evaluation, timeout]);
+  } catch (err) {
+    const failure = evaluationCrashError(err);
+    await store.markFailed(jobId, failure);
+    console.log(JSON.stringify({ level: 30, msg: "evaluation finished", jobId, phase: "failed", durationMs: Date.now() - startedAt }));
+    return;
+  }
 
   if (isBridgeError(result)) {
     await store.markFailed(jobId, result);
@@ -893,6 +944,12 @@ function isBridgeError(v: unknown): v is BridgeError {
     "message" in v &&
     typeof (v as { code: unknown }).code === "string"
   );
+}
+
+function evaluationCrashError(err: unknown): BridgeError {
+  if (isBridgeError(err)) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  return bridgeError("EVAL_FAILED", message);
 }
 
 /* -------------------------------------------------------------------------- */

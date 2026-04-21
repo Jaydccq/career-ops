@@ -91,6 +91,8 @@ import {
   backfillNewGradPendingCache as backfillPendingNewGradCache,
   readNewGradPendingEntries as readPendingNewGradEntries,
 } from "./newgrad-pending.js";
+import { readBuiltInPendingEntries as readPendingBuiltInEntries } from "./builtin-pending.js";
+import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 
 /* -------------------------------------------------------------------------- */
@@ -494,6 +496,7 @@ export function createSdkPipelineAdapter(
           enrichedRow.detail,
           enrichedRow.row.row,
         );
+        const entrySource = scanSourceForRow(enrichedRow.row.row);
         const entry: PipelineEntry = {
           url: entryUrl,
           company: enrichedRow.row.row.company,
@@ -501,7 +504,7 @@ export function createSdkPipelineAdapter(
           score: scored.score,
           valueScore: valueScore.score,
           valueReasons: valueScore.reasons,
-          source: "newgrad-jobs.com",
+          source: entrySource,
         };
         const canonicalEntryUrl = canonicalizeJobUrl(entryUrl) ?? entryUrl;
 
@@ -531,7 +534,7 @@ export function createSdkPipelineAdapter(
           (e) => {
             const value = e.valueScore !== undefined ? `, value: ${e.valueScore}/10` : "";
             const valueReasons = formatPendingValueReasonsTag(e.valueReasons);
-            return `- [ ] ${e.url} — ${e.company} | ${e.role} (via newgrad-scan, score: ${e.score}/${maxScore}${value})${valueReasons}`;
+            return `- [ ] ${e.url} — ${e.company} | ${e.role} (via ${pipelineTagForSource(e.source)}, score: ${e.score}/${maxScore}${value})${valueReasons}`;
           },
         );
 
@@ -546,6 +549,10 @@ export function createSdkPipelineAdapter(
 
     async readNewGradPendingEntries(limit: number) {
       return readPendingNewGradEntries(config.repoRoot, limit);
+    },
+
+    async readBuiltInPendingEntries(limit: number) {
+      return readPendingBuiltInEntries(config.repoRoot, limit);
     },
 
     async backfillNewGradPendingCache(entries) {

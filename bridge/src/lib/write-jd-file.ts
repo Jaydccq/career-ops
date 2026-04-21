@@ -20,6 +20,7 @@ export interface WriteJdFileInput {
   /** Optional clearance marker for prompt-side hard blockers. */
   clearance?: string;
   applyUrl?: string;
+  source?: string;
   companyDescription?: string;
   requiredQualifications?: readonly string[];
   responsibilities?: readonly string[];
@@ -48,7 +49,7 @@ export function writeJdFile(input: WriteJdFileInput): string | null {
   if (input.h1b) meta.h1b = input.h1b;
   if (input.clearance) meta.clearance = input.clearance;
   if (input.applyUrl) meta.applyUrl = input.applyUrl;
-  meta.source = "newgrad-scan";
+  meta.source = input.source ?? "newgrad-scan";
   meta.extractedAt = new Date().toISOString();
 
   // yaml.stringify with defaultStringType QUOTE_DOUBLE ensures all values are double-quoted

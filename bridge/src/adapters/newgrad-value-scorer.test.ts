@@ -87,6 +87,28 @@ describe("newgrad value scorer", () => {
     expect(value.score).toBeGreaterThanOrEqual(7);
     expect(value.reasons).toContain("strong_structured_skill_match");
   });
+
+  test("site match panel can hold back an otherwise keyword-heavy row", () => {
+    const value = scoreEnrichedRowValue(
+      makeEnrichedRow({
+        detail: {
+          matchScore: 70,
+          expLevelMatch: 78,
+          skillMatch: 73,
+          industryExpMatch: 71,
+          recommendationTags: ["Good Match"],
+          skillTags: ["Python", "C++", "Java", "Node.js", "AI"],
+          confirmedSponsorshipSupport: "yes",
+          h1bSponsorshipHistory: [{ year: "2025", count: 1 }],
+        },
+      }),
+      makeConfig(),
+    );
+
+    expect(value.passed).toBe(false);
+    expect(value.score).toBeLessThan(7);
+    expect(value.penalties).toContain("site_match_below_bar");
+  });
 });
 
 function makeConfig(): NewGradScanConfig {
