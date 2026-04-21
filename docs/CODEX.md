@@ -35,6 +35,8 @@ npx playwright install chromium
 | Single evaluation only | `modes/_shared.md` + `modes/oferta.md` |
 | Multiple offers | `modes/_shared.md` + `modes/ofertas.md` |
 | Portal scan | `modes/_shared.md` + `modes/scan.md` |
+| Built In scan | `modes/_shared.md` + `modes/builtin-scan.md` |
+| LinkedIn Jobs scan | `modes/_shared.md` + `modes/linkedin-scan.md` |
 | PDF generation | `modes/_shared.md` + `modes/pdf.md` |
 | Live application help | `modes/_shared.md` + `modes/apply.md` |
 | Pipeline inbox processing | `modes/_shared.md` + `modes/pipeline.md` |
