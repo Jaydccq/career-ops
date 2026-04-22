@@ -61,10 +61,19 @@ Useful options:
 
 ```bash
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 5
+npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --pages 4 --limit 100
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 2
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --evaluate-limit 3
 npm run linkedin-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
 ```
+
+Use `--pages` for larger LinkedIn result-set testing. The scanner opens
+successive search-result URLs with `start` offsets. The current LinkedIn
+`search-results` route exposes 6 jobs per offset page by default; override with
+`--page-size` if LinkedIn changes the result shape. Rows are deduped by
+canonical LinkedIn job URL before scoring, so overlapping result pages do not
+create duplicate candidates. Use `--scroll-steps` to probe virtualized lists
+within each result page; each probe is a short read-only scroll plus re-extract.
 
 If no `--url` is passed, the script reads
 `config/profile.yml -> linkedin_scan.search_url`.

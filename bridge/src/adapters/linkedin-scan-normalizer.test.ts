@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  buildLinkedInSearchPageUrls,
   canonicalLinkedInJobViewUrl,
   detectLinkedInAuthBlock,
   extractLinkedInJobId,
@@ -27,6 +28,20 @@ describe("linkedin-scan-normalizer", () => {
     expect(isLinkedInJobsUrl("https://www.linkedin.com/jobs/view/4347121472/")).toBe(true);
     expect(isLinkedInJobsUrl("https://linkedin.com/jobs/search-results/?currentJobId=4347121472")).toBe(true);
     expect(isLinkedInJobsUrl("https://www.linkedin.com/in/williamhgates")).toBe(false);
+  });
+
+  test("builds safe LinkedIn search page URLs with start offsets", () => {
+    expect(
+      buildLinkedInSearchPageUrls(
+        "https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&keywords=software&f_TPR=r86400",
+        3,
+        25,
+      ),
+    ).toEqual([
+      "https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&keywords=software&f_TPR=r86400",
+      "https://www.linkedin.com/jobs/search-results/?keywords=software&f_TPR=r86400&start=25",
+      "https://www.linkedin.com/jobs/search-results/?keywords=software&f_TPR=r86400&start=50",
+    ]);
   });
 
   test("normalizes reposted LinkedIn age strings", () => {

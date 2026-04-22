@@ -22,4 +22,10 @@ describe("newgrad-source", () => {
     expect(pipelineTagForSource("linkedin.com")).toBe("linkedin-scan");
     expect(sourceFromPipelineTag("linkedin-scan")).toBe("linkedin.com");
   });
+
+  test("maps Indeed source to indeed-scan", () => {
+    expect(pipelineTagForSource("https://www.indeed.com/viewjob?jk=abc")).toBe("indeed-scan");
+    expect(pipelineTagForSource("indeed.com")).toBe("indeed-scan");
+    expect(sourceFromPipelineTag("indeed-scan")).toBe("indeed.com");
+  });
 });

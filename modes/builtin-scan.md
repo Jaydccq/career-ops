@@ -1,7 +1,8 @@
 # Mode: builtin-scan -- Built In Scanner
 
-Scans Built In job searches with the existing Career-Ops scanner and supports
-manual extension scans on live Built In result pages.
+Scans Built In job searches through the read-only `bb-browser site builtin/jobs`
+adapter, scores them with the existing newgrad scanner, enriches promoted rows,
+and can optionally queue direct tracker evaluations.
 
 ## When To Use
 
@@ -13,15 +14,22 @@ company source.
 
 ## What Already Exists
 
-- `scan.mjs --builtin-only` fetches configured Built In keyword searches.
+- `npm run builtin-scan` calls `scripts/job-board-scan-bb-browser.ts --source builtin`.
+- `bb-browser site builtin/jobs` reads Built In search pages without clicking
+  Apply, Save, alerts, login, or resume upload controls.
+- `npm run builtin-scan:legacy` preserves the old `scan.mjs --builtin-only`
+  configured-keyword scanner.
 - `templates/portals.example.yml -> builtin_searches` defines versioned default
-  keywords.
+  keywords for the legacy scanner.
 - `portals.yml -> builtin_searches` can override the local keyword set.
 - The browser extension detects `builtin.com` pages and reuses the existing
   scan, score, enrich, pipeline, and evaluation flow.
 - Built In rows are persisted with the `builtin-scan` source tag.
+- `POST /v1/builtin-scan/pending` exposes unchecked Built In pipeline rows for
+  direct evaluation.
 
-Do not create a separate Built In pipeline. Reuse the existing scanner flow.
+Do not create a separate Built In pipeline. Reuse the existing newgrad score,
+enrich, pipeline, history, and evaluation flow.
 
 ## Recommended CLI Flow
 
@@ -30,15 +38,16 @@ Do not create a separate Built In pipeline. Reuse the existing scanner flow.
 Run:
 
 ```bash
-npm run builtin-scan -- --dry-run
+npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only --limit 20
+npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --dry-run --pages 2 --limit 50
 ```
 
 Expected behavior:
-- Fetches only Built In keyword searches.
-- Applies `portals.yml -> title_filter`.
+- Reads only Built In search/list pages through `bb-browser site builtin/jobs`.
+- Use `--pages N` to scan multiple Built In result pages from the supplied URL.
 - Deduplicates against `data/scan-history.tsv`, `data/pipeline.md`, and
   `data/applications.md`.
-- Prints candidate counts and matching roles.
+- Prints raw row count, promoted/filtered counts, and top matching roles.
 - Does not write files.
 
 ### Step 2: Save new results if the preview looks useful
@@ -46,24 +55,41 @@ Expected behavior:
 Run:
 
 ```bash
-npm run builtin-scan
+npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --no-evaluate --enrich-limit 5
+npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --no-evaluate
 ```
 
 Expected behavior:
-- Appends new matching roles to `data/pipeline.md`.
-- Appends added Built In rows to `data/scan-history.tsv` with portal
-  `builtin-scan`.
+- Scores rows, captures detail text when available, and appends qualifying rows
+  to `data/pipeline.md`.
+- Appends added Built In rows to `data/scan-history.tsv` with the
+  `builtin-scan` source tag.
+- Does not queue formal evaluations when `--no-evaluate` is set.
 
-### Step 3: Evaluate saved roles
+### Step 3: Evaluate saved roles directly
 
-After saving:
+After saving, either run the broader pipeline mode or queue Built In pending
+rows directly:
 
 ```bash
 /career-ops pipeline
+npm run builtin-scan -- --evaluate-only --evaluate-limit 5
 ```
 
-Use pipeline or batch evaluation for the resulting pending URLs. Do not submit
-applications automatically.
+`--evaluate-only` delegates to `npm run builtin-scan:legacy` behavior: it reads
+`/v1/builtin-scan/pending`, captures Built In detail page text, queues
+`/v1/evaluate` using `newgrad_quick`, and waits for tracker merge by default.
+Completed rows enter Apply Next only when the tracker status is `Evaluated` and
+the score is at least `3.5/5`.
+
+To scan and evaluate in one command, use:
+
+```bash
+npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --evaluate-limit 5
+```
+
+`--score-only`, `--dry-run`, and `--dry-run --evaluate` never queue jobs; they only report the scan
+summary. Do not submit applications automatically.
 
 Bridge consumers can read the saved Built In inbox with:
 
@@ -162,9 +188,9 @@ In live tests on 2026-04-21, the first page behaved as follows:
 | Denver, CO | 25 | 25 | Included Denver, Broomfield, and multi-location rows |
 | New York, NY | 25 | 25 | Included New York, Brooklyn, and multi-location rows |
 
-The CLI `npm run builtin-scan` currently runs configured keyword searches as
-all-location discovery. Use the browser extension flow when a specific live
-city-filtered Built In page must be the source of truth.
+The CLI `npm run builtin-scan` now treats the supplied `--url` or `--path` as
+the source of truth. Use `npm run builtin-scan:legacy` when you need the older
+configured `portals.yml -> builtin_searches` keyword sweep.
 
 ## Customizing Built In Searches
 

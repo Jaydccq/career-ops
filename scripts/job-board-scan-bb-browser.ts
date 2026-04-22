@@ -1,16 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import yaml from "js-yaml";
 
-import {
-  extractLinkedInDetail,
-  extractLinkedInList,
-} from "../extension/src/content/extract-linkedin.ts";
 import type {
   EnrichedRow,
   FilteredRow,
@@ -29,10 +24,11 @@ import type {
   StructuredJobSignals,
 } from "../bridge/src/contracts/jobs.ts";
 import {
-  buildLinkedInSearchPageUrls,
-  detectLinkedInAuthBlock,
-  type LinkedInAuthStateInput,
-} from "../bridge/src/adapters/linkedin-scan-normalizer.ts";
+  buildBuiltInPageUrl,
+  buildIndeedPageUrl,
+  normalizeBuiltInAdapterRows,
+  normalizeIndeedAdapterRows,
+} from "../bridge/src/adapters/job-board-scan-normalizer.ts";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
@@ -45,34 +41,38 @@ import {
   wasNewGradRowSeen,
 } from "../bridge/src/adapters/newgrad-scan-history.ts";
 import { scoreAndFilter } from "../bridge/src/adapters/newgrad-scorer.ts";
-import { scoreEnrichedRowValue } from "../bridge/src/adapters/newgrad-value-scorer.ts";
-import { pickPipelineEntryUrl } from "../bridge/src/adapters/newgrad-links.ts";
 
 const PROTOCOL_VERSION = "1.0.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 47319;
-const DEFAULT_PAGE_SIZE = 6;
-const SCORE_CHUNK_SIZE = 50;
-const ENRICH_CHUNK_SIZE = 3;
 const DEFAULT_EVALUATION_QUEUE_DELAY_MS = 2100;
 const DEFAULT_EVALUATION_WAIT_TIMEOUT_MS = 20 * 60_000;
+const SCORE_CHUNK_SIZE = 50;
+const ENRICH_CHUNK_SIZE = 3;
+
+type Source = "builtin" | "indeed";
 
 type Options = {
+  source: Source;
   url: string | null;
-  bridgeHost: string;
-  bridgePort: number;
+  query: string | null;
+  location: string | null;
+  path: string | null;
   limit: number | null;
   pages: number;
-  pageSize: number;
-  scrollSteps: number;
-  enrichLimit: number | null;
+  dryRun: boolean;
   scoreOnly: boolean;
+  evaluateOnly: boolean;
+  pendingLimit: number;
   evaluate: boolean;
+  enrichLimit: number | null;
   evaluateLimit: number | null;
   evaluationMode: EvaluationMode;
   waitEvaluations: boolean;
   evaluationQueueDelayMs: number;
   evaluationWaitTimeoutMs: number;
+  bridgeHost: string;
+  bridgePort: number;
   help: boolean;
 };
 
@@ -80,21 +80,19 @@ type BridgeResponse<T> =
   | { ok: true; result: T; requestId: string }
   | { ok: false; error: { code: string; message: string; detail?: unknown }; requestId: string };
 
-type BbJsonEnvelope<T> = {
-  success: boolean;
-  data?: T;
-  error?: string;
-};
+type BbEnvelope<T> =
+  | { id?: string; success: true; data: T }
+  | { id?: string; success: false; error: string; hint?: string; action?: string; reportHint?: string };
 
-type BbOpenData = {
-  tabId?: string;
-  tab?: string;
-  url?: string;
-};
-
-type BbEvalData = {
-  result?: unknown;
-  tab?: string;
+type AdapterResult = {
+  source: string;
+  url: string;
+  query?: string;
+  location?: string;
+  page?: number;
+  count: number;
+  totalParsed?: number;
+  jobs: Array<Record<string, unknown>>;
 };
 
 type EvaluationCreateResult = {
@@ -115,70 +113,69 @@ type FailedEvaluationQueue = {
   error: string;
 };
 
-type LinkedInScrollResult = {
-  moved: boolean;
-  top: number;
-  maxTop: number;
-  visibleJobs: number;
-};
-
 const execFile = promisify(execFileCallback);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 
 function usage(): string {
-  return `career-ops LinkedIn scan via bb-browser
+  return `career-ops browser-backed job-board scan
 
 Usage:
-  npm run linkedin-scan -- --url "<LinkedIn Jobs search URL>" [options]
+  npm run builtin-scan -- [options]
+  npm run indeed-scan -- [options]
 
 Options:
-  --url <url>                    LinkedIn Jobs search URL. If omitted, reads config/profile.yml -> linkedin_scan.search_url.
-  --score-only                   Extract and score rows without bridge write endpoints.
-  --no-evaluate                  Stop after bridge enrich/pipeline write; do not queue tracker evaluations.
-  --limit <n>                    Limit extracted list rows before scoring.
-  --pages <n>                    Number of LinkedIn search result pages to scan using start offsets. Default: 1.
-  --page-size <n>                LinkedIn start offset increment for --pages. Default: ${DEFAULT_PAGE_SIZE}.
-  --scroll-steps <n>             Per-page result-list scroll probes. Default: 2.
-  --enrich-limit <n>             Limit promoted rows before opening detail pages.
-  --evaluate-limit <n>           Limit enrich survivors sent to /v1/evaluate.
-  --evaluation-mode <mode>       Evaluation mode: newgrad_quick or default. Default: newgrad_quick.
-  --no-wait-evaluations          Queue evaluation jobs and exit without waiting for tracker merge.
-  --evaluation-queue-delay-ms <n>
-                                 Delay between /v1/evaluate calls. Default: ${DEFAULT_EVALUATION_QUEUE_DELAY_MS}
+  --source <builtin|indeed>       Source, normally supplied by npm script.
+  --url <url>                     Full search URL.
+  --query <text>                  Search query when --url is omitted.
+  --location <text>               Indeed location when --url is omitted.
+  --path <path-or-url>            Built In path or URL when --url is omitted.
+  --dry-run                       Compatibility alias for --score-only.
+  --score-only                    Extract and score rows without bridge write endpoints.
+  --evaluate-only                 Evaluate already saved Built In pending rows through the legacy path.
+  --pending-limit <n>             Pending rows to read for --evaluate-only. Default: 100.
+  --no-evaluate                   Stop after enrich/pipeline write.
+  --evaluate                      Compatibility flag; direct evaluation is on by default.
+  --limit <n>                     Limit unique list rows before scoring.
+  --pages <n>                     Number of result pages to scan. Default: 1.
+  --enrich-limit <n>              Limit promoted rows before detail capture.
+  --evaluate-limit <n>            Limit direct evaluations.
+  --evaluation-mode <mode>        newgrad_quick or default. Default: newgrad_quick.
+  --no-wait-evaluations           Queue evaluation jobs and exit.
+  --evaluation-queue-delay-ms <n> Delay between /v1/evaluate calls. Default: ${DEFAULT_EVALUATION_QUEUE_DELAY_MS}
   --evaluation-wait-timeout-ms <n>
                                  Max time to wait for queued jobs. Default: ${DEFAULT_EVALUATION_WAIT_TIMEOUT_MS}
-  --bridge-host <host>           Bridge host. Default: ${DEFAULT_HOST}
-  --bridge-port <port>           Bridge port. Default: ${DEFAULT_PORT}
-  --help                         Show this help.
-
-Login recovery:
-  If LinkedIn redirects to login or checkpoint, run:
-    bb-browser open https://www.linkedin.com/login
-  Log in manually in that managed browser, then rerun this command.
+  --bridge-host <host>            Bridge host. Default: ${DEFAULT_HOST}
+  --bridge-port <port>            Bridge port. Default: ${DEFAULT_PORT}
+  --help                          Show this help.
 
 Safety:
-  This scanner never clicks LinkedIn Apply, Easy Apply, Save, Dismiss, or message controls.
+  This scanner reads list/detail pages only. It never clicks Apply, Easy Apply, Save, alerts, login, or resume upload controls.
 `;
 }
 
 function parseArgs(argv: string[]): Options {
   const options: Options = {
+    source: "builtin",
     url: null,
-    bridgeHost: DEFAULT_HOST,
-    bridgePort: DEFAULT_PORT,
+    query: null,
+    location: null,
+    path: null,
     limit: null,
     pages: 1,
-    pageSize: DEFAULT_PAGE_SIZE,
-    scrollSteps: 2,
-    enrichLimit: null,
+    dryRun: false,
     scoreOnly: false,
+    evaluateOnly: false,
+    pendingLimit: 100,
     evaluate: true,
+    enrichLimit: null,
     evaluateLimit: null,
     evaluationMode: "newgrad_quick",
     waitEvaluations: true,
     evaluationQueueDelayMs: DEFAULT_EVALUATION_QUEUE_DELAY_MS,
     evaluationWaitTimeoutMs: DEFAULT_EVALUATION_WAIT_TIMEOUT_MS,
+    bridgeHost: DEFAULT_HOST,
+    bridgePort: DEFAULT_PORT,
     help: false,
   };
 
@@ -194,14 +191,25 @@ function parseArgs(argv: string[]): Options {
     };
 
     switch (arg) {
+      case "--source": {
+        const source = next();
+        if (source !== "builtin" && source !== "indeed") {
+          throw new Error("--source must be builtin or indeed");
+        }
+        options.source = source;
+        break;
+      }
       case "--url":
         options.url = next();
         break;
-      case "--score-only":
-        options.scoreOnly = true;
+      case "--query":
+        options.query = next();
         break;
-      case "--no-evaluate":
-        options.evaluate = false;
+      case "--location":
+        options.location = next();
+        break;
+      case "--path":
+        options.path = next();
         break;
       case "--limit":
         options.limit = positiveInt(next(), arg);
@@ -209,11 +217,24 @@ function parseArgs(argv: string[]): Options {
       case "--pages":
         options.pages = positiveInt(next(), arg);
         break;
-      case "--page-size":
-        options.pageSize = positiveInt(next(), arg);
+      case "--dry-run":
+        options.dryRun = true;
+        options.scoreOnly = true;
         break;
-      case "--scroll-steps":
-        options.scrollSteps = nonNegativeInt(next(), arg);
+      case "--score-only":
+        options.scoreOnly = true;
+        break;
+      case "--evaluate-only":
+        options.evaluateOnly = true;
+        break;
+      case "--pending-limit":
+        options.pendingLimit = positiveInt(next(), arg);
+        break;
+      case "--no-evaluate":
+        options.evaluate = false;
+        break;
+      case "--evaluate":
+        options.evaluate = true;
         break;
       case "--enrich-limit":
         options.enrichLimit = positiveInt(next(), arg);
@@ -278,50 +299,49 @@ async function main(): Promise<void> {
     console.log(usage());
     return;
   }
-
-  const url = options.url ?? await readConfiguredSearchUrl();
-  if (!url) {
-    throw new Error("missing LinkedIn search URL; pass --url or set config/profile.yml -> linkedin_scan.search_url");
-  }
-
-  await assertBbBrowserAvailable();
-  const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
-  const bridgeBase = `http://${options.bridgeHost}:${options.bridgePort}`;
-  await assertBridgeHealthy(bridgeBase, token);
-
-  const collected = await collectLinkedInRows(url, options);
-  let rows = dedupeRows(collected.rows);
-  if (options.limit !== null) rows = rows.slice(0, options.limit);
-  console.log(`Extracted ${collected.rows.length} raw LinkedIn rows; ${rows.length} unique after dedupe`);
-
-  if (rows.length === 0) {
-    console.log("No rows extracted; check the LinkedIn page filters or login state.");
+  if (options.evaluateOnly) {
+    await runLegacyEvaluateOnly(options);
     return;
   }
 
+  await assertBbBrowserAvailable();
+
+  const collected = await collectRows(options);
+  let rows = dedupeRows(collected.rows);
+  if (options.limit !== null) rows = rows.slice(0, options.limit);
+  console.log(`Extracted ${collected.rawCount} raw ${options.source} rows; ${rows.length} unique after dedupe`);
+
+  if (rows.length === 0) {
+    console.log(`No rows extracted; check the ${options.source} search filters or site verification state.`);
+    return;
+  }
+
+  const bridgeBase = `http://${options.bridgeHost}:${options.bridgePort}`;
+  const token = options.scoreOnly ? null : await readBridgeToken();
+  if (token) await assertBridgeHealthy(bridgeBase, token);
+
   const score = options.scoreOnly
     ? scoreRowsLocally(rows)
-    : await scoreRows(bridgeBase, token, rows);
+    : await scoreRows(bridgeBase, token!, rows);
   console.log(`Scored rows: promoted=${score.promoted.length}, filtered=${score.filtered.length}`);
   printPromotedRows(score.promoted);
 
   if (options.scoreOnly || score.promoted.length === 0) {
-    if (options.scoreOnly) {
+    if (options.dryRun) {
+      console.log("--dry-run used as --score-only: no bridge write endpoints were called.");
+    } else if (options.scoreOnly) {
       console.log("--score-only used: no bridge write endpoints were called.");
     }
     return;
   }
 
-  const promoted = options.enrichLimit === null
-    ? [...score.promoted]
-    : [...score.promoted].slice(0, options.enrichLimit);
-  console.log(`Enriching ${promoted.length} promoted LinkedIn rows`);
-
-  const { enrichedRows, failed } = await enrichLinkedInDetails(promoted);
-  console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
+  const promoted = score.promoted.slice(0, options.enrichLimit ?? undefined);
+  console.log(`Enriching ${promoted.length} promoted ${options.source} rows`);
+  const enrichedRows = await enrichRows(promoted);
+  console.log(`Detail enrichment: enriched=${enrichedRows.length}`);
   if (enrichedRows.length === 0) return;
 
-  const enrich = await writeEnrichedRows(bridgeBase, token, enrichedRows);
+  const enrich = await writeEnrichedRows(bridgeBase, token!, enrichedRows);
   console.log(`Bridge enrich result: added=${enrich.added}, skipped=${enrich.skipped}, candidates=${enrich.candidates?.length ?? 0}`);
   if (enrich.skipBreakdown && Object.keys(enrich.skipBreakdown).length > 0) {
     console.log(`Skip breakdown: ${JSON.stringify(enrich.skipBreakdown)}`);
@@ -333,38 +353,21 @@ async function main(): Promise<void> {
     return;
   }
 
-  const bridgeCandidates = [...(enrich.candidates ?? enrich.entries)];
-  const reviewCandidates = buildLinkedInReviewCandidates(enrichedRows, bridgeCandidates);
-  if (reviewCandidates.length > 0) {
-    console.log(`LinkedIn review fallback: ${reviewCandidates.length} value-threshold rows eligible for direct evaluation`);
-  }
-
-  const evaluationCandidates = dedupePipelineEntries([
-    ...bridgeCandidates,
-    ...reviewCandidates,
-  ]).slice(
-    0,
-    options.evaluateLimit ?? undefined,
-  );
-  if (evaluationCandidates.length === 0) {
+  const candidates = dedupePipelineEntries([...(enrich.candidates ?? enrich.entries)])
+    .slice(0, options.evaluateLimit ?? undefined);
+  if (candidates.length === 0) {
     console.log("No enrich survivors eligible for direct evaluation.");
     return;
   }
 
-  const queued = await queueDirectEvaluations(
-    bridgeBase,
-    token,
-    evaluationCandidates,
-    enrichedRows,
-    options,
-  );
+  const queued = await queueDirectEvaluations(bridgeBase, token!, candidates, enrichedRows, options);
   console.log(`Direct evaluation queue: queued=${queued.jobs.length}, failed=${queued.failed.length}, skipped=${queued.skipped}`);
   for (const failedJob of queued.failed) {
     console.warn(`- failed to queue ${failedJob.company} - ${failedJob.role}: ${failedJob.error}`);
   }
 
   if (options.waitEvaluations && queued.jobs.length > 0) {
-    const result = await waitForEvaluations(bridgeBase, token, queued.jobs, options);
+    const result = await waitForEvaluations(bridgeBase, token!, queued.jobs, options);
     console.log(`Direct evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`);
     for (const item of result.completed) {
       console.log(`- ${item.result.company} - ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`);
@@ -374,101 +377,117 @@ async function main(): Promise<void> {
   }
 }
 
-async function collectLinkedInRows(
-  url: string,
-  options: Options,
-): Promise<{ rows: NewGradRow[] }> {
-  const pageUrls = buildLinkedInSearchPageUrls(url, options.pages, options.pageSize);
+async function collectRows(options: Options): Promise<{ rows: NewGradRow[]; rawCount: number }> {
   const rows: NewGradRow[] = [];
+  let rawCount = 0;
 
-  for (const [index, pageUrl] of pageUrls.entries()) {
-    const listTabId = await openBbTab(pageUrl);
-    try {
-      await assertLinkedInReady(listTabId);
-      let pageRows = await collectLinkedInPageRows(listTabId, options);
-      if (pageRows.length === 0) {
-        await sleep(1_500);
-        pageRows = await collectLinkedInPageRows(listTabId, options);
-      }
-      rows.push(...pageRows);
-      const uniqueSoFar = dedupeRows(rows).length;
-      console.log(`Page ${index + 1}/${pageUrls.length}: extracted ${pageRows.length} raw rows (${uniqueSoFar} unique so far)`);
-
-      if (options.limit !== null && uniqueSoFar >= options.limit) {
-        break;
-      }
-    } finally {
-      await closeBbTab(listTabId);
+  for (let page = 1; page <= options.pages; page += 1) {
+    const result = await runSiteAdapter(options, page);
+    if (!Array.isArray(result.jobs)) {
+      throw new Error(`${options.source} adapter response did not contain a jobs array`);
     }
+
+    rawCount += result.jobs.length;
+    const normalized = options.source === "builtin"
+      ? normalizeBuiltInAdapterRows(result.jobs)
+      : normalizeIndeedAdapterRows(result.jobs);
+    rows.push(...normalized);
+    console.log(`Page ${page}/${options.pages}: parsed=${result.totalParsed ?? result.jobs.length}, rows=${normalized.length}, url=${result.url}`);
+
+    if (result.jobs.length === 0) break;
+    if (options.limit !== null && dedupeRows(rows).length >= options.limit) break;
   }
 
-  return { rows };
+  return { rows, rawCount };
 }
 
-async function collectLinkedInPageRows(tabId: string, options: Options): Promise<NewGradRow[]> {
-  const rows: NewGradRow[] = [];
+async function runSiteAdapter(options: Options, page: number): Promise<AdapterResult> {
+  const args = options.source === "builtin"
+    ? builtInAdapterArgs(options, page)
+    : indeedAdapterArgs(options, page);
+  const { stdout } = await runProcess("bb-browser", args, { allowJsonError: true });
+  const envelope = JSON.parse(stdout.trim()) as BbEnvelope<AdapterResult>;
+  if (envelope.success === false) {
+    const failed = envelope as Extract<BbEnvelope<AdapterResult>, { success: false }>;
+    throw new Error([failed.error, failed.hint, failed.action].filter(Boolean).join(" | "));
+  }
+  return envelope.data;
+}
 
-  for (let step = 0; step <= options.scrollSteps; step += 1) {
-    rows.push(...await evaluateBrowserJson<NewGradRow[]>(tabId, extractLinkedInList));
-    if (step === options.scrollSteps) break;
+function builtInAdapterArgs(options: Options, page: number): string[] {
+  const path = options.url
+    ? buildBuiltInPageUrl(options.url, page)
+    : options.path ?? "/jobs/hybrid/national/dev-engineering";
+  const query = options.query ?? queryParam(options.url, "search") ?? "Software Engineering";
+  return [
+    "site",
+    "builtin/jobs",
+    query,
+    String(adapterLimit(options)),
+    path,
+    String(page),
+    "--json",
+  ];
+}
 
-    const scroll = await evaluateBrowserJson<LinkedInScrollResult>(tabId, advanceLinkedInResultsScroll);
-    if (!scroll.moved) break;
-    await sleep(350);
+function indeedAdapterArgs(options: Options, page: number): string[] {
+  const searchUrl = options.url ? buildIndeedPageUrl(options.url, page) : "";
+  const query = options.query ?? queryParam(options.url, "q") ?? "Software Engineer";
+  const location = options.location ?? queryParam(options.url, "l") ?? "Remote";
+  return [
+    "site",
+    "indeed/jobs",
+    query,
+    location,
+    String(adapterLimit(options)),
+    String(page),
+    "",
+    "",
+    searchUrl,
+    "--json",
+  ];
+}
+
+function adapterLimit(options: Options): number {
+  return Math.min(options.limit ?? 100, 100);
+}
+
+function queryParam(url: string | null, key: string): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).searchParams.get(key);
+  } catch {
+    return null;
+  }
+}
+
+async function runLegacyEvaluateOnly(options: Options): Promise<void> {
+  if (options.source !== "builtin") {
+    throw new Error("--evaluate-only is only supported for Built In pending rows");
   }
 
-  return rows;
-}
+  const args = [
+    "scan.mjs",
+    "--builtin-only",
+    "--evaluate-only",
+    "--pending-limit",
+    String(options.pendingLimit),
+    "--bridge-host",
+    options.bridgeHost,
+    "--bridge-port",
+    String(options.bridgePort),
+    "--evaluation-mode",
+    options.evaluationMode,
+  ];
+  if (options.evaluateLimit !== null) args.push("--evaluate-limit", String(options.evaluateLimit));
+  if (!options.waitEvaluations) args.push("--no-wait-evaluations");
 
-function advanceLinkedInResultsScroll(): LinkedInScrollResult {
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>(
-    [
-      ".scaffold-layout__list",
-      ".scaffold-layout__list-container",
-      ".jobs-search-results-list",
-      ".jobs-search-results-list__list",
-      "[class*='jobs-search-results']",
-      "[aria-label*='Jobs Search Results']",
-      "main",
-    ].join(", "),
-  ));
-  const target = candidates
-    .filter((node) => node.scrollHeight > node.clientHeight + 120 && Boolean(node.querySelector("[data-job-id]")))
-    .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))[0];
-
-  if (!target) {
-    return {
-      moved: false,
-      top: 0,
-      maxTop: 0,
-      visibleJobs: document.querySelectorAll("[data-job-id]").length,
-    };
-  }
-
-  const previousTop = target.scrollTop;
-  const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
-  const nextTop = Math.min(
-    previousTop + Math.max(500, Math.floor(target.clientHeight * 0.85)),
-    maxTop,
-  );
-  target.scrollTo({ top: nextTop, behavior: "auto" });
-
-  return {
-    moved: target.scrollTop !== previousTop,
-    top: target.scrollTop,
-    maxTop,
-    visibleJobs: target.querySelectorAll("[data-job-id]").length,
-  };
-}
-
-async function readConfiguredSearchUrl(): Promise<string | null> {
-  const profilePath = join(repoRoot, "config", "profile.yml");
-  if (!existsSync(profilePath)) return null;
-  const parsed = yaml.load(await readFile(profilePath, "utf8")) as unknown;
-  if (!parsed || typeof parsed !== "object") return null;
-  const profile = parsed as { linkedin_scan?: { search_url?: unknown } };
-  const value = profile.linkedin_scan?.search_url;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  const { stdout, stderr } = await execFile("node", args, {
+    cwd: repoRoot,
+    maxBuffer: 25 * 1024 * 1024,
+  });
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
 }
 
 async function assertBbBrowserAvailable(): Promise<void> {
@@ -480,76 +499,16 @@ async function assertBbBrowserAvailable(): Promise<void> {
   }
 }
 
-async function openBbTab(url: string): Promise<string> {
-  const data = await runBbJson<BbOpenData>(["open", url, "--json", "--tab"]);
-  if (!data.tabId) {
-    throw new Error(`bb-browser open did not return a tab id for ${url}`);
+async function readBridgeToken(): Promise<string> {
+  const tokenPath = join(repoRoot, "bridge", ".bridge-token");
+  if (!existsSync(tokenPath)) {
+    throw new Error("bridge token not found; start the bridge with npm run ext:bridge");
   }
-  await sleep(2_000);
-  return data.tabId;
-}
-
-async function closeBbTab(tabId: string): Promise<void> {
-  await runBb(["close", "--tab", tabId]).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`Failed to close bb-browser tab ${tabId}: ${message}`);
-  });
-}
-
-async function evaluateBrowserJson<T>(tabId: string, func: () => unknown | Promise<unknown>): Promise<T> {
-  const script = `(() => { const __name = (target) => target; return (async () => JSON.stringify(await (${func.toString()})()))(); })()`;
-  const data = await runBbJson<BbEvalData>(["eval", script, "--json", "--tab", tabId]);
-  const result = data.result;
-  if (typeof result === "string") return JSON.parse(result) as T;
-  return result as T;
-}
-
-async function assertLinkedInReady(tabId: string): Promise<void> {
-  const state = await evaluateBrowserJson<LinkedInAuthStateInput>(tabId, pageStateForAuth);
-  const block = detectLinkedInAuthBlock(state);
-  if (!block) return;
-
-  throw new Error(
-    `LinkedIn ${block} page detected. Run "bb-browser open https://www.linkedin.com/login", log in manually, then rerun linkedin-scan.`,
-  );
-}
-
-function pageStateForAuth(): LinkedInAuthStateInput {
-  return {
-    url: window.location.href,
-    title: document.title,
-    text: (document.body?.innerText ?? "").slice(0, 3000),
-  };
-}
-
-async function runBb(args: readonly string[]): Promise<{ stdout: string; stderr: string }> {
-  try {
-    return await execFile("bb-browser", [...args], {
-      maxBuffer: 25 * 1024 * 1024,
-      timeout: 120_000,
-    });
-  } catch (error) {
-    const err = error as Error & { stdout?: string; stderr?: string };
-    const detail = [err.message, err.stderr, err.stdout].filter(Boolean).join("\n");
-    throw new Error(detail);
-  }
-}
-
-async function runBbJson<T>(args: readonly string[]): Promise<T> {
-  const { stdout } = await runBb(args);
-  const envelope = JSON.parse(stdout) as BbJsonEnvelope<T>;
-  if (!envelope.success) {
-    throw new Error(envelope.error ?? "bb-browser command failed");
-  }
-  if (envelope.data === undefined) {
-    throw new Error("bb-browser JSON response had no data");
-  }
-  return envelope.data;
+  return (await readFile(tokenPath, "utf8")).trim();
 }
 
 async function assertBridgeHealthy(base: string, token: string): Promise<void> {
-  const result = await getEnvelope<unknown>(base, token, "/v1/health");
-  void result;
+  await getEnvelope<unknown>(base, token, "/v1/health");
   console.log("Bridge health: ok");
 }
 
@@ -612,14 +571,14 @@ async function scoreRows(
 
   for (let start = 0; start < rows.length; start += SCORE_CHUNK_SIZE) {
     const chunk = rows.slice(start, start + SCORE_CHUNK_SIZE);
-    const res = await postEnvelope<NewGradScoreResult>(
+    const result = await postEnvelope<NewGradScoreResult>(
       bridgeBase,
       token,
       "/v1/newgrad-scan/score",
       { rows: chunk },
     );
-    promoted.push(...res.promoted);
-    filtered.push(...res.filtered);
+    promoted.push(...result.promoted);
+    filtered.push(...result.filtered);
   }
 
   return {
@@ -628,43 +587,81 @@ async function scoreRows(
   };
 }
 
-async function enrichLinkedInDetails(
-  promotedRows: readonly ScoredRow[],
-): Promise<{ enrichedRows: EnrichedRow[]; failed: number }> {
-  const enrichedRows: EnrichedRow[] = [];
-  let failed = 0;
+async function enrichRows(promotedRows: readonly ScoredRow[]): Promise<EnrichedRow[]> {
+  const rows: EnrichedRow[] = [];
 
   for (const scored of promotedRows) {
-    const detailTabId = await openBbTab(scored.row.detailUrl);
-    try {
-      await assertLinkedInReady(detailTabId);
-      const rawDetail = await evaluateBrowserJson<NewGradDetail>(detailTabId, extractLinkedInDetail);
-      const detail: NewGradDetail = {
-        ...rawDetail,
-        position: scored.row.position,
-        title: rawDetail.title || scored.row.title,
-        company: rawDetail.company || scored.row.company,
-        location: rawDetail.location || scored.row.location,
-        workModel: rawDetail.workModel || scored.row.workModel || null,
-        salaryRange: rawDetail.salaryRange || scored.row.salary,
-        originalPostUrl: rawDetail.originalPostUrl || scored.row.detailUrl,
-        applyNowUrl: rawDetail.applyNowUrl || scored.row.applyUrl,
-        applyFlowUrls: Array.from(new Set([
-          ...(rawDetail.applyFlowUrls ?? []),
-          scored.row.detailUrl,
-        ])),
-      };
-      enrichedRows.push({ row: scored, detail });
-    } catch (error) {
-      failed += 1;
+    const description = await captureDetailText(scored.row.detailUrl).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`Detail enrichment failed for ${scored.row.company} - ${scored.row.title}: ${message}`);
-    } finally {
-      await closeBbTab(detailTabId);
-    }
+      console.warn(`Detail text fetch failed for ${scored.row.company} - ${scored.row.title}: ${message}`);
+      return scored.row.qualifications ?? "";
+    });
+    rows.push({
+      row: scored,
+      detail: detailFromRow(scored.row, description),
+    });
   }
 
-  return { enrichedRows, failed };
+  return rows;
+}
+
+async function captureDetailText(url: string): Promise<string> {
+  const { stdout } = await runProcess("bb-browser", ["fetch", url], { allowJsonError: false });
+  return htmlToText(stdout).slice(0, 20_000);
+}
+
+function htmlToText(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detailFromRow(row: NewGradRow, description: string): NewGradDetail {
+  const text = description || row.qualifications || "";
+  return {
+    position: row.position,
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    employmentType: null,
+    workModel: row.workModel || null,
+    seniorityLevel: null,
+    salaryRange: row.salary,
+    matchScore: null,
+    expLevelMatch: null,
+    skillMatch: null,
+    industryExpMatch: null,
+    description: text,
+    industries: row.industry ? [row.industry] : [],
+    recommendationTags: [],
+    responsibilities: [],
+    requiredQualifications: row.qualifications ? [row.qualifications] : [],
+    skillTags: [],
+    taxonomy: [],
+    companyWebsite: null,
+    companyDescription: null,
+    companySize: row.companySize,
+    companyLocation: null,
+    companyFoundedYear: null,
+    companyCategories: [],
+    h1bSponsorLikely: null,
+    sponsorshipSupport: row.sponsorshipSupport,
+    h1bSponsorshipHistory: [],
+    requiresActiveSecurityClearance: row.requiresActiveSecurityClearance,
+    confirmedSponsorshipSupport: row.confirmedSponsorshipSupport,
+    confirmedRequiresActiveSecurityClearance: row.confirmedRequiresActiveSecurityClearance,
+    insiderConnections: null,
+    originalPostUrl: row.detailUrl,
+    applyNowUrl: row.applyUrl,
+    applyFlowUrls: [row.detailUrl],
+  };
 }
 
 async function writeEnrichedRows(
@@ -715,7 +712,7 @@ async function queueDirectEvaluations(
 
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index]!;
-    const key = normalizeUrl(candidate.url) ?? `${normalizeText(candidate.company)}|${normalizeText(candidate.role)}`;
+    const key = candidateEvaluationKey(candidate);
     if (seen.has(key)) {
       skipped += 1;
       continue;
@@ -723,7 +720,7 @@ async function queueDirectEvaluations(
     seen.add(key);
 
     const matchedRow = findEnrichedRowForCandidate(candidate, enrichedRows);
-    const input = buildEvaluationInput(candidate, matchedRow, options.evaluationMode);
+    const input = buildEvaluationInput(options.source, candidate, matchedRow, options.evaluationMode);
     console.log(`Queueing direct evaluation ${index + 1}/${candidates.length}: ${candidate.company} - ${candidate.role}`);
 
     try {
@@ -754,7 +751,38 @@ async function queueDirectEvaluations(
   return { jobs, failed, skipped };
 }
 
+function candidateEvaluationKey(candidate: PipelineEntry): string {
+  return normalizeUrl(candidate.url) ?? `${normalizeText(candidate.company)}|${normalizeText(candidate.role)}`;
+}
+
+function findEnrichedRowForCandidate(
+  candidate: PipelineEntry,
+  rows: readonly EnrichedRow[],
+): EnrichedRow | undefined {
+  const candidateUrl = normalizeUrl(candidate.url);
+  if (candidateUrl) {
+    const byUrl = rows.find((row) =>
+      [
+        row.row.row.detailUrl,
+        row.row.row.applyUrl,
+        row.detail.originalPostUrl,
+        row.detail.applyNowUrl,
+        ...row.detail.applyFlowUrls,
+      ].some((url) => normalizeUrl(url) === candidateUrl),
+    );
+    if (byUrl) return byUrl;
+  }
+
+  const candidateKey = `${normalizeText(candidate.company)}|${normalizeText(candidate.role)}`;
+  return rows.find((row) => {
+    const company = row.detail.company || row.row.row.company;
+    const role = row.detail.title || row.row.row.title;
+    return `${normalizeText(company)}|${normalizeText(role)}` === candidateKey;
+  });
+}
+
 function buildEvaluationInput(
+  source: Source,
   candidate: PipelineEntry,
   matchedRow: EnrichedRow | undefined,
   evaluationMode: EvaluationMode,
@@ -769,7 +797,7 @@ function buildEvaluationInput(
     detection: {
       label: "job_posting",
       confidence: 1,
-      signals: ["linkedin-scan"],
+      signals: [sourceSignal(source)],
     },
     ...(pageText ? { pageText } : {}),
   };
@@ -792,29 +820,43 @@ function buildStructuredSignals(
   }
 
   const { detail, row } = matchedRow;
+  const salaryRange = detail.salaryRange || row.row.salary || undefined;
+  const sponsorshipSupport =
+    detail.confirmedSponsorshipSupport !== "unknown"
+      ? detail.confirmedSponsorshipSupport
+      : detail.sponsorshipSupport !== "unknown"
+        ? detail.sponsorshipSupport
+        : row.row.confirmedSponsorshipSupport !== "unknown"
+          ? row.row.confirmedSponsorshipSupport
+          : row.row.sponsorshipSupport;
+  const yearsExperienceRequired = extractYearsExperienceRequired(
+    [detail.requiredQualifications.join(" "), detail.description].join("\n"),
+  );
+
   return {
     source: candidate.source,
     company: detail.company || candidate.company,
     role: detail.title || candidate.role,
-    ...(detail.location || row.row.location ? { location: detail.location || row.row.location } : {}),
-    ...(detail.workModel || row.row.workModel ? { workModel: detail.workModel || row.row.workModel } : {}),
+    ...(detail.location || row.row.location
+      ? { location: detail.location || row.row.location }
+      : {}),
+    ...(detail.workModel || row.row.workModel
+      ? { workModel: detail.workModel || row.row.workModel }
+      : {}),
     ...(detail.employmentType ? { employmentType: detail.employmentType } : {}),
     ...(detail.seniorityLevel ? { seniority: detail.seniorityLevel } : {}),
     ...(row.row.postedAgo ? { postedAgo: row.row.postedAgo } : {}),
-    ...(detail.salaryRange || row.row.salary ? { salaryRange: detail.salaryRange || row.row.salary || undefined } : {}),
-    sponsorshipSupport: detail.confirmedSponsorshipSupport !== "unknown"
-      ? detail.confirmedSponsorshipSupport
-      : detail.sponsorshipSupport !== "unknown"
-        ? detail.sponsorshipSupport
-        : row.row.sponsorshipSupport,
+    ...(salaryRange ? { salaryRange } : {}),
+    sponsorshipSupport,
     requiresActiveSecurityClearance:
       detail.confirmedRequiresActiveSecurityClearance ||
       detail.requiresActiveSecurityClearance ||
+      row.row.confirmedRequiresActiveSecurityClearance ||
       row.row.requiresActiveSecurityClearance,
-    ...(extractYearsExperienceRequired([detail.requiredQualifications.join(" "), detail.description].join("\n")) !== null
-      ? { yearsExperienceRequired: extractYearsExperienceRequired([detail.requiredQualifications.join(" "), detail.description].join("\n")) }
-      : {}),
-    ...(detail.companySize || row.row.companySize ? { companySize: detail.companySize || row.row.companySize } : { companySize: null }),
+    ...(yearsExperienceRequired !== null ? { yearsExperienceRequired } : {}),
+    ...(detail.companySize || row.row.companySize
+      ? { companySize: detail.companySize || row.row.companySize }
+      : { companySize: null }),
     taxonomy: signalStrings(detail.taxonomy, 10, 120),
     recommendationTags: signalStrings(detail.recommendationTags, 10, 120),
     skillTags: signalStrings(detail.skillTags, 14, 120),
@@ -864,32 +906,6 @@ function buildEvaluationPageText(
   return sections.length > 0 ? sections.slice(0, 4_000) : undefined;
 }
 
-function findEnrichedRowForCandidate(
-  candidate: PipelineEntry,
-  rows: readonly EnrichedRow[],
-): EnrichedRow | undefined {
-  const candidateUrl = normalizeUrl(candidate.url);
-  if (candidateUrl) {
-    const byUrl = rows.find((row) =>
-      [
-        row.row.row.detailUrl,
-        row.row.row.applyUrl,
-        row.detail.originalPostUrl,
-        row.detail.applyNowUrl,
-        ...row.detail.applyFlowUrls,
-      ].some((url) => normalizeUrl(url) === candidateUrl),
-    );
-    if (byUrl) return byUrl;
-  }
-
-  const candidateKey = `${normalizeText(candidate.company)}|${normalizeText(candidate.role)}`;
-  return rows.find((row) => {
-    const company = row.detail.company || row.row.row.company;
-    const role = row.detail.title || row.row.row.title;
-    return `${normalizeText(company)}|${normalizeText(role)}` === candidateKey;
-  });
-}
-
 async function waitForEvaluations(
   bridgeBase: string,
   token: string,
@@ -936,7 +952,7 @@ async function postEnvelope<T>(
   path: string,
   payload: unknown,
 ): Promise<T> {
-  const requestId = `linkedin-scan-${randomUUID()}`;
+  const requestId = `job-board-scan-${randomUUID()}`;
   const res = await fetch(`${bridgeBase}${path}`, {
     method: "POST",
     headers: {
@@ -996,97 +1012,6 @@ function truncateEnrichedRow(row: EnrichedRow): EnrichedRow {
   };
 }
 
-function buildLinkedInReviewCandidates(
-  enrichedRows: readonly EnrichedRow[],
-  bridgeCandidates: readonly PipelineEntry[],
-): PipelineEntry[] {
-  const scanConfig = loadNewGradScanConfig(repoRoot);
-  const negativeKeywords = loadNegativeKeywords(repoRoot);
-  const trackedSet = loadTrackedCompanyRoles(repoRoot);
-  const existingKeys = new Set(bridgeCandidates.flatMap(pipelineEntryKeys));
-  const reviewCandidates: PipelineEntry[] = [];
-
-  for (const enrichedRow of enrichedRows) {
-    if (!isLinkedInEnrichedRow(enrichedRow)) continue;
-
-    const valueScore = scoreEnrichedRowValue(enrichedRow, scanConfig);
-    if (valueScore.passed || hasLinkedInReviewBlockingPenalty(valueScore.penalties)) {
-      continue;
-    }
-
-    const augmentedRow = buildAugmentedRowForReview(enrichedRow);
-    const { promoted } = scoreAndFilter(
-      [augmentedRow],
-      scanConfig,
-      negativeKeywords,
-      trackedSet,
-    );
-    const rescored = promoted[0];
-    if (!rescored || rescored.score < scanConfig.pipeline_threshold) {
-      continue;
-    }
-
-    const candidate: PipelineEntry = {
-      url: pickPipelineEntryUrl(enrichedRow.detail, enrichedRow.row.row),
-      company: enrichedRow.detail.company || enrichedRow.row.row.company,
-      role: enrichedRow.detail.title || enrichedRow.row.row.title,
-      score: rescored.score,
-      source: "linkedin.com",
-      valueReasons: [
-        "linkedin_review_fallback",
-        ...valueScore.reasons,
-      ],
-    };
-    const keys = pipelineEntryKeys(candidate);
-    if (keys.some((key) => existingKeys.has(key))) continue;
-    for (const key of keys) existingKeys.add(key);
-    reviewCandidates.push(candidate);
-  }
-
-  return reviewCandidates;
-}
-
-function isLinkedInEnrichedRow(row: EnrichedRow): boolean {
-  const source = row.row.row.source ?? "";
-  return source.includes("linkedin") ||
-    row.row.row.detailUrl.includes("linkedin.com/jobs/") ||
-    row.detail.originalPostUrl.includes("linkedin.com/jobs/");
-}
-
-function hasLinkedInReviewBlockingPenalty(penalties: readonly string[]): boolean {
-  return penalties.some((penalty) => [
-    "seniority_too_high",
-    "no_sponsorship",
-    "salary_below_minimum",
-    "site_match_below_bar",
-  ].includes(penalty));
-}
-
-function buildAugmentedRowForReview(enrichedRow: EnrichedRow): NewGradRow {
-  return {
-    ...enrichedRow.row.row,
-    qualifications: [
-      enrichedRow.row.row.qualifications ?? "",
-      enrichedRow.detail.description,
-      enrichedRow.detail.requiredQualifications.join(" "),
-    ].join(" "),
-    sponsorshipSupport:
-      enrichedRow.detail.sponsorshipSupport !== "unknown"
-        ? enrichedRow.detail.sponsorshipSupport
-        : enrichedRow.row.row.sponsorshipSupport,
-    confirmedSponsorshipSupport:
-      enrichedRow.detail.confirmedSponsorshipSupport !== "unknown"
-        ? enrichedRow.detail.confirmedSponsorshipSupport
-        : enrichedRow.row.row.confirmedSponsorshipSupport,
-    requiresActiveSecurityClearance:
-      enrichedRow.detail.requiresActiveSecurityClearance ||
-      enrichedRow.row.row.requiresActiveSecurityClearance,
-    confirmedRequiresActiveSecurityClearance:
-      enrichedRow.detail.confirmedRequiresActiveSecurityClearance ||
-      enrichedRow.row.row.confirmedRequiresActiveSecurityClearance,
-  };
-}
-
 function dedupeRows(rows: readonly NewGradRow[]): NewGradRow[] {
   const seen = new Set<string>();
   const unique: NewGradRow[] = [];
@@ -1112,26 +1037,13 @@ function dedupePipelineEntries(entries: readonly PipelineEntry[]): PipelineEntry
   const unique: PipelineEntry[] = [];
 
   for (const entry of entries) {
-    const keys = pipelineEntryKeys(entry);
-    if (keys.some((key) => seen.has(key))) continue;
-    for (const key of keys) seen.add(key);
+    const key = candidateEvaluationKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
     unique.push(entry);
   }
 
   return unique;
-}
-
-function pipelineEntryKeys(entry: PipelineEntry): string[] {
-  const keys: string[] = [];
-  const url = normalizeUrl(entry.url);
-  if (url) keys.push(`url:${url}`);
-
-  const company = normalizeText(entry.company);
-  const role = normalizeText(entry.role);
-  if (company || role) keys.push(`company_role:${company}|${role}`);
-
-  if (keys.length === 0) keys.push(`raw:${entry.url}`);
-  return keys;
 }
 
 function printPromotedRows(rows: readonly ScoredRow[]): void {
@@ -1182,6 +1094,10 @@ function extractYearsExperienceRequired(text: string): number | null {
   return maxYears > 0 ? maxYears : null;
 }
 
+function sourceSignal(source: Source): string {
+  return source === "builtin" ? "builtin-scan" : "indeed-scan";
+}
+
 function normalizeUrl(value: string | null | undefined): string | null {
   if (!value) return null;
   try {
@@ -1200,6 +1116,26 @@ function normalizeText(value: string | null | undefined): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function runProcess(
+  command: string,
+  args: readonly string[],
+  options: { allowJsonError: boolean },
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await execFile(command, [...args], {
+      maxBuffer: 25 * 1024 * 1024,
+      timeout: 180_000,
+    });
+  } catch (error) {
+    const err = error as Error & { stdout?: string; stderr?: string };
+    if (options.allowJsonError && err.stdout?.trim().startsWith("{")) {
+      return { stdout: err.stdout, stderr: err.stderr ?? "" };
+    }
+    const detail = [err.message, err.stderr, err.stdout].filter(Boolean).join("\n");
+    throw new Error(detail);
+  }
 }
 
 function sleep(ms: number): Promise<void> {

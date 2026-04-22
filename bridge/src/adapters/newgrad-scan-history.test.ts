@@ -160,6 +160,23 @@ describe("newgrad-scan-history", () => {
     expect(content).toContain("linkedin-scan\tSoftware Engineer\tAcme Corp\tpromoted");
   });
 
+  test("appendNewGradScanHistory records Indeed rows under indeed-scan", () => {
+    const repoRoot = makeRepoRoot();
+    const row = makeRow({
+      source: "indeed.com",
+      title: "Software Engineer I",
+      company: "Indeed Co",
+      detailUrl: "https://www.indeed.com/viewjob?jk=abc123",
+      applyUrl: "https://www.indeed.com/viewjob?jk=abc123",
+    });
+
+    appendNewGradScanHistory(repoRoot, [row], () => "promoted");
+
+    const content = readFileSync(join(repoRoot, "data/scan-history.tsv"), "utf-8");
+    expect(content).toContain("https://www.indeed.com/viewjob?jk=abc123");
+    expect(content).toContain("indeed-scan\tSoftware Engineer I\tIndeed Co\tpromoted");
+  });
+
   test("wasNewGradRowSeen matches both URL and company-role fallbacks", () => {
     const row = makeRow();
     const seenByUrl = {

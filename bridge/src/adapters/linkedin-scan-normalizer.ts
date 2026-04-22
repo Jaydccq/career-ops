@@ -45,6 +45,35 @@ export function isLinkedInJobsUrl(value: string | null | undefined): boolean {
   return canonicalLinkedInJobViewUrl(value) !== null;
 }
 
+export function buildLinkedInSearchPageUrls(
+  searchUrl: string,
+  pages: number,
+  pageSize: number,
+): string[] {
+  if (!Number.isInteger(pages) || pages <= 0) {
+    throw new Error("pages must be a positive integer");
+  }
+  if (!Number.isInteger(pageSize) || pageSize <= 0) {
+    throw new Error("pageSize must be a positive integer");
+  }
+
+  const parsed = new URL(searchUrl);
+  if (!isLinkedInHost(parsed.hostname)) {
+    throw new Error("LinkedIn search URL must use linkedin.com");
+  }
+
+  return Array.from({ length: pages }, (_, index) => {
+    const pageUrl = new URL(parsed.toString());
+    if (index === 0) {
+      return pageUrl.toString();
+    }
+
+    pageUrl.searchParams.delete("currentJobId");
+    pageUrl.searchParams.set("start", String(index * pageSize));
+    return pageUrl.toString();
+  });
+}
+
 export function normalizeLinkedInPostedAgo(value: string | null | undefined): string {
   const normalized = compact(value ?? "").replace(/^posted\s+/i, "");
   if (!normalized) return "unknown";

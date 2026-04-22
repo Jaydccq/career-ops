@@ -165,8 +165,14 @@ describe("parsePostedAgo", () => {
 
   test("parses immediate/today strings as fresh", () => {
     expect(parsePostedAgo("just now")).toBe(0);
+    expect(parsePostedAgo("new")).toBe(0);
     expect(parsePostedAgo("today")).toBe(0);
     expect(parsePostedAgo("moments ago")).toBe(0);
+  });
+
+  test("parses job-board natural language freshness strings", () => {
+    expect(parsePostedAgo("An Hour Ago")).toBe(60);
+    expect(parsePostedAgo("Yesterday")).toBe(24 * 60);
   });
 
   test("returns Infinity for unparseable strings", () => {

@@ -182,6 +182,69 @@ modes/builtin-scan.md
 - 2026-04-21: Ran the Built In pending parser against the live repo data. It returned 60 pending Built In rows; 2 of the 62 scan rows are skipped because interrupted batch workers produced local reports for Flourish and General Medicine before being stopped.
 - 2026-04-21: Verified `npm run verify`: passed with 0 errors and 3 warnings. Two duplicate tracker warnings were pre-existing; one warning is from the two unmerged tracker-addition TSVs produced by the interrupted batch attempt.
 - 2026-04-21: Ran a real HTTP bridge case for `POST /v1/builtin-scan/pending` in real/codex mode against the current repository. `/v1/health` confirmed mode `real` and executor `codex`. `limit: 3` returned 3 rows with `total: 60`; `limit: 200` returned all 60 pending Built In rows. Hashes for `data/pipeline.md`, `data/applications.md`, and `data/scan-history.tsv` were unchanged after the calls, confirming the endpoint is read-only. The temporary bridge process was stopped after testing.
+- 2026-04-22: User requested reworking `/career-ops builtin-scan` using the
+  same approach proven on `linkedin-scan`. New goal: make the Built In CLI path
+  support larger paginated result sets, visible duplicate accounting, and an
+  optional direct-evaluation path so Built In candidates can enter
+  report/tracker/Apply Next without a separate manual `/career-ops pipeline`
+  step. Success criteria: `npm run builtin-scan -- --dry-run --pages N`
+  fetches multiple Built In pages per configured keyword; scan output reports
+  raw Built In jobs and unique-added candidates; duplicate filtering uses URL
+  and company/role; `--evaluate` reads `/v1/builtin-scan/pending`, captures
+  Built In detail text, queues `newgrad_quick` evaluations, waits for tracker
+  merge by default, and never clicks Apply or submits applications.
+- 2026-04-22: Assumptions for this improvement: preserve the existing default
+  discovery behavior unless `--evaluate` is passed; keep `scan.mjs` as the
+  source of truth instead of creating a separate Built In scanner; keep
+  `newgrad_scan` title filters and pending hard-filter gates; Apply Next remains
+  governed only by tracker status `Evaluated` and score >= 3.5.
+- 2026-04-22: Verified live Built In pagination shape before implementation.
+  `page=2` and `page=3` on
+  `https://builtin.com/jobs/hybrid/national/dev-engineering?search=Software%20Engineering&allLocations=true`
+  each returned HTTP 200 and 25 parsed `job-card` elements; page HTML exposes
+  `page=` pagination links. The simplest viable path is adding a `--pages`
+  option that sets the `page` query param for page 2+.
+- 2026-04-22: Implemented Built In pagination and direct-evaluation options in
+  `scan.mjs`: `--pages`, `--evaluate`, `--evaluate-only`,
+  `--evaluate-limit`, `--pending-limit`, `--evaluation-mode`,
+  `--no-wait-evaluations`, bridge host/port, queue delay, and wait timeout.
+  Built In fetches now run through a lower Built In-specific concurrency limit
+  because live testing showed `builtin.com` DNS/fetch failures under the normal
+  portal scan concurrency while single and low-concurrency fetches succeeded.
+- 2026-04-22: Implemented direct Built In evaluation without creating a second
+  pipeline. The evaluator reads `/v1/builtin-scan/pending`, dedupes by canonical
+  URL and normalized company/role, fetches Built In detail page text, sends
+  `/v1/evaluate` with `evaluationMode: newgrad_quick`, and waits for tracker
+  merge unless `--no-wait-evaluations` is set.
+- 2026-04-22: Updated `modes/builtin-scan.md` to make the new path discoverable:
+  preview with `--dry-run --pages N`, save with `--pages N`, evaluate existing
+  pending rows with `--evaluate-only --evaluate-limit N`, or scan+evaluate in
+  one command with `--evaluate`.
+- 2026-04-22: Verification: `node --check scan.mjs` passed. First sandboxed
+  Built In dry-runs failed with `getaddrinfo ENOTFOUND builtin.com`; rerunning
+  `npm run builtin-scan -- --dry-run --pages 2` with approved network access
+  passed. Result: 6 Built In searches, 2 pages/search, 300 raw Built In jobs,
+  161 title-filtered, 67 duplicate-skipped, and 72 dry-run candidates; no files
+  were written.
+- 2026-04-22: Verified dry-run safety with
+  `npm run builtin-scan -- --dry-run --evaluate --evaluate-limit 1`. Result:
+  150 raw jobs from one page/search, 29 dry-run candidates, and no evaluation
+  jobs queued because `--dry-run` was active.
+- 2026-04-22: Verified real direct evaluation with the bridge running:
+  `npm run builtin-scan -- --evaluate-only --evaluate-limit 1`. Result:
+  `/v1/builtin-scan/pending` returned 60 total Built In pending rows, the command
+  evaluated one candidate (`Capco | Full Stack Developer (Scala, Kafka, NiFi)`),
+  captured 9448 chars of Built In detail text, completed evaluation, wrote
+  `reports/297-capco-2026-04-21.md`, and merged tracker successfully. The model
+  scored it 1.2/5 with SKIP, so it did not enter Apply Next.
+- 2026-04-22: Dashboard rebuild after the real Built In evaluation succeeded
+  with 265 reports, 188 applications, 381 pipeline rows, and 865 scan-history
+  rows. Apply Next still has 31 eligible rows; the new Built In row is present
+  in tracker/report but does not qualify because its model score is below 3.5
+  and status is SKIP.
+- 2026-04-22: Final verification after the Built In CLI changes:
+  `node --check scan.mjs` passed and `npm run verify` passed with 0 errors and
+  2 existing duplicate warnings.
 
 ## Plan Eng Review
 
@@ -247,6 +310,16 @@ Verification:
   - `npm --prefix bridge run typecheck`: passed.
   - `npm run verify`: passed with 0 errors and 3 warnings.
   - Real HTTP case: `POST /v1/builtin-scan/pending` in real/codex mode returned 60 real Built In pending entries, honored `limit`, and left `data/pipeline.md`, `data/applications.md`, and `data/scan-history.tsv` unchanged.
+- 2026-04-22 follow-up:
+  - `scan.mjs --builtin-only --pages N`: implemented.
+  - `scan.mjs --builtin-only --evaluate`: implemented.
+  - `scan.mjs --builtin-only --evaluate-only`: implemented.
+  - `npm run builtin-scan -- --dry-run --pages 2`: passed with 300 raw Built In
+    jobs and 72 dry-run candidates.
+  - `npm run builtin-scan -- --evaluate-only --evaluate-limit 1`: passed and
+    merged one Built In tracker/report row.
+  - `node --check scan.mjs`: passed.
+  - `npm run verify`: passed with 0 errors and 2 existing duplicate warnings.
 
 ## GSTACK REVIEW REPORT
 

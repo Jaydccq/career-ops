@@ -67,14 +67,6 @@ export interface LinkedInDetail {
 }
 
 export async function extractLinkedInList(): Promise<LinkedInRow[]> {
-  const INITIAL_SETTLE_MS = 600;
-  const SCROLL_SETTLE_MS = 250;
-  const MAX_SCROLL_STEPS = 10;
-
-  function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
-
   function text(el: Element | null | undefined): string {
     if (!el) return "";
     return ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
@@ -237,46 +229,15 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
     return "";
   }
 
-  function listScrollTarget(): HTMLElement | null {
-    const candidates = Array.from(document.querySelectorAll<HTMLElement>(
-      ".scaffold-layout__list, .jobs-search-results-list, [role='main'] ul, main",
-    ));
-    return candidates.find((node) => node.scrollHeight > node.clientHeight + 200) ?? null;
-  }
-
-  async function settleVisibleCards(): Promise<void> {
-    await sleep(INITIAL_SETTLE_MS);
-    const target = listScrollTarget();
-    if (!target) return;
-
-    let stable = 0;
-    let lastCount = 0;
-    for (let i = 0; i < MAX_SCROLL_STEPS && stable < 3; i += 1) {
-      const count = document.querySelectorAll("[data-job-id]").length;
-      stable = count === lastCount ? stable + 1 : 0;
-      lastCount = count;
-      target.scrollTo({ top: target.scrollTop + Math.max(500, target.clientHeight - 120), behavior: "auto" });
-      await sleep(SCROLL_SETTLE_MS);
-    }
-    target.scrollTo({ top: 0, behavior: "auto" });
-    await sleep(SCROLL_SETTLE_MS);
-  }
-
-  await settleVisibleCards();
-
   const searchIsLastDay = new URLSearchParams(window.location.search).get("f_TPR") === "r86400";
-  const seenIds = new Set<string>();
-  const rows: LinkedInRow[] = [];
-  const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-job-id]"));
 
-  for (const card of cards) {
+  function rowFromCard(card: HTMLElement): LinkedInRow | null {
     const jobId = linkedInJobId(card.getAttribute("data-job-id")) ||
       Array.from(card.querySelectorAll<HTMLAnchorElement>("a[href]"))
         .map((anchor) => linkedInJobId(anchor.href || anchor.getAttribute("href")))
         .find(Boolean) ||
-      "";
-    if (!jobId || seenIds.has(jobId)) continue;
-    seenIds.add(jobId);
+        "";
+    if (!jobId) return null;
 
     const cardText = text(card);
     const cardLines = lines(cardText);
@@ -289,11 +250,11 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
     const applyUrl = detailUrl;
     const sponsorship = sponsorshipStatus(cardText);
 
-    if (!title || !company) continue;
+    if (!title || !company) return null;
 
-    rows.push({
+    return {
       source: "linkedin.com",
-      position: rows.length + 1,
+      position: 0,
       title,
       postedAgo,
       applyUrl,
@@ -311,10 +272,27 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
       requiresActiveSecurityClearance: requiresActiveClearance(cardText),
       confirmedRequiresActiveSecurityClearance: false,
       isNewGrad: isEarlyCareer(title, cardText),
-    });
+    };
   }
 
-  return rows;
+  function extractVisibleRows(root: ParentNode = document): LinkedInRow[] {
+    const seenIds = new Set<string>();
+    const rows: LinkedInRow[] = [];
+    const cards = Array.from(root.querySelectorAll<HTMLElement>("[data-job-id]"));
+
+    for (const card of cards) {
+      const row = rowFromCard(card);
+      if (!row) continue;
+      const key = row.detailUrl.toLowerCase();
+      if (seenIds.has(key)) continue;
+      seenIds.add(key);
+      rows.push({ ...row, position: rows.length + 1 });
+    }
+
+    return rows;
+  }
+
+  return extractVisibleRows();
 }
 
 export async function extractLinkedInDetail(): Promise<LinkedInDetail> {

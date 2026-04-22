@@ -28,7 +28,7 @@ import {
 import { sourceFromPipelineTag } from "./newgrad-source.js";
 
 const PENDING_LINE_RE =
-  /^-\s+\[\s\]\s+(?<url>https?:\/\/\S+)\s+—\s+(?<company>.+?)\s+\|\s+(?<role>.+?)\s+\(via (?<sourceTag>newgrad-scan|builtin-scan|linkedin-scan), score:\s*(?<score>[0-9.]+)\/[0-9.]+(?:,\s+value:\s*(?<valueScore>[0-9.]+)\/10)?\)(?:\s+\[value-reasons:(?<valueReasons>[^\]]+)\])?(?:\s+\[local:(?<localJdPath>[^\]]+)\])?/;
+  /^-\s+\[\s\]\s+(?<url>https?:\/\/\S+)\s+(?:—|--)\s+(?<company>.+?)\s+\|\s+(?<role>.+?)\s+\(via (?<sourceTag>newgrad-scan|builtin-scan|linkedin-scan|indeed-scan), score:\s*(?<score>[0-9.]+)\/[0-9.]+(?:,\s+value:\s*(?<valueScore>[0-9.]+)\/10)?\)(?:\s+\[value-reasons:(?<valueReasons>[^\]]+)\])?(?:\s+\[local:(?<localJdPath>[^\]]+)\])?/;
 const LOCAL_JD_CACHE_MAX_CHARS = 8_000;
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 100;

@@ -57,11 +57,28 @@ export function parsePostedAgo(text: string): number {
   const normalized = text.trim().toLowerCase();
   if (
     normalized === "just now" ||
+    normalized === "new" ||
     normalized === "today" ||
     normalized === "moments ago" ||
     normalized === "a moment ago"
   ) {
     return 0;
+  }
+
+  if (normalized === "yesterday") {
+    return 24 * 60;
+  }
+
+  const articleMatch = /^an?\s+([a-z]+)\s+ago$/i.exec(normalized);
+  if (articleMatch) {
+    const unit = articleMatch[1]!.toLowerCase();
+    const multiplier =
+      UNIT_TO_MINUTES[unit] ??
+      (unit === "min" || unit === "mins" ? 1 : undefined) ??
+      (unit === "hr" || unit === "hrs" ? 60 : undefined);
+    if (multiplier !== undefined) {
+      return multiplier;
+    }
   }
 
   // Long form: "2 hours ago", "30 minutes ago"

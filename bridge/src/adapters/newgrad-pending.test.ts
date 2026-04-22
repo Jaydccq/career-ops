@@ -129,6 +129,35 @@ describe("readNewGradPendingEntries", () => {
     });
   });
 
+  test("reads indeed-scan pipeline entries with Indeed source", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "data/pipeline.md"),
+      [
+        "# Pipeline",
+        "",
+        "## Pendientes",
+        "",
+        "- [ ] https://www.indeed.com/viewjob?jk=abc123 -- Indeed Co | Software Engineer I (via indeed-scan, score: 8/9, value: 7.1/10) [value-reasons:entry_level|salary_present]",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = readNewGradPendingEntries(repoRoot, 10);
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({
+      url: "https://www.indeed.com/viewjob?jk=abc123",
+      company: "Indeed Co",
+      role: "Software Engineer I",
+      source: "indeed.com",
+      score: 8,
+      valueScore: 7.1,
+    });
+    expect(result.entries[0]?.valueReasons).toEqual(["entry_level", "salary_present"]);
+  });
+
   test("honors display limit while preserving total", () => {
     const repoRoot = makeRepoRoot();
     writeFileSync(

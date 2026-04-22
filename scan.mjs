@@ -15,8 +15,12 @@
  *   node scan.mjs --company Cohere # scan a single company
  *   node scan.mjs --no-builtin     # skip Built In keyword searches
  *   node scan.mjs --builtin-only   # scan only Built In keyword searches
+ *   node scan.mjs --builtin-only --pages 3
+ *   node scan.mjs --builtin-only --evaluate --evaluate-limit 5
+ *   node scan.mjs --builtin-only --evaluate-only --evaluate-limit 5
  */
 
+import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
 import yaml from 'js-yaml';
 const parseYaml = yaml.load;
@@ -31,10 +35,17 @@ const APPLICATIONS_PATH = 'data/applications.md';
 // Ensure required directories exist (fresh setup)
 mkdirSync('data', { recursive: true });
 const CONCURRENCY = 10;
+const BUILTIN_FETCH_CONCURRENCY = 2;
 const FETCH_TIMEOUT_MS = 10_000;
 const BUILTIN_SOURCE = 'builtin-scan';
 const BUILTIN_BASE_URL = 'https://builtin.com';
 const BUILTIN_DEFAULT_PATH = '/jobs/hybrid/national/dev-engineering';
+const PROTOCOL_VERSION = '1.0.0';
+const DEFAULT_BRIDGE_HOST = '127.0.0.1';
+const DEFAULT_BRIDGE_PORT = 47319;
+const DEFAULT_EVALUATION_QUEUE_DELAY_MS = 2100;
+const DEFAULT_EVALUATION_WAIT_TIMEOUT_MS = 20 * 60_000;
+const BUILTIN_EVALUATION_PAGE_TEXT_MAX_CHARS = 12_000;
 const DEFAULT_BUILTIN_SEARCHES = [
   { name: 'Built In — Software Engineering', keyword: 'Software Engineering', enabled: true },
   { name: 'Built In — Software Engineer', keyword: 'Software Engineer', enabled: true },
@@ -171,7 +182,7 @@ function normalizeBuiltInSearch(entry) {
   };
 }
 
-function builtInSearchUrl(search) {
+function builtInSearchUrl(search, page = 1) {
   const url = search.url
     ? new URL(search.url)
     : new URL(search.path || BUILTIN_DEFAULT_PATH, BUILTIN_BASE_URL);
@@ -181,7 +192,13 @@ function builtInSearchUrl(search) {
   url.searchParams.delete('city');
   url.searchParams.delete('state');
   url.searchParams.delete('country');
+  url.searchParams.delete('page');
+  if (page > 1) url.searchParams.set('page', String(page));
   return url.toString();
+}
+
+function builtInSearchPageUrls(search, pages) {
+  return Array.from({ length: pages }, (_, index) => builtInSearchUrl(search, index + 1));
 }
 
 function parseBuiltInJobs(html) {
@@ -443,6 +460,51 @@ async function parallelFetch(tasks, limit) {
   return results;
 }
 
+function optionValue(args, name) {
+  const index = args.indexOf(name);
+  if (index === -1) return null;
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`Missing value for ${name}`);
+  }
+  return value;
+}
+
+function positiveIntOption(args, name, fallback) {
+  const raw = optionValue(args, name);
+  if (raw === null) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function nonNegativeIntOption(args, name, fallback) {
+  const raw = optionValue(args, name);
+  if (raw === null) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function formatError(error) {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause;
+  if (cause instanceof Error && cause.message) {
+    return `${error.message}: ${cause.message}`;
+  }
+  if (cause && typeof cause === 'object') {
+    const code = 'code' in cause ? ` ${(cause).code}` : '';
+    const message = 'message' in cause ? ` ${(cause).message}` : '';
+    const detail = `${code}${message}`.trim();
+    if (detail) return `${error.message}: ${detail}`;
+  }
+  return error.message;
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main() {
@@ -450,8 +512,39 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const noBuiltIn = args.includes('--no-builtin');
   const builtInOnly = args.includes('--builtin-only');
+  const evaluateBuiltIn = args.includes('--evaluate');
+  const evaluateOnly = args.includes('--evaluate-only');
+  const builtInPages = positiveIntOption(args, '--pages', 1);
+  const evaluateLimit = positiveIntOption(args, '--evaluate-limit', null);
+  const pendingLimit = positiveIntOption(args, '--pending-limit', 100);
+  const evaluationQueueDelayMs = nonNegativeIntOption(args, '--evaluation-queue-delay-ms', DEFAULT_EVALUATION_QUEUE_DELAY_MS);
+  const evaluationWaitTimeoutMs = positiveIntOption(args, '--evaluation-wait-timeout-ms', DEFAULT_EVALUATION_WAIT_TIMEOUT_MS);
+  const bridgeHost = optionValue(args, '--bridge-host') ?? DEFAULT_BRIDGE_HOST;
+  const bridgePort = positiveIntOption(args, '--bridge-port', DEFAULT_BRIDGE_PORT);
+  const evaluationMode = optionValue(args, '--evaluation-mode') ?? 'newgrad_quick';
+  const waitEvaluations = !args.includes('--no-wait-evaluations');
   const companyFlag = args.indexOf('--company');
   const filterCompany = companyFlag !== -1 ? args[companyFlag + 1]?.toLowerCase() : null;
+
+  if (evaluationMode !== 'newgrad_quick' && evaluationMode !== 'default') {
+    throw new Error('--evaluation-mode must be newgrad_quick or default');
+  }
+  if ((evaluateBuiltIn || evaluateOnly) && noBuiltIn) {
+    throw new Error('--evaluate/--evaluate-only requires Built In scanning; remove --no-builtin');
+  }
+
+  if (evaluateOnly) {
+    await evaluateBuiltInPending({
+      bridgeBase: `http://${bridgeHost}:${bridgePort}`,
+      evaluateLimit,
+      pendingLimit,
+      evaluationMode,
+      waitEvaluations,
+      evaluationQueueDelayMs,
+      evaluationWaitTimeoutMs,
+    });
+    return;
+  }
 
   // 1. Read portals.yml
   if (!existsSync(PORTALS_PATH)) {
@@ -478,6 +571,7 @@ async function main() {
 
   console.log(`Scanning ${apiTargets.length} companies via API (${skippedCount} skipped — no API detected)`);
   console.log(`Scanning ${builtInSearches.length} Built In keyword searches`);
+  if (builtInSearches.length > 0) console.log(`Built In pages per search: ${builtInPages}`);
   if (dryRun) console.log('(dry run — no files will be written)\n');
 
   // 3. Load dedup sets
@@ -487,6 +581,7 @@ async function main() {
   // 4. Fetch all APIs
   const date = new Date().toISOString().slice(0, 10);
   let totalFound = 0;
+  let builtInRawFound = 0;
   let totalFiltered = 0;
   let totalDupes = 0;
   const newOffers = [];
@@ -519,43 +614,53 @@ async function main() {
         newOffers.push({ ...job, source: `${type}-api` });
       }
     } catch (err) {
-      errors.push({ company: company.name, error: err.message });
+      errors.push({ company: company.name, error: formatError(err) });
     }
   });
 
+  const builtInTasks = [];
   for (const search of builtInSearches) {
-    tasks.push(async () => {
-      const url = builtInSearchUrl(search);
-      try {
-        const html = await fetchText(url);
-        const jobs = parseBuiltInJobs(html);
-        totalFound += jobs.length;
+    builtInTasks.push(async () => {
+      const pageUrls = builtInSearchPageUrls(search, builtInPages);
+      for (const [pageIndex, url] of pageUrls.entries()) {
+        try {
+          const html = await fetchText(url);
+          const jobs = parseBuiltInJobs(html);
+          totalFound += jobs.length;
+          builtInRawFound += jobs.length;
 
-        for (const job of jobs) {
-          if (!titleFilter(job.title)) {
-            totalFiltered++;
-            continue;
+          for (const job of jobs) {
+            if (!titleFilter(job.title)) {
+              totalFiltered++;
+              continue;
+            }
+            if (seenUrls.has(job.url)) {
+              totalDupes++;
+              continue;
+            }
+            const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
+            if (seenCompanyRoles.has(key)) {
+              totalDupes++;
+              continue;
+            }
+            seenUrls.add(job.url);
+            seenCompanyRoles.add(key);
+            newOffers.push({ ...job, source: BUILTIN_SOURCE });
           }
-          if (seenUrls.has(job.url)) {
-            totalDupes++;
-            continue;
-          }
-          const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
-          if (seenCompanyRoles.has(key)) {
-            totalDupes++;
-            continue;
-          }
-          seenUrls.add(job.url);
-          seenCompanyRoles.add(key);
-          newOffers.push({ ...job, source: BUILTIN_SOURCE });
+
+          if (jobs.length === 0) break;
+        } catch (err) {
+          errors.push({
+            company: `${search.name} page ${pageIndex + 1}`,
+            error: formatError(err),
+          });
         }
-      } catch (err) {
-        errors.push({ company: search.name, error: err.message });
       }
     });
   }
 
   await parallelFetch(tasks, CONCURRENCY);
+  await parallelFetch(builtInTasks, BUILTIN_FETCH_CONCURRENCY);
 
   // 5. Write results
   if (!dryRun && newOffers.length > 0) {
@@ -569,6 +674,10 @@ async function main() {
   console.log(`${'━'.repeat(45)}`);
   console.log(`Companies scanned:     ${apiTargets.length}`);
   console.log(`Built In searches:     ${builtInSearches.length}`);
+  if (builtInSearches.length > 0) {
+    console.log(`Built In pages/search: ${builtInPages}`);
+    console.log(`Built In raw jobs:     ${builtInRawFound}`);
+  }
   console.log(`Total jobs found:      ${totalFound}`);
   console.log(`Filtered by title:     ${totalFiltered} removed`);
   console.log(`Duplicates:            ${totalDupes} skipped`);
@@ -593,8 +702,251 @@ async function main() {
     }
   }
 
+  if (evaluateBuiltIn) {
+    if (dryRun) {
+      console.log('\n--evaluate was requested during --dry-run; no evaluation jobs were queued.');
+    } else {
+      await evaluateBuiltInPending({
+        bridgeBase: `http://${bridgeHost}:${bridgePort}`,
+        evaluateLimit,
+        pendingLimit,
+        evaluationMode,
+        waitEvaluations,
+        evaluationQueueDelayMs,
+        evaluationWaitTimeoutMs,
+      });
+    }
+  }
+
   console.log(`\n→ Run /career-ops pipeline to evaluate new offers.`);
   console.log('→ Share results and get help: https://discord.gg/8pRpHETxa4');
+}
+
+async function evaluateBuiltInPending(options) {
+  const tokenPath = 'bridge/.bridge-token';
+  if (!existsSync(tokenPath)) {
+    throw new Error('bridge token not found; start the bridge first with npm run ext:bridge');
+  }
+
+  const token = readFileSync(tokenPath, 'utf-8').trim();
+  await assertBridgeHealthy(options.bridgeBase, token);
+
+  const pending = await postEnvelope(options.bridgeBase, token, '/v1/builtin-scan/pending', {
+    limit: options.pendingLimit,
+  });
+  const entries = dedupeBuiltInPendingEntries(pending.entries || []);
+  const candidates = entries.slice(0, options.evaluateLimit ?? entries.length);
+
+  console.log(`\nBuilt In pending: total=${pending.total}, eligible=${entries.length}, evaluating=${candidates.length}`);
+  if (candidates.length === 0) return;
+
+  const queued = [];
+  const failed = [];
+
+  for (const [index, candidate] of candidates.entries()) {
+    console.log(`Queueing Built In evaluation ${index + 1}/${candidates.length}: ${candidate.company} | ${candidate.role}`);
+    let pageText = '';
+    try {
+      pageText = await captureBuiltInEvaluationText(candidate);
+      if (pageText.length < 1_200) {
+        console.log(`  captured short detail text (${pageText.length} chars); bridge may fetch missing details`);
+      } else {
+        console.log(`  captured detail text (${pageText.length} chars)`);
+      }
+    } catch (error) {
+      console.warn(`  detail capture failed; bridge will evaluate from URL: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      const created = await postEnvelope(options.bridgeBase, token, '/v1/evaluate', {
+        input: buildBuiltInEvaluationInput(candidate, pageText, options.evaluationMode),
+      });
+      queued.push({
+        jobId: created.jobId,
+        company: candidate.company,
+        role: candidate.role,
+      });
+    } catch (error) {
+      failed.push({
+        company: candidate.company,
+        role: candidate.role,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (index < candidates.length - 1 && options.evaluationQueueDelayMs > 0) {
+      await sleep(options.evaluationQueueDelayMs);
+    }
+  }
+
+  console.log(`Built In evaluation queue: queued=${queued.length}, failed=${failed.length}`);
+  for (const item of failed) {
+    console.warn(`- failed to queue ${item.company} | ${item.role}: ${item.error}`);
+  }
+
+  if (options.waitEvaluations && queued.length > 0) {
+    const result = await waitForEvaluationJobs(options.bridgeBase, token, queued, options.evaluationWaitTimeoutMs);
+    console.log(`Built In evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`);
+    for (const item of result.completed) {
+      console.log(`- ${item.result.company} | ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`);
+    }
+    for (const item of result.failed) {
+      console.warn(`- evaluation failed ${item.job.company} | ${item.job.role}: ${item.error}`);
+    }
+  } else if (queued.length > 0) {
+    console.log('Evaluation jobs queued; not waiting because --no-wait-evaluations was set.');
+  }
+}
+
+async function assertBridgeHealthy(bridgeBase, token) {
+  await getEnvelope(bridgeBase, token, '/v1/health');
+  console.log('Bridge health: ok');
+}
+
+async function captureBuiltInEvaluationText(entry) {
+  const html = await fetchText(entry.url);
+  const pageText = htmlText(html).slice(0, BUILTIN_EVALUATION_PAGE_TEXT_MAX_CHARS);
+  return [
+    `URL: ${entry.url}`,
+    `Company: ${entry.company}`,
+    `Role: ${entry.role}`,
+    entry.score !== undefined ? `Built In pending score: ${entry.score}` : null,
+    entry.valueScore !== undefined ? `Local enrich value score: ${entry.valueScore}/10` : null,
+    entry.valueReasons?.length ? `Local enrich reasons: ${entry.valueReasons.join(', ')}` : null,
+    pageText ? `Built In page text:\n${pageText}` : null,
+  ].filter(Boolean).join('\n\n').slice(0, 50_000);
+}
+
+function buildBuiltInEvaluationInput(entry, pageText, evaluationMode) {
+  return {
+    url: entry.url,
+    title: entry.role,
+    evaluationMode,
+    structuredSignals: {
+      source: 'builtin.com',
+      company: entry.company,
+      role: entry.role,
+      ...(entry.valueScore !== undefined ? { localValueScore: entry.valueScore } : {}),
+      ...(entry.valueReasons?.length ? { localValueReasons: signalStrings(entry.valueReasons, 16, 120) } : {}),
+    },
+    detection: {
+      label: 'job_posting',
+      confidence: 1,
+      signals: ['builtin-scan'],
+    },
+    ...(pageText ? { pageText } : {}),
+  };
+}
+
+function dedupeBuiltInPendingEntries(entries) {
+  const seen = new Set();
+  const unique = [];
+  for (const entry of entries) {
+    const keys = pendingEntryKeys(entry);
+    if (keys.some((key) => seen.has(key))) continue;
+    for (const key of keys) seen.add(key);
+    unique.push(entry);
+  }
+  return unique;
+}
+
+function pendingEntryKeys(entry) {
+  const keys = [];
+  const url = normalizeUrl(entry.url);
+  if (url) keys.push(`url:${url}`);
+  const company = normalizeSearchValue(entry.company);
+  const role = normalizeSearchValue(entry.role);
+  if (company || role) keys.push(`company_role:${company}|${role}`);
+  return keys.length > 0 ? keys : [`raw:${entry.url}`];
+}
+
+async function postEnvelope(bridgeBase, token, path, payload) {
+  const res = await fetch(`${bridgeBase}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-career-ops-token': token,
+    },
+    body: JSON.stringify({
+      protocol: PROTOCOL_VERSION,
+      requestId: `scan-${randomUUID()}`,
+      clientTimestamp: new Date().toISOString(),
+      payload,
+    }),
+  });
+  const body = await res.json();
+  if (!body.ok) {
+    throw new Error(`${path} failed: ${body.error?.code ?? 'ERROR'} ${body.error?.message ?? ''}`.trim());
+  }
+  return body.result;
+}
+
+async function getEnvelope(bridgeBase, token, path) {
+  const res = await fetch(`${bridgeBase}${path}`, {
+    headers: { 'x-career-ops-token': token },
+  });
+  const body = await res.json();
+  if (!body.ok) {
+    throw new Error(`${path} failed: ${body.error?.code ?? 'ERROR'} ${body.error?.message ?? ''}`.trim());
+  }
+  return body.result;
+}
+
+async function waitForEvaluationJobs(bridgeBase, token, jobs, timeoutMs) {
+  const pending = new Map(jobs.map((job) => [job.jobId, job]));
+  const completed = [];
+  const failed = [];
+  const deadline = Date.now() + timeoutMs;
+
+  while (pending.size > 0 && Date.now() < deadline) {
+    for (const [jobId, job] of Array.from(pending.entries())) {
+      const snapshot = await getEnvelope(bridgeBase, token, `/v1/jobs/${jobId}`);
+      if (snapshot.phase === 'completed' && snapshot.result) {
+        completed.push({ job, result: snapshot.result });
+        pending.delete(jobId);
+      } else if (snapshot.phase === 'failed' && snapshot.error) {
+        failed.push({ job, error: `${snapshot.error.code} ${snapshot.error.message}` });
+        pending.delete(jobId);
+      }
+    }
+
+    if (pending.size > 0) {
+      console.log(`Waiting for evaluations: completed=${completed.length}, failed=${failed.length}, pending=${pending.size}`);
+      await sleep(5_000);
+    }
+  }
+
+  return {
+    completed,
+    failed,
+    timedOut: Array.from(pending.values()),
+  };
+}
+
+function normalizeUrl(value) {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function normalizeSearchValue(value) {
+  return String(value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function signalStrings(values, maxItems, maxLength) {
+  return values
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .slice(0, maxItems)
+    .map((value) => value.length > maxLength ? value.slice(0, maxLength).trimEnd() : value);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch(err => {

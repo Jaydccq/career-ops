@@ -3,7 +3,7 @@ name: career-ops
 description: AI job search command center -- evaluate offers, generate CVs, scan portals, track applications
 user_invocable: true
 args: mode
-argument-hint: "[scan | builtin-scan | linkedin-scan | deep | pdf | cover-letter | newgrad-scan | followup | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
+argument-hint: "[scan | builtin-scan | linkedin-scan | indeed-scan | deep | pdf | cover-letter | newgrad-scan | followup | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
 ---
 
 # career-ops -- Router
@@ -29,6 +29,7 @@ Determine the mode from `{{mode}}`:
 | `scan` | `scan` |
 | `builtin-scan` / `builtin` | `builtin-scan` |
 | `linkedin-scan` / `linkedin` | `linkedin-scan` |
+| `indeed-scan` / `indeed` | `indeed-scan` |
 | `batch` | `batch` |
 | `patterns` | `patterns` |
 | `cover-letter` / `cover` / `cl` | `cover-letter` |
@@ -63,6 +64,7 @@ Available commands:
   /career-ops scan      → Scan portals and discover new offers
   /career-ops builtin-scan → Scan Built In keyword searches only
   /career-ops linkedin-scan → Scan LinkedIn Jobs via bb-browser
+  /career-ops indeed-scan → Scan Indeed Jobs via bb-browser
   /career-ops batch     → Batch processing with parallel workers
   /career-ops patterns  → Analyze rejection patterns and improve targeting
   /career-ops cover-letter → Generate single-page cover letter PDF (matches CV design)
@@ -82,7 +84,7 @@ After determining the mode, load the necessary files before executing:
 ### Modes that require `_shared.md` + their mode file:
 Read `modes/_shared.md` + `modes/{mode}.md`
 
-Applies to: `auto-pipeline`, `oferta`, `ofertas`, `pdf`, `cover-letter`, `contacto`, `apply`, `pipeline`, `scan`, `builtin-scan`, `linkedin-scan`, `batch`, `newgrad-scan`
+Applies to: `auto-pipeline`, `oferta`, `ofertas`, `pdf`, `cover-letter`, `contacto`, `apply`, `pipeline`, `scan`, `builtin-scan`, `linkedin-scan`, `indeed-scan`, `batch`, `newgrad-scan`
 
 ### Standalone modes (only their mode file):
 Read `modes/{mode}.md`
