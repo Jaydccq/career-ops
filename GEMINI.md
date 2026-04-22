@@ -46,6 +46,7 @@ When using [Gemini CLI](https://github.com/google-gemini/gemini-cli), the follow
 | `/career-ops-contact` | `/career-ops contacto` | LinkedIn outreach |
 | `/career-ops-deep` | `/career-ops deep` | Deep company research |
 | `/career-ops-pdf` | `/career-ops pdf` | Generate ATS-optimized CV |
+| `/career-ops-latex` | `/career-ops latex` | Export CV as LaTeX/Overleaf .tex |
 | `/career-ops-training` | `/career-ops training` | Evaluate course/cert |
 | `/career-ops-project` | `/career-ops project` | Evaluate portfolio project |
 | `/career-ops-tracker` | `/career-ops tracker` | Application status overview |
@@ -81,6 +82,7 @@ If `modes/_profile.md` is missing, copy from `modes/_profile.template.md` silent
 | Asks for company research | read `modes/deep.md` |
 | Preps for interview | read `modes/interview-prep.md` |
 | Wants to generate CV/PDF | read `modes/_shared.md` + `modes/pdf.md` |
+| Wants LaTeX/Overleaf CV export | read `modes/_shared.md` + `modes/latex.md` |
 | Evaluates a course/cert | read `modes/training.md` |
 | Evaluates portfolio project | read `modes/project.md` |
 | Asks about application status | read `modes/tracker.md` |
@@ -99,7 +101,9 @@ If `modes/_profile.md` is missing, copy from `modes/_profile.template.md` silent
 | `data/pipeline.md` | Inbox of pending URLs |
 | `portals.yml` | Query and company config |
 | `templates/cv-template.html` | HTML template for CVs |
+| `templates/cv-template.tex` | LaTeX/Overleaf template for CVs |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
+| `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |
 | `article-digest.md` | Proof points from portfolio (optional) |
 | `interview-prep/story-bank.md` | Accumulated STAR+R stories |
 | `gemini-eval.mjs` | Standalone Gemini API evaluator (no CLI required) |

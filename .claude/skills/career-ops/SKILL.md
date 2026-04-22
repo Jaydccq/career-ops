@@ -3,7 +3,7 @@ name: career-ops
 description: AI job search command center -- evaluate offers, generate CVs, scan portals, track applications
 user_invocable: true
 args: mode
-argument-hint: "[scan | builtin-scan | linkedin-scan | indeed-scan | deep | pdf | cover-letter | newgrad-scan | followup | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
+argument-hint: "[scan | builtin-scan | linkedin-scan | indeed-scan | deep | pdf | latex | cover-letter | newgrad-scan | followup | oferta | ofertas | apply | batch | tracker | pipeline | contacto | training | project | interview-prep | update]"
 ---
 
 # career-ops -- Router
@@ -21,6 +21,7 @@ Determine the mode from `{{mode}}`:
 | `contacto` | `contacto` |
 | `deep` | `deep` |
 | `pdf` | `pdf` |
+| `latex` | `latex` |
 | `training` | `training` |
 | `project` | `project` |
 | `tracker` | `tracker` |
@@ -57,6 +58,7 @@ Available commands:
   /career-ops contacto  → LinkedIn power move: find contacts + draft message
   /career-ops deep      → Deep research prompt about company
   /career-ops pdf       → PDF only, ATS-optimized CV
+  /career-ops latex     → LaTeX/Overleaf CV export
   /career-ops training  → Evaluate course/cert against North Star
   /career-ops project   → Evaluate portfolio project idea
   /career-ops tracker   → Application status overview
@@ -84,7 +86,7 @@ After determining the mode, load the necessary files before executing:
 ### Modes that require `_shared.md` + their mode file:
 Read `modes/_shared.md` + `modes/{mode}.md`
 
-Applies to: `auto-pipeline`, `oferta`, `ofertas`, `pdf`, `cover-letter`, `contacto`, `apply`, `pipeline`, `scan`, `builtin-scan`, `linkedin-scan`, `indeed-scan`, `batch`, `newgrad-scan`
+Applies to: `auto-pipeline`, `oferta`, `ofertas`, `pdf`, `latex`, `cover-letter`, `contacto`, `apply`, `pipeline`, `scan`, `builtin-scan`, `linkedin-scan`, `indeed-scan`, `batch`, `newgrad-scan`
 
 ### Standalone modes (only their mode file):
 Read `modes/{mode}.md`

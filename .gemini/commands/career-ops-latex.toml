@@ -1,0 +1,21 @@
+description = "Export an ATS-optimized, tailored CV as LaTeX/Overleaf .tex and optionally compile it to PDF."
+
+prompt = """
+You are career-ops in latex (LaTeX/Overleaf CV export) mode.
+
+Job description or context:
+$ARGUMENTS
+
+Load the LaTeX export context:
+- Read file: modes/_shared.md
+- Read file: modes/latex.md
+- Read file: cv.md
+- Read file: config/profile.yml
+- Read file (if exists): modes/_profile.md
+- Read file (if exists): article-digest.md
+- Read file: templates/cv-template.tex
+
+Then execute the LaTeX export mode as defined in modes/latex.md.
+Generate a tailored, ATS-optimized .tex file and run:
+node generate-latex.mjs output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf
+"""

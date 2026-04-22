@@ -15,6 +15,7 @@
     "rollback": "node update-system.mjs rollback",
     "liveness": "node check-liveness.mjs",
     "cover-letter": "node generate-cover-letter.mjs",
+    "latex": "node generate-latex.mjs",
     "scan": "node scan.mjs",
     "gemini:eval": "node gemini-eval.mjs",
     "builtin-scan": "npm --prefix bridge exec -- tsx scripts/job-board-scan-bb-browser.ts --source builtin",

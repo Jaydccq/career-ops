@@ -12,6 +12,7 @@ Claude workflow.
 - A Codex client that can work with project `AGENTS.md`
 - Node.js 18+
 - Playwright Chromium installed for PDF generation and reliable job verification
+- `pdflatex` on PATH if you want local LaTeX CV PDF compilation
 - Go 1.21+ if you want the TUI dashboard
 
 ## Install
@@ -26,6 +27,7 @@ npx playwright install chromium
 - `Evaluate this job URL with Career-Ops and run the full pipeline.`
 - `Scan my configured portals for new roles that match my profile.`
 - `Generate the tailored ATS PDF for this role using Career-Ops.`
+- `Export the tailored CV as LaTeX/Overleaf .tex for this role.`
 
 ## Routing Map
 
@@ -39,6 +41,7 @@ npx playwright install chromium
 | LinkedIn Jobs scan | `modes/_shared.md` + `modes/linkedin-scan.md` |
 | Indeed Jobs scan | `modes/_shared.md` + `modes/indeed-scan.md` |
 | PDF generation | `modes/_shared.md` + `modes/pdf.md` |
+| LaTeX / Overleaf CV export | `modes/_shared.md` + `modes/latex.md` |
 | Live application help | `modes/_shared.md` + `modes/apply.md` |
 | Pipeline inbox processing | `modes/_shared.md` + `modes/pipeline.md` |
 | Tracker status | `modes/tracker.md` |
