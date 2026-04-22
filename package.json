@@ -16,6 +16,7 @@
     "liveness": "node check-liveness.mjs",
     "cover-letter": "node generate-cover-letter.mjs",
     "scan": "node scan.mjs",
+    "gemini:eval": "node gemini-eval.mjs",
     "builtin-scan": "npm --prefix bridge exec -- tsx scripts/job-board-scan-bb-browser.ts --source builtin",
     "builtin-scan:legacy": "node scan.mjs --builtin-only",
     "newgrad-scan:login": "node scripts/newgrad-scan-login.mjs",
@@ -51,6 +52,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5",
     "js-yaml": "^4.1.1",
     "playwright": "^1.58.1"
   }

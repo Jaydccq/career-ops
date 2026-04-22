@@ -1,8 +1,12 @@
 # Hongxi's Career-Ops
 
-This is my personal Career-Ops workspace for evaluating jobs, tracking applications, and running the local browser-extension workflow. It is based on the upstream Career-Ops project, but this `main` branch is maintained for my own workflow.
+This is my personal Career-Ops workspace for evaluating jobs, tracking
+applications, and running the local browser-extension workflow. It is based on
+the upstream Career-Ops project, but this `main` branch is maintained for my own
+workflow.
 
-This repo is a decision and tracking system. It does not submit applications for me.
+This repo is a decision and tracking system. It does not submit applications for
+me.
 
 ## What It Does
 
@@ -11,6 +15,7 @@ This repo is a decision and tracking system. It does not submit applications for
 - Tracks application rows, reports, follow-ups, and local dashboard data.
 - Builds a static dashboard at `web/index.html`.
 - Keeps durable execution context in `docs/exec-plans/`.
+- Keeps upstream Gemini CLI and LaTeX CV export entry points available.
 
 ## Daily Commands
 
@@ -27,6 +32,8 @@ Useful entry points:
 - `npm run ext:start` builds the extension and starts the bridge.
 - `npm run ext:launcher` prints the local extension launch instructions.
 - `npm run pending:warm-cache` warms legacy pending-job cache data.
+- `npm run gemini:eval -- "JD text"` runs the upstream Gemini evaluator.
+- `node generate-latex.mjs` runs the upstream LaTeX CV export path.
 - `go test ./...` checks the dashboard package directly.
 
 ## Local Data
@@ -52,6 +59,8 @@ Use examples and templates when sharing setup:
 
 - `CLAUDE.md` is the main project instruction file for agents.
 - `AGENTS.md` routes Codex to the same project rules.
+- `GEMINI.md` covers upstream Gemini CLI integration.
+- `modes/latex.md` covers upstream LaTeX CV export.
 - `docs/CODEX.md` covers Codex-specific setup.
 - `docs/BROWSER_EXTENSION.md` covers extension and bridge usage.
 - `DATA_CONTRACT.md` defines tracker and report data expectations.
@@ -68,4 +77,6 @@ Use examples and templates when sharing setup:
 
 ## Branch Policy
 
-This fork uses direct pushes to my own `main` when I explicitly ask for them. Upstream changes can be merged in, but personal data and local runtime artifacts should stay out of commits.
+This fork uses direct pushes to my own `main` when I explicitly ask for them.
+Upstream changes can be merged in, but personal data and local runtime artifacts
+should stay out of commits.
