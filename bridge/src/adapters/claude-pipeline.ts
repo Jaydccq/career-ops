@@ -201,6 +201,7 @@ export const __internal = {
   buildQuickEvaluationSchema,
   buildQuickEvaluationPrompt,
   buildQuickEvaluationArtifacts,
+  sanitizeQuickEvaluationPageText,
   shouldUseCodexSearch,
   extractTerminalJsonObject,
   parseReportMarkdown,
@@ -1886,12 +1887,12 @@ function buildQuickEvaluationPrompt(args: {
   input: EvaluationInput;
   candidateProfile: QuickEvaluationCandidateProfile;
 }): string {
+  const pageText = sanitizeQuickEvaluationPageText(args.input.pageText);
   const quickInput = {
     url: args.input.url,
     title: args.input.title ?? null,
     structuredSignals: args.input.structuredSignals ?? null,
-    pageText:
-      args.input.pageText?.trim().slice(0, QUICK_EVALUATION_PAGE_TEXT_MAX_CHARS) || null,
+    pageText,
   };
 
   return [
@@ -1921,6 +1922,162 @@ function buildQuickEvaluationPrompt(args: {
     "",
     "Return only a JSON object matching the provided schema exactly.",
   ].join("\n");
+}
+
+function sanitizeQuickEvaluationPageText(pageText: string | null | undefined): string | null {
+  const trimmed = pageText?.trim();
+  if (!trimmed) return null;
+
+  const sanitized = stripLowValueQuickEvaluationSignals(
+    stripLinkedInChromeFromEvaluationText(trimmed),
+  ).trim();
+  return sanitized
+    ? sanitized.slice(0, QUICK_EVALUATION_PAGE_TEXT_MAX_CHARS)
+    : null;
+}
+
+function stripLowValueQuickEvaluationSignals(value: string): string {
+  return stripLowValueDescriptionExcerpt(
+    value
+      .split(/\r?\n/)
+      .filter((line) => !/^salary:\s*turbo for students:\s*get hired faster!?$/i.test(line.trim()))
+      .join("\n"),
+  );
+}
+
+function stripLowValueDescriptionExcerpt(value: string): string {
+  const marker = "Description excerpt:\n";
+  const markerIndex = value.indexOf(marker);
+  if (markerIndex === -1) return value;
+
+  const before = value.slice(0, markerIndex).trimEnd();
+  const description = value.slice(markerIndex + marker.length).trim();
+  if (!isLowValueQuickDescription(description)) return value;
+  return before;
+}
+
+function isLowValueQuickDescription(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return true;
+  if (
+    normalized === "represents the skills you have" ||
+    normalized.includes("turbo for students: get hired faster") ||
+    normalized.includes("current stage growth stage") ||
+    normalized.includes("current stage public company") ||
+    normalized.includes("find jobs company reviews") ||
+    normalized.includes("upload your resume") ||
+    normalized.includes("employers / post job") ||
+    normalized.includes("additional verification required") ||
+    (
+      normalized.includes("built in") &&
+      normalized.includes("search jobs") &&
+      normalized.includes("post a job")
+    )
+  ) {
+    return true;
+  }
+  return normalized.length < 250 && !hasQuickJobDescriptionSignal(value);
+}
+
+function stripLinkedInChromeFromEvaluationText(value: string): string {
+  const marker = "Description excerpt:\n";
+  const markerIndex = value.indexOf(marker);
+  if (markerIndex === -1) {
+    if (linkedInChromeSignalCount(value) < 3) return value;
+    return isLinkedInChromeOnlyBlock(value) ? "" : cleanLinkedInChromeBlock(value);
+  }
+
+  const before = value.slice(0, markerIndex).trimEnd();
+  const description = value.slice(markerIndex + marker.length);
+  if (!isLinkedInEvaluationText(value) && linkedInChromeSignalCount(description) < 3) {
+    return value;
+  }
+
+  const cleanedDescription = cleanLinkedInChromeBlock(description);
+  if (!cleanedDescription || isLinkedInChromeOnlyBlock(description, cleanedDescription)) {
+    return before;
+  }
+
+  return [before, `${marker}${cleanedDescription}`]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function isLinkedInEvaluationText(value: string): boolean {
+  return /https:\/\/(?:www\.)?linkedin\.com\/jobs\//i.test(value);
+}
+
+function cleanLinkedInChromeBlock(value: string): string {
+  const stopPatterns = [
+    /^looking for talent\?$/i,
+    /^post a job$/i,
+    /^accessibility$/i,
+    /^talent solutions$/i,
+    /^community guidelines$/i,
+    /^privacy & terms$/i,
+    /^ad choices$/i,
+    /^advertising$/i,
+    /^sales solutions$/i,
+    /^linkedin corporation ©/i,
+    /^questions\?$/i,
+    /^manage your account and privacy$/i,
+    /^recommendation transparency$/i,
+    /^select language$/i,
+  ];
+  const skipPatterns = [
+    /^apply$/i,
+    /^save$/i,
+    /^use ai to assess how you fit$/i,
+    /^promoted by hirer/i,
+    /^responses managed off linkedin$/i,
+    /^\d+\s+people clicked apply$/i,
+    /^show more$/i,
+    /^show less$/i,
+  ];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const rawLine of value.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+    if (stopPatterns.some((pattern) => pattern.test(line))) break;
+    if (skipPatterns.some((pattern) => pattern.test(line))) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(line);
+  }
+
+  return lines.join("\n").trim();
+}
+
+function isLinkedInChromeOnlyBlock(original: string, cleaned = cleanLinkedInChromeBlock(original)): boolean {
+  if (linkedInChromeSignalCount(original) < 3) return false;
+  if (hasQuickJobDescriptionSignal(cleaned)) return false;
+  return true;
+}
+
+function linkedInChromeSignalCount(value: string): number {
+  const normalized = value.toLowerCase().replace(/\s+/g, " ");
+  return [
+    "looking for talent?",
+    "post a job",
+    "privacy & terms",
+    "ad choices",
+    "sales solutions",
+    "linkedin corporation",
+    "recommendation transparency",
+    "select language",
+  ].filter((signal) => normalized.includes(signal)).length;
+}
+
+function hasQuickJobDescriptionSignal(value: string): boolean {
+  if (/\b(job description|responsibilities|requirements|qualifications|basic qualifications|preferred qualifications|minimum qualifications|what you(?:'ll| will) do|about the role|about this role|you will|we are looking for|who you are|what you bring)\b/i.test(value)) {
+    return true;
+  }
+  return value.length >= 650 &&
+    /\b(build|design|develop|implement|maintain|collaborate|ship|own|support|optimize)\b/i.test(value) &&
+    /\b(software|systems|services|platform|applications|models|data|machine learning|engineering|customers|product|team|experience|skills)\b/i.test(value);
 }
 
 function buildCodexTerminalSchema(): Record<string, unknown> {

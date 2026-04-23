@@ -1,17 +1,16 @@
-# Career-Ops Dashboard (static HTML)
+# Career-Ops Dashboard
 
-A single-file, zero-server dashboard for browsing reports, tracker, pipeline,
-and scan history. Opens directly in your browser from `file://` — no build tool,
-no runtime, no network dependency after the first load.
+A local dashboard for browsing reports, tracker, pipeline, and scan history.
+It is served from this repository so Apply Next actions can reuse the local
+Node/Playwright PDF generators.
 
 ## Usage
 
 ```bash
-npm run dashboard       # regenerate web/index.html from data files
-open web/index.html     # macOS: open in default browser
+npm run dashboard       # start local dashboard server
 ```
 
-Or double-click `web/index.html` in Finder.
+Then open the printed local URL, usually `http://127.0.0.1:47329/`.
 
 ## What it shows
 
@@ -26,27 +25,34 @@ Or double-click `web/index.html` in Finder.
 
 ## How it works
 
-1. `build-dashboard.mjs` reads tracker, reports, pipeline, scan history, and keyword stats.
-2. The parsed data is inlined as `window.DATA = {...}` inside `template.html`.
-3. The filled template is written to `index.html`.
+1. `dashboard-server.mjs` serves `template.html` with fresh data from the repo.
+2. `build-dashboard.mjs` provides the shared parser/renderer for tracker,
+   reports, pipeline, scan history, and keyword stats.
+3. Apply Next PDF buttons call the local server, which reuses
+   `generate-pdf.mjs` and `generate-cover-letter.mjs`, creates PDFs under
+   `output/`, and copies them into `~/Downloads` when the download button is
+   clicked.
 
 The `Apply Next` tab also stores a local completion marker in browser
 `localStorage`. That marker is a dashboard convenience only; canonical tracker
 state still lives in `data/applications.md`.
 
-Because data is embedded inline, the page works under the `file://` protocol
-without CORS issues — no local server required.
-
 Report Markdown is rendered client-side with [marked](https://marked.js.org/)
 and sanitised through [DOMPurify](https://github.com/cure53/DOMPurify).
 
-## Regenerating
+## Static Export
 
-Run `npm run dashboard` after:
+To write a standalone `web/index.html` snapshot:
+
+```bash
+npm run dashboard:build
+```
+
+Run it after:
 
 - new evaluation reports (reports/*.md)
 - `node merge-tracker.mjs` runs (applications.md updates)
 - scanner runs (scan-history.tsv updates)
 
-To auto-regenerate, append the command to `merge-tracker.mjs` or to your
-scan cadence.
+The static snapshot can still browse embedded data, but PDF generation requires
+the local dashboard server.

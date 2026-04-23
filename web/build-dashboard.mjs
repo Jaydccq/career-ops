@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Build a single static HTML dashboard for career-ops.
+// Build a standalone static HTML snapshot for career-ops.
 // Reads: reports/*.md, data/applications.md, data/pipeline.md, data/scan-history.tsv
 // Writes: web/index.html (open with double-click, no server needed)
 
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -14,7 +14,7 @@ function readOr(path, fallback = '') {
   return existsSync(path) ? readFileSync(path, 'utf8') : fallback;
 }
 
-function parseReports() {
+export function parseReports() {
   const dir = join(ROOT, 'reports');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -34,7 +34,7 @@ function parseReports() {
     });
 }
 
-function parseApplications() {
+export function parseApplications() {
   const raw = readOr(join(ROOT, 'data', 'applications.md'));
   const rows = [];
   for (const line of raw.split('\n')) {
@@ -52,7 +52,7 @@ function parseApplications() {
   return rows;
 }
 
-function parsePipeline() {
+export function parsePipeline() {
   const raw = readOr(join(ROOT, 'data', 'pipeline.md'));
   const items = [];
   for (const line of raw.split('\n')) {
@@ -72,7 +72,7 @@ function parsePipeline() {
   return items;
 }
 
-function parseScanHistory() {
+export function parseScanHistory() {
   const raw = readOr(join(ROOT, 'data', 'scan-history.tsv'));
   const lines = raw.split('\n').filter(Boolean);
   if (lines.length === 0) return { headers: [], rows: [] };
@@ -86,7 +86,7 @@ function parseScanHistory() {
   return { headers, rows };
 }
 
-function parseKeywordStats() {
+export function parseKeywordStats() {
   const raw = readOr(join(ROOT, 'data', 'newgrad-skill-stats.json'));
   if (!raw.trim()) return null;
   try {
@@ -96,29 +96,44 @@ function parseKeywordStats() {
   }
 }
 
-const data = {
-  generated: new Date().toISOString(),
-  cvMarkdown: readOr(join(ROOT, 'cv.md')),
-  reports: parseReports(),
-  applications: parseApplications(),
-  pipeline: parsePipeline(),
-  scanHistory: parseScanHistory(),
-  keywordStats: parseKeywordStats()
-};
+export function buildDashboardData() {
+  return {
+    generated: new Date().toISOString(),
+    reports: parseReports(),
+    applications: parseApplications(),
+    pipeline: parsePipeline(),
+    scanHistory: parseScanHistory(),
+    keywordStats: parseKeywordStats()
+  };
+}
 
-const template = readFileSync(join(__dirname, 'template.html'), 'utf8');
-const html = template.replace(
-  '/*__DATA__*/',
-  'window.DATA = ' + JSON.stringify(data) + ';'
-);
+export function renderDashboardHtml({ extraHead = '' } = {}) {
+  const data = buildDashboardData();
+  const template = readFileSync(join(__dirname, 'template.html'), 'utf8');
+  const withData = template.replace(
+    '/*__DATA__*/',
+    'window.DATA = ' + JSON.stringify(data) + ';'
+  );
+  const html = extraHead
+    ? withData.replace('</head>', `${extraHead}\n</head>`)
+    : withData;
+  return { html, data };
+}
 
-const outPath = join(__dirname, 'index.html');
-writeFileSync(outPath, html);
+export function writeDashboard() {
+  const { html, data } = renderDashboardHtml();
+  const outPath = join(__dirname, 'index.html');
+  writeFileSync(outPath, html);
 
-console.log(`[dashboard] wrote ${outPath}`);
-console.log(`  reports: ${data.reports.length}`);
-console.log(`  applications: ${data.applications.length}`);
-console.log(`  pipeline: ${data.pipeline.length}`);
-console.log(`  scan-history: ${data.scanHistory.rows.length}`);
-console.log(`\nOpen in browser:`);
-console.log(`  open ${outPath}`);
+  console.log(`[dashboard] wrote ${outPath}`);
+  console.log(`  reports: ${data.reports.length}`);
+  console.log(`  applications: ${data.applications.length}`);
+  console.log(`  pipeline: ${data.pipeline.length}`);
+  console.log(`  scan-history: ${data.scanHistory.rows.length}`);
+  console.log(`\nOpen in browser:`);
+  console.log(`  open ${outPath}`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  writeDashboard();
+}

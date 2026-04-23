@@ -2,59 +2,69 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add per-role Apply Next controls that generate a CV draft and cover-letter draft, then expose download buttons from the static dashboard.
+**Goal:** Add per-role Apply Next controls that generate CV and cover-letter PDFs, then expose buttons that save those PDFs to the local Downloads folder.
 
-**Architecture:** Keep the dashboard static and browser-only. Extend `web/build-dashboard.mjs` to inline the canonical `cv.md`, then extend `web/template.html` so each Apply Next card can generate job-specific Markdown drafts from the tracker row, matching report, and base CV data.
+**Architecture:** Serve the dashboard through a local Node web app instead of making `file://` the primary interface. The server renders `web/template.html` with fresh repository data on each request, reads `cv.md`, `config/profile.yml`, and the selected report for PDF actions, reuses `generate-pdf.mjs` and `generate-cover-letter.mjs`, writes generated PDFs under `output/`, then copies selected files into `~/Downloads`.
 
-**Tech Stack:** Static HTML, vanilla JavaScript, browser Blob downloads, Node dashboard builder.
+**Tech Stack:** Vanilla JavaScript, Node HTTP server, existing Playwright PDF scripts.
 
 ---
 
 ## Background
 
-The dashboard is generated from `web/template.html` by `web/build-dashboard.mjs`
-and written to `web/index.html`. Apply Next currently renders links to the job,
-the dossier, and a local "mark applied" control.
+The dashboard used to be generated from `web/template.html` by
+`web/build-dashboard.mjs` and written to `web/index.html`. Apply Next currently
+renders links to the job, the dossier, local "mark applied" control, and PDF
+generation/download controls. The user clarified the desired interface should
+not be static.
 
 ## Goal
 
 Users should be able to click Apply Next buttons for each recommended role:
 
-1. Generate CV draft.
-   Verify: the card reveals a CV download button.
-2. Generate cover-letter draft.
-   Verify: the card reveals a cover-letter download button.
+1. Generate CV PDF.
+   Verify: the card reveals a CV PDF download button.
+2. Generate cover-letter PDF.
+   Verify: the card reveals a cover-letter PDF download button.
 3. Download each generated document.
-   Verify: the browser download event uses a deterministic filename.
+   Verify: the server copies the generated PDF to `~/Downloads` with a
+   deterministic filename.
 
 ## Scope
 
-- Modify `web/build-dashboard.mjs` to include the source CV markdown.
+- Add a local PDF companion server under `web/`.
 - Modify `web/template.html` to add generation and download controls.
+- Make `npm run dashboard` start the local dynamic dashboard.
+- Keep static export available as `npm run dashboard:build`.
 - Regenerate `web/index.html` with `npm run dashboard`.
-- Do not change existing PDF generation modes or application tracker rows.
-- Do not claim that the static page can silently write to `~/Downloads`; browser
-  downloads use the user's configured download folder.
+- Do not change application tracker rows.
+- Do not replace existing PDF generation scripts; call them.
 
 ## Assumptions
 
 - The user's `index.html` means `web/index.html`, because there is no root
   `index.html` and the docs identify `web/index.html` as the dashboard.
-- Static HTML cannot run the repository's Node/Playwright PDF scripts directly.
-- Markdown drafts are the simplest viable output because they are transparent,
-  editable, and can be generated fully in the browser.
+- The primary dashboard should be `http://127.0.0.1:47329/`, not `file://`.
+- Static HTML cannot run the repository's Node/Playwright PDF scripts directly,
+  so static export remains browse-only for PDF actions.
+- The local server may generate deterministic, template-based tailoring content;
+  it must not invent experience beyond `cv.md`, `config/profile.yml`, and the
+  selected report.
 - Existing report content has enough fit and tailoring context to produce useful
-  cover-letter and CV tailoring drafts without inventing experience.
+  cover-letter and CV PDF drafts without inventing experience.
 
 ## Success Criteria
 
-- Apply Next cards show `Generate CV` and `Generate Cover Letter` buttons.
+- Apply Next cards show `Generate CV PDF` and `Generate Cover Letter PDF`
+  buttons.
 - Clicking either generate button creates an in-memory document and reveals a
-  corresponding download button on that card.
+  corresponding PDF download button on that card.
 - Download filenames include document type, company, role, and date.
-- `npm run dashboard` completes and updates `web/index.html`.
-- Browser verification confirms the buttons render, generation reveals download
-  controls, and the download event fires.
+- Download buttons save PDFs to `~/Downloads`.
+- `npm run dashboard` starts a local dynamic server.
+- `npm run dashboard:build` completes and updates `web/index.html`.
+- Browser verification confirms the buttons render, PDF generation succeeds,
+  and the download action reports the saved Downloads path.
 
 ## Implementation Steps
 
@@ -64,34 +74,48 @@ Users should be able to click Apply Next buttons for each recommended role:
   - Verify: `web/index.html` is generated from current repo data and should be
     regenerated after template changes.
 
-- [x] **Step 2: Inline base CV data**
-  - Add `cvMarkdown: readOr(join(ROOT, 'cv.md'))` to the data object in
+- [x] **Step 2: Keep user CV out of generated dashboard data**
+  - Remove the earlier `cvMarkdown` inline data path from
     `web/build-dashboard.mjs`.
-  - Verify: generated `window.DATA` contains a `cvMarkdown` string.
+  - Let the local PDF companion read `cv.md` only at generation time.
+  - Verify: generated `window.DATA` does not contain `cvMarkdown`.
 
-- [x] **Step 3: Add Apply Next document controls**
-  - Add action buttons to `renderApplyCard`.
-  - Add client-side helpers for slugging filenames, extracting report sections,
-    building CV markdown, building cover-letter markdown, storing generated
-    documents, and triggering Blob downloads.
-  - Verify: each card has generate buttons and hidden download controls until
-    generation happens.
+- [x] **Step 3: Add local PDF companion server**
+  - Create `web/dashboard-server.mjs`.
+  - Reuse `generate-pdf.mjs` for CV PDFs and `generate-cover-letter.mjs` for
+    cover-letter PDFs.
+  - Verify: direct API calls create PDFs under `output/`.
 
-- [x] **Step 4: Regenerate dashboard**
+- [x] **Step 4: Replace browser Markdown generation with PDF server calls**
+  - Update `web/template.html` so Apply Next actions call the local PDF server.
+  - Verify: the UI shows PDF generation/download state, not Markdown controls.
+
+- [x] **Step 5: Regenerate dashboard**
   - Run `npm run dashboard`.
   - Verify: command exits successfully and writes `web/index.html`.
 
-- [x] **Step 5: Browser smoke test**
-  - Open `web/index.html` with Playwright from `file://`.
-  - Click `Generate CV` and `Generate Cover Letter` on the first Apply Next card.
-  - Click both download buttons.
-  - Verify: download events fire and filenames are deterministic.
+- [x] **Step 6: Browser smoke test**
+  - Start the local PDF dashboard server.
+  - Open the served dashboard with Playwright.
+  - Click `Generate CV PDF` and `Generate Cover Letter PDF` on the first Apply
+    Next card.
+  - Click both PDF download buttons.
+  - Verify: PDFs exist in `output/` and copies exist in `~/Downloads`.
+
+- [x] **Step 7: Convert primary dashboard to dynamic server**
+  - Rename the PDF companion to `web/dashboard-server.mjs`.
+  - Export shared parser/renderer functions from `web/build-dashboard.mjs`.
+  - Change `npm run dashboard` to start the dynamic server and move static
+    snapshot generation to `npm run dashboard:build`.
+  - Verify: served dashboard renders fresh data and PDF actions still work.
 
 ## Verification Approach
 
 - `npm run dashboard`
-- Node/Playwright smoke test against `file:///Users/hongxichen/Desktop/career-ops/web/index.html`
-- `git diff --check -- web/build-dashboard.mjs web/template.html web/index.html docs/exec-plans/active/2026-04-23-apply-next-document-downloads.md`
+- `npm run dashboard:build`
+- Direct local API smoke test for PDF generation and download copy.
+- Node/Playwright smoke test against the local PDF dashboard server.
+- `git diff --check -- web/dashboard-server.mjs web/build-dashboard.mjs web/template.html web/index.html web/README.md package.json docs/exec-plans/active/2026-04-23-apply-next-document-downloads.md`
 
 ## Progress Log
 
@@ -107,27 +131,64 @@ Users should be able to click Apply Next buttons for each recommended role:
 - 2026-04-23: Playwright confirmed generated filenames:
   `cv-gumloop-software-engineer-2026-04-23.md` and
   `cover-letter-gumloop-software-engineer-2026-04-23.md`.
+- 2026-04-23: User clarified output must be PDF, not Markdown, and must reuse
+  existing project PDF generation.
+- 2026-04-23: Removed inlined `cv.md` from generated dashboard data; the PDF
+  server now reads user-layer files locally during generation.
+- 2026-04-23: Added `web/dashboard-server.mjs`, a loopback-only dashboard
+  server that injects a per-process PDF API token into the served dashboard and
+  rejects mutating API calls without that token.
+- 2026-04-23: Updated Apply Next controls to call the local PDF server and show
+  `Generate CV PDF`, `Download CV PDF`, `Generate Cover Letter PDF`, and
+  `Download Cover Letter PDF` controls.
+- 2026-04-23: Added a PDF-capable dashboard server and documented the flow in
+  `web/README.md`.
+- 2026-04-23: Regenerated `web/index.html` with `npm run dashboard`.
+- 2026-04-23: Verified direct API behavior: unauthenticated generation returns
+  401; authenticated generation creates
+  `output/cv-gumloop-software-engineer-2026-04-23.pdf` and copies it to
+  `/Users/hongxichen/Downloads/cv-gumloop-software-engineer-2026-04-23-4.pdf`.
+- 2026-04-23: Playwright verified the served dashboard buttons generate and
+  save PDFs to Downloads:
+  `/Users/hongxichen/Downloads/cv-gumloop-software-engineer-2026-04-23-5.pdf`
+  and
+  `/Users/hongxichen/Downloads/cover-letter-gumloop-software-engineer-2026-04-23-4.pdf`.
+- 2026-04-23: `file` confirmed generated outputs are real PDFs:
+  CV PDF version 1.4 with 3 pages; cover-letter PDF version 1.4 with 1 page.
+- 2026-04-23: User asked to make the dashboard non-static. Converted the
+  primary interface to a dynamic local server, moved static snapshot generation
+  to `npm run dashboard:build`, and made `npm run dashboard` the only dynamic
+  dashboard entry point.
+- 2026-04-23: Verified the dynamic server with Playwright: `/api/health`
+  returned the Downloads directory, `/reports/301-gumloop-2026-04-22.md`
+  served the dossier, the dashboard rendered from `http://127.0.0.1:47329/`,
+  and Apply Next generated/saved both PDFs to Downloads.
 
 ## Key Decisions
 
-- Use browser downloads instead of attempting direct filesystem writes, because
-  direct silent writes to `~/Downloads` are blocked by browser security.
-- Generate Markdown drafts rather than fake PDFs, because PDF generation in this
-  repo depends on agent-authored HTML/JSON plus Node/Playwright scripts.
+- Use a local Node companion server for PDF actions, because static browser
+  code cannot execute `generate-pdf.mjs`.
+- Make the local server the primary dashboard interface; keep `web/index.html`
+  only as an optional static export.
+- Generate real PDFs by calling existing scripts instead of creating a new PDF
+  renderer.
+- Require a per-process local token for mutating PDF API calls, because the
+  companion server can write files to `~/Downloads`.
 - Change the template and builder, then regenerate `web/index.html`, instead of
   editing the generated dashboard only.
 
 ## Risks and Blockers
 
-- Download location depends on the user's browser settings. Most browsers save
-  to `Downloads`, but a user-configured alternate folder can override that.
-- Generated drafts are deterministic dashboard drafts, not a replacement for
-  the richer agent-driven `/career-ops pdf` and `/career-ops cover-letter`
-  workflows.
+- Opening `web/index.html` directly from `file://` remains a static snapshot and
+  cannot run Node PDF generation.
+- Generated PDFs are deterministic dashboard PDFs, not a replacement for the
+  richer agent-driven `/career-ops pdf` and `/career-ops cover-letter`
+  workflows when deep manual tailoring is required.
 
 ## Final Outcome
 
-Apply Next now includes per-role `Generate CV` and `Generate Cover Letter`
-buttons. Each generation action creates an in-memory Markdown draft and reveals
-the matching `Download CV` or `Download Cover Letter` button. Browser download
-events were verified from the generated `web/index.html`.
+The dashboard primary interface is now non-static. `npm run dashboard` starts a
+local dynamic server at `http://127.0.0.1:47329/`; `npm run dashboard:build`
+remains available only for standalone static snapshots. Apply Next generates
+real PDFs through the dynamic server, writes them under `output/`, and copies
+them into `~/Downloads`. Targeted API and browser smoke verification passed.

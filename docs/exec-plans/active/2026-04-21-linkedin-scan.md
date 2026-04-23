@@ -735,6 +735,103 @@ error path.
   14 tests, `npm --prefix bridge run typecheck` passed, and final
   `npm run verify` passed with 0 errors and the same 2 pre-existing duplicate
   warnings.
+- 2026-04-23: User reported that `newgrad_quick` prompt `pageText` for LinkedIn
+  fallback enrichment can be badly inaccurate: the supplied Capital One sample
+  contained mostly LinkedIn shell/footer text (`Looking for talent?`, language
+  selector, privacy links) instead of the job description. Goal: find the root
+  cause and stop low-quality LinkedIn chrome text from reaching the quick
+  screening model. Success criteria: identify the failing extraction path, add a
+  targeted guard or regression test, keep changes scoped to LinkedIn detail text
+  handling / quick prompt construction, and run focused verification.
+  Assumptions: do not browse LinkedIn or submit applications; use repository
+  code and the supplied prompt sample as the reproduction. Uncertainties: whether
+  the bad text came from the LinkedIn detail extractor, external ATS fallback, or
+  the final quick-evaluation prompt assembly. Simplest viable path: trace
+  `extractLinkedInDetail -> mergeExternalAtsDetail -> buildEvaluationPageText ->
+  buildQuickEvaluationPrompt`, then reject LinkedIn shell-only excerpts at the
+  earliest reliable point and add prompt-boundary coverage.
+- 2026-04-23: Root cause found. `extractLinkedInDetail` accepted broad fallback
+  containers (`.jobs-search__job-details`, then `main`) as `detail.description`
+  whenever LinkedIn did not expose a real `.jobs-description...` body. On thin
+  LinkedIn detail pages, that fallback can contain title metadata plus LinkedIn
+  CTA/footer chrome, and `buildEvaluationPageText` then labeled it as
+  `Description excerpt` for `newgrad_quick`. The Capital One sample matches this
+  failure mode exactly; it was not a model issue.
+- 2026-04-23: Implemented a scoped fix. `extension/src/content/extract-linkedin.ts`
+  now cleans candidate description text, stops at LinkedIn footer/chrome lines,
+  and only accepts a broad LinkedIn detail container when the remaining text has
+  likely JD signals. `bridge/src/adapters/claude-pipeline.ts` now also sanitizes
+  quick-evaluation `pageText` at the prompt boundary for LinkedIn job text, so a
+  shell-only `Description excerpt` is stripped even if stale or alternate
+  extractors provide it. Added a regression test using the supplied Capital One
+  shape so LinkedIn chrome/footer text cannot silently re-enter quick prompts.
+- 2026-04-23: Verification passed. Focused checks:
+  `npm --prefix bridge run test -- src/adapters/claude-pipeline.test.ts` passed
+  with 17 tests, `npm --prefix bridge run typecheck` passed,
+  `npm --prefix extension run typecheck` passed, `npm run ext:build` passed, and
+  `npm run linkedin-scan -- --help` passed. Final `npm run verify` passed with
+  0 errors and the same 2 pre-existing duplicate warnings:
+  RemoteHunter - Software Engineer (#271/#272) and Anduril Industries -
+  Software Engineer (#3/#8/#9). `git diff --check` passed.
+- 2026-04-23: User requested a real walkthrough of the LinkedIn scan path after
+  the text-cleanup fix, especially the `bb-browser` stages, and explicitly
+  asked to verify that after reaching the LinkedIn job page the scanner clicks
+  Apply through to the company/ATS JD page to gather useful information. Goal:
+  run a bounded live scan with `--open-external-apply`, prove whether useful
+  LinkedIn detail and external ATS/company JD text are captured, and avoid
+  Easy Apply, form filling, or submission. Success criteria: bridge/bb-browser
+  readiness checked, score-only list extraction succeeds or reports a concrete
+  auth/runtime blocker, capped detail enrichment logs external Apply URL
+  capture, external JD character counts are recorded when available, and any
+  remaining extraction gaps are captured here with verification results.
+- 2026-04-23: Live `bb-browser` walkthrough found two current-runtime issues.
+  First, the managed browser initially had CDP connected but no page target, so
+  `bb-browser` commands reported `No page target found`; restarting the daemon
+  and opening a seed tab restored normal tab control. Second, the current
+  LinkedIn search DOM for the Capital One sample exposed zero `[data-job-id]`
+  cards even though the page visibly showed 25 results and a selected
+  `currentJobId=4405249033`; this made the list extractor return 0 rows.
+  Implemented a selected-job fallback that reconstructs one row from the current
+  job id, document title, visible company/location lines, and the selected list
+  block. Also added a wait for either `[data-job-id]` cards or the current
+  selected-job/search-result state before extraction. Verification:
+  `npm run linkedin-scan -- --url "...software engineer new grad..." --score-only
+  --pages 1 --limit 5 --scroll-steps 0` now reports 1 raw row / 1 unique row and
+  no bridge writes.
+- 2026-04-23: Tightened the selected-job fallback after live validation showed
+  the first implementation could read into the next visible listing and mark the
+  Capital One row as `Remote` from the following Affirm row. The fallback now
+  stops at the selected job's posted-age lines and derives work model from the
+  selected location/block only. Directly executing the exported extractor in the
+  live LinkedIn tab now returns the Capital One row with `location:
+  Richmond, VA`, empty `workModel`, and qualifications limited to the selected
+  Capital One list block. The row is still filtered in score-only mode because
+  it is already tracked in `data/applications.md` as report 309, so the safe
+  full CLI run does not enter enrichment for this exact job.
+- 2026-04-23: Verified the LinkedIn detail and external Apply path read-only.
+  Direct execution of `extractLinkedInDetail` on
+  `https://www.linkedin.com/jobs/view/4405249033/` now returns an empty
+  description instead of the previous LinkedIn shell/footer text, preventing bad
+  `pageText` from reaching quick evaluation. The visible LinkedIn Apply control
+  is a non-Easy-Apply company apply link with a LinkedIn safety URL containing
+  the nested external target `https://dsp.prng.co/VoOf7Ub`. Opening that target
+  resolves to Capital One Careers at
+  `capitalonecareers.com/job/-/-/234/94221963088...`; the page has a clean
+  `.ats-description` block with 7,299 characters containing responsibilities,
+  Basic Qualifications, the explicit no-sponsorship statement, and the
+  `$147,100 - $167,900` salary range. Updated the external ATS extractor to
+  prefer `ats-description` selectors before broader `job-description` shells.
+- 2026-04-23: Verification passed after the live-flow fixes. Commands:
+  `npm --prefix extension run typecheck`, `npm --prefix bridge run test --
+  src/adapters/claude-pipeline.test.ts`, `npm run linkedin-scan -- --help`,
+  `npm run ext:build`, `npm --prefix bridge run typecheck`,
+  `npm run linkedin-scan -- --url "...software engineer new grad..."
+  --score-only --pages 1 --limit 5 --scroll-steps 0`, `npm run verify`, and
+  `git diff --check`. `npm run verify` reports 0 errors and the existing 2
+  duplicate warnings for RemoteHunter (#271/#272) and Anduril (#3/#8/#9).
+  Remaining gap: LinkedIn's current DOM fallback recovers only the selected job
+  when `[data-job-id]` cards are absent; full multi-row extraction from that DOM
+  shape remains future work.
 
 ## Plan Eng Review
 

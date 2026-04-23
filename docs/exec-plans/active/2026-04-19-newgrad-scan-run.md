@@ -184,6 +184,51 @@ Make `/career-ops newgrad-scan` actionable without requiring the user to manuall
   `npm run verify` completed with 0 errors and 2 existing duplicate warnings
   for RemoteHunter Software Engineer and Anduril Industries Software Engineer
   tracker rows.
+- 2026-04-23: User asked whether `newgrad-scan` enrichment has the same
+  inaccurate `pageText` problem just fixed for LinkedIn. Goal: trace the
+  newgrad/JobRight enrich path from detail extraction through bridge pipeline
+  write and direct `newgrad_quick` evaluation input. Success criteria: identify
+  whether JobRight/newgrad detail extraction can send shell/list text as a JD
+  excerpt, add a focused guard or regression test only if the issue is present,
+  run targeted verification, and record any remaining risk. Assumptions: use
+  repository code and local scanner artifacts as the source of truth; do not
+  submit applications. Uncertainties: whether the CLI path, extension panel
+  path, local JD cache backfill, or direct pending evaluation path is the weak
+  point. Simplest viable path: inspect `extractNewGradDetail`,
+  `scripts/newgrad-scan-autonomous.ts`, `extension/src/background/index.ts`,
+  and `bridge/src/adapters/claude-pipeline.ts`, then build a minimal
+  reproduction if broad selectors or low-quality descriptions can reach
+  `Description excerpt`.
+- 2026-04-23: The issue exists in `newgrad-scan` enrichment, but in a narrower
+  form than LinkedIn. Recent JobRight `jds/` cache samples showed good
+  structured Requirements and Responsibilities from embedded JobRight data, but
+  `detail.description` was often just the page-shell line `Represents the skills
+  you have`; `detail.salaryRange` could also be polluted with
+  `Turbo for Students: Get Hired Faster!`. That means quick evaluation usually
+  still had enough structured JD signal to score, but `Description excerpt` and
+  salary could be misleading.
+- 2026-04-23: Implemented a scoped fix. `extractNewGradDetail` now rejects the
+  known low-value JobRight shell description, composes a fallback description
+  from structured requirements/responsibilities when needed, and only accepts
+  salary text that looks like an actual pay range. The extension panel enrich
+  path now normalizes returned `NewGradDetail` objects the same way, covering
+  its older inlined extractor. The quick-evaluation prompt sanitizer also strips
+  stale low-value JobRight `Description excerpt` blocks and the fake Turbo
+  salary line, so old cache/pending rows do not keep polluting model input.
+- 2026-04-23: Minimal reproduction passed. A synthetic JobRight detail page with
+  `class="description">Represents the skills you have</div>`, fake Turbo salary,
+  and embedded JobRight requirements/responsibilities now extracts an empty
+  salary and a structured description:
+  `Requirements` with Java/Python/TypeScript and REST/cloud requirements plus
+  `Responsibilities` with API/AI-service work.
+- 2026-04-23: Verification passed: `npm --prefix extension run typecheck`,
+  `npm --prefix bridge run test -- src/adapters/claude-pipeline.test.ts`,
+  `npm --prefix bridge run typecheck`, `npm run newgrad-scan -- --help`,
+  `npm run ext:build`, script-level TypeScript check for
+  `scripts/newgrad-scan-autonomous.ts`, `git diff --check`, and
+  `npm run verify`. Full verify completed with 0 errors and the same 2 existing
+  duplicate warnings for RemoteHunter Software Engineer and Anduril Industries
+  Software Engineer tracker rows.
 
 ## Key Decisions
 

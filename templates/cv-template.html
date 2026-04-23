@@ -140,11 +140,12 @@
     white-space: nowrap;
   }
 
-  /* === CORE COMPETENCIES === */
+  /* === TECHNICAL SKILLS === */
   .competencies-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    margin-bottom: 8px;
   }
 
   .competency-tag {
@@ -214,7 +215,15 @@
 
   /* === PROJECTS === */
   .project {
-    margin-bottom: 12px;
+    margin-bottom: 13px;
+  }
+
+  .project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 2px;
   }
 
   .project-title {
@@ -229,9 +238,9 @@
     font-weight: 500;
     color: hsl(187, 74%, 32%);
     background: hsl(187, 40%, 95%);
-    padding: 1px 6px;
+    padding: 2px 6px;
     border-radius: 2px;
-    margin-left: 6px;
+    white-space: nowrap;
   }
 
   .project-desc {
@@ -243,8 +252,34 @@
 
   .project-tech {
     font-size: 9.5px;
-    color: #888;
-    margin-top: 3px;
+    color: #555;
+    margin-top: 4px;
+    line-height: 1.45;
+  }
+
+  .project-tech span,
+  .project-focus span {
+    color: #333;
+    font-weight: 600;
+  }
+
+  .project-focus {
+    font-size: 9.5px;
+    color: #666;
+    margin-top: 2px;
+    line-height: 1.45;
+  }
+
+  .project ul {
+    padding-left: 18px;
+    margin-top: 5px;
+  }
+
+  .project li {
+    font-size: 10.3px;
+    line-height: 1.55;
+    color: #333;
+    margin-bottom: 3px;
   }
 
   /* === EDUCATION === */
@@ -310,14 +345,16 @@
 
   /* === SKILLS === */
   .skills-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    margin-top: 2px;
   }
 
   .skill-item {
-    font-size: 10.5px;
+    font-size: 10px;
     color: #444;
+    line-height: 1.45;
   }
 
   .skill-category {
@@ -375,11 +412,14 @@
     <div class="summary-text">{{SUMMARY_TEXT}}</div>
   </div>
 
-  <!-- CORE COMPETENCIES -->
+  <!-- TECHNICAL SKILLS -->
   <div class="section">
     <div class="section-title">{{SECTION_COMPETENCIES}}</div>
     <div class="competencies-grid">
       {{COMPETENCIES}}
+    </div>
+    <div class="skills-grid">
+      {{SKILLS}}
     </div>
   </div>
 
@@ -401,17 +441,7 @@
     {{EDUCATION}}
   </div>
 
-  <!-- CERTIFICATIONS -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_CERTIFICATIONS}}</div>
-    {{CERTIFICATIONS}}
-  </div>
-
-  <!-- SKILLS -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_SKILLS}}</div>
-    {{SKILLS}}
-  </div>
+  {{CERTIFICATIONS_SECTION}}
 
 </div>
 </body>

@@ -1095,6 +1095,97 @@ export function extractNewGradDetail(): NewGradDetail {
       .filter(Boolean);
   }
 
+  function cleanDetailText(value: string): string {
+    return value
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+\n/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+  }
+
+  function firstStringValue(
+    source: Record<string, unknown>,
+    keys: readonly string[],
+  ): string {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value !== "string") continue;
+      const cleaned = cleanDetailText(value);
+      if (cleaned) return cleaned;
+    }
+    return "";
+  }
+
+  function hasJobDescriptionSignal(value: string): boolean {
+    return /\b(job description|responsibilities|requirements|qualifications|basic qualifications|preferred qualifications|minimum qualifications|what you(?:'ll| will) do|about the role|about this role|you will|we are looking for|who you are|what you bring)\b/i
+      .test(value);
+  }
+
+  function isLowQualityDescription(value: string): boolean {
+    const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!normalized) return true;
+    if (
+      normalized === "represents the skills you have" ||
+      normalized.includes("turbo for students: get hired faster") ||
+      normalized.includes("current stage growth stage") ||
+      normalized.includes("current stage public company")
+    ) {
+      return true;
+    }
+    return normalized.length < 250 && !hasJobDescriptionSignal(value);
+  }
+
+  function structuredDescriptionFromJobrightData(
+    jobResult: Record<string, unknown>,
+    jobPosting: Record<string, unknown>,
+    requiredQualifications: readonly string[],
+    responsibilities: readonly string[],
+  ): string {
+    const embeddedDescription = firstStringValue(
+      jobResult,
+      ["description", "jobDescription", "job_description", "jd", "jobDetails", "jobDetail"],
+    ) || firstStringValue(jobPosting, ["description"]);
+    if (embeddedDescription && !isLowQualityDescription(embeddedDescription)) {
+      return embeddedDescription;
+    }
+
+    const sections = [
+      requiredQualifications.length > 0
+        ? ["Requirements", ...requiredQualifications.map((item) => `- ${item}`)].join("\n")
+        : "",
+      responsibilities.length > 0
+        ? ["Responsibilities", ...responsibilities.map((item) => `- ${item}`)].join("\n")
+        : "",
+    ].filter(Boolean);
+    return sections.join("\n\n");
+  }
+
+  function selectDescription(
+    rawDescription: string,
+    structuredDescription: string,
+  ): string {
+    const cleanedRaw = cleanDetailText(rawDescription);
+    if (structuredDescription && isLowQualityDescription(cleanedRaw)) {
+      return structuredDescription;
+    }
+    if (cleanedRaw && !isLowQualityDescription(cleanedRaw)) {
+      return cleanedRaw;
+    }
+    return structuredDescription || cleanedRaw;
+  }
+
+  function firstSalaryValue(...candidates: string[]): string {
+    for (const candidate of candidates) {
+      const value = candidate.trim();
+      if (!value) continue;
+      if (/turbo for students|get hired faster/i.test(value)) continue;
+      if (/\$\s?\d|\b\d{2,3}(?:,\d{3})?\s*[-–]\s*\d{2,3}(?:,\d{3})?\b|\b\d{2,3}k\b/i.test(value)) {
+        return value;
+      }
+    }
+    return "";
+  }
+
   function parseJobrightData(): {
     jobResult?: Record<string, unknown>;
     companyResult?: Record<string, unknown>;
@@ -1217,11 +1308,12 @@ export function extractNewGradDetail(): NewGradDetail {
     "[class*='compensation']",
     "[class*='pay']"
   );
-  const salaryRange =
-    txt(salaryEl) ||
-    labelledValue("salary") ||
-    labelledValue("compensation") ||
-    labelledValue("pay range");
+  const salaryRange = firstSalaryValue(
+    txt(salaryEl),
+    labelledValue("salary"),
+    labelledValue("compensation"),
+    labelledValue("pay range"),
+  );
 
   /* ---- Jobright match scores ---- */
   const bodyText = document.body?.innerText ?? "";
@@ -1267,12 +1359,7 @@ export function extractNewGradDetail(): NewGradDetail {
     "main [class*='content']",
     "main"
   );
-  const rawDesc = txt(descEl) || txt(document.querySelector("main")) || "";
-  const description = rawDesc
-    .replace(/\s+\n/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .trim()
-    .slice(0, MAX_DESC_CHARS);
+  const rawDescription = txt(descEl) || txt(document.querySelector("main")) || "";
 
   const embedded = parseJobrightData();
   const jobResult = embedded.jobResult ?? {};
@@ -1341,6 +1428,15 @@ export function extractNewGradDetail(): NewGradDetail {
       ? jobResult.jobTaxonomyV3.map((value) => String(value))
       : []
   );
+  const description = selectDescription(
+    rawDescription,
+    structuredDescriptionFromJobrightData(
+      jobResult,
+      jobPosting,
+      requiredQualifications,
+      responsibilities,
+    ),
+  ).slice(0, MAX_DESC_CHARS);
   const companyWebsite =
     (typeof companyResult.companyURL === "string" ? companyResult.companyURL : null) ||
     (

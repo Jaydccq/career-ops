@@ -1,7 +1,8 @@
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -29,6 +30,11 @@ import {
   normalizeBuiltInAdapterRows,
   normalizeIndeedAdapterRows,
 } from "../bridge/src/adapters/job-board-scan-normalizer.ts";
+import {
+  htmlToReadableText,
+  normalizeJobBoardSalary,
+  sanitizeJobBoardDetailText,
+} from "../bridge/src/adapters/job-board-detail-text.ts";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
@@ -337,7 +343,7 @@ async function main(): Promise<void> {
 
   const promoted = score.promoted.slice(0, options.enrichLimit ?? undefined);
   console.log(`Enriching ${promoted.length} promoted ${options.source} rows`);
-  const enrichedRows = await enrichRows(promoted);
+  const enrichedRows = await enrichRows(options.source, promoted);
   console.log(`Detail enrichment: enriched=${enrichedRows.length}`);
   if (enrichedRows.length === 0) return;
 
@@ -587,44 +593,34 @@ async function scoreRows(
   };
 }
 
-async function enrichRows(promotedRows: readonly ScoredRow[]): Promise<EnrichedRow[]> {
+async function enrichRows(source: Source, promotedRows: readonly ScoredRow[]): Promise<EnrichedRow[]> {
   const rows: EnrichedRow[] = [];
 
   for (const scored of promotedRows) {
-    const description = await captureDetailText(scored.row.detailUrl).catch((error) => {
+    const description = await captureDetailText(source, scored.row.detailUrl, scored.row.qualifications ?? "").catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Detail text fetch failed for ${scored.row.company} - ${scored.row.title}: ${message}`);
-      return scored.row.qualifications ?? "";
+      return sanitizeJobBoardDetailText(source, "", scored.row.qualifications ?? "");
     });
+    console.log(`Detail text: ${scored.row.company} - ${scored.row.title}: ${description.length} chars`);
     rows.push({
       row: scored,
-      detail: detailFromRow(scored.row, description),
+      detail: detailFromRow(source, scored.row, description),
     });
   }
 
   return rows;
 }
 
-async function captureDetailText(url: string): Promise<string> {
-  const { stdout } = await runProcess("bb-browser", ["fetch", url], { allowJsonError: false });
-  return htmlToText(stdout).slice(0, 20_000);
+async function captureDetailText(source: Source, url: string, fallbackText: string): Promise<string> {
+  const stdout = await runProcessToStdoutFile("bb-browser", ["fetch", url]);
+  return sanitizeJobBoardDetailText(source, htmlToReadableText(stdout), fallbackText);
 }
 
-function htmlToText(value: string): string {
-  return value
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#x27;|&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function detailFromRow(row: NewGradRow, description: string): NewGradDetail {
-  const text = description || row.qualifications || "";
+function detailFromRow(source: Source, row: NewGradRow, description: string): NewGradDetail {
+  const fallback = row.qualifications ?? "";
+  const text = sanitizeJobBoardDetailText(source, description, fallback);
+  const salaryRange = normalizeJobBoardSalary(row.salary);
   return {
     position: row.position,
     title: row.title,
@@ -633,7 +629,7 @@ function detailFromRow(row: NewGradRow, description: string): NewGradDetail {
     employmentType: null,
     workModel: row.workModel || null,
     seniorityLevel: null,
-    salaryRange: row.salary,
+    salaryRange,
     matchScore: null,
     expLevelMatch: null,
     skillMatch: null,
@@ -642,7 +638,7 @@ function detailFromRow(row: NewGradRow, description: string): NewGradDetail {
     industries: row.industry ? [row.industry] : [],
     recommendationTags: [],
     responsibilities: [],
-    requiredQualifications: row.qualifications ? [row.qualifications] : [],
+    requiredQualifications: fallback && fallback !== text ? [fallback] : [],
     skillTags: [],
     taxonomy: [],
     companyWebsite: null,
@@ -1135,6 +1131,60 @@ async function runProcess(
     }
     const detail = [err.message, err.stderr, err.stdout].filter(Boolean).join("\n");
     throw new Error(detail);
+  }
+}
+
+async function runProcessToStdoutFile(command: string, args: readonly string[]): Promise<string> {
+  const tempDir = await mkdtemp(join(tmpdir(), "career-ops-bb-fetch-"));
+  const stdoutPath = join(tempDir, "stdout");
+  const stdoutFile = await open(stdoutPath, "w");
+  let fileClosed = false;
+
+  try {
+    await new Promise<void>((resolvePromise, reject) => {
+      const child = spawn(command, [...args], {
+        stdio: ["ignore", stdoutFile.fd, "pipe"],
+      });
+      let stderr = "";
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      }, 180_000);
+
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+      child.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.on("close", (code, signal) => {
+        clearTimeout(timeout);
+        if (timedOut) {
+          reject(new Error(`${command} timed out after 180000ms`));
+          return;
+        }
+        if (code === 0) {
+          resolvePromise();
+          return;
+        }
+        reject(new Error([
+          `${command} exited with ${signal ?? code ?? "unknown status"}`,
+          stderr.trim(),
+        ].filter(Boolean).join("\n")));
+      });
+    });
+
+    await stdoutFile.close();
+    fileClosed = true;
+    return await readFile(stdoutPath, "utf8");
+  } finally {
+    if (!fileClosed) {
+      await stdoutFile.close().catch(() => undefined);
+    }
+    await rm(tempDir, { recursive: true, force: true });
   }
 }
 

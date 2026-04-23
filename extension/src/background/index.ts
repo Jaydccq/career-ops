@@ -2101,6 +2101,7 @@ async function handleNewGradEnrichDetails(
 
         let detail = scriptResults[0]?.result as NewGradDetail | undefined;
         if (!detail) return null;
+        detail = normalizeNewGradDetail(detail);
 
         if (
           !hasExternalCandidateUrl(
@@ -2555,6 +2556,55 @@ function truncateEnrichedRow(row: EnrichedRow): EnrichedRow {
       h1bSponsorshipHistory: row.detail.h1bSponsorshipHistory.slice(0, 10),
       companyCategories: row.detail.companyCategories.slice(0, 20),
     },
+  };
+}
+
+function hasNewGradDescriptionSignal(value: string): boolean {
+  return /\b(job description|responsibilities|requirements|qualifications|basic qualifications|preferred qualifications|minimum qualifications|what you(?:'ll| will) do|about the role|about this role|you will|we are looking for|who you are|what you bring)\b/i
+    .test(value);
+}
+
+function isLowQualityNewGradDescription(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return true;
+  if (
+    normalized === "represents the skills you have" ||
+    normalized.includes("turbo for students: get hired faster") ||
+    normalized.includes("current stage growth stage") ||
+    normalized.includes("current stage public company")
+  ) {
+    return true;
+  }
+  return normalized.length < 250 && !hasNewGradDescriptionSignal(value);
+}
+
+function structuredNewGradDescription(detail: NewGradDetail): string {
+  const sections = [
+    detail.requiredQualifications.length > 0
+      ? ["Requirements", ...detail.requiredQualifications.map((item) => `- ${item}`)].join("\n")
+      : "",
+    detail.responsibilities.length > 0
+      ? ["Responsibilities", ...detail.responsibilities.map((item) => `- ${item}`)].join("\n")
+      : "",
+  ].filter(Boolean);
+  return sections.join("\n\n");
+}
+
+function isPlausibleSalaryRange(value: string | null | undefined): boolean {
+  if (!value) return false;
+  if (/turbo for students|get hired faster/i.test(value)) return false;
+  return /\$\s?\d|\b\d{2,3}(?:,\d{3})?\s*[-–]\s*\d{2,3}(?:,\d{3})?\b|\b\d{2,3}k\b/i.test(value);
+}
+
+function normalizeNewGradDetail(detail: NewGradDetail): NewGradDetail {
+  const structuredDescription = structuredNewGradDescription(detail);
+  const description = structuredDescription && isLowQualityNewGradDescription(detail.description)
+    ? structuredDescription
+    : detail.description;
+  return {
+    ...detail,
+    description,
+    salaryRange: isPlausibleSalaryRange(detail.salaryRange) ? detail.salaryRange : null,
   };
 }
 

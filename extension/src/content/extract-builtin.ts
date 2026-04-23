@@ -527,6 +527,44 @@ export async function extractBuiltInDetail(): Promise<BuiltInDetail> {
     return Array.from(new Set(items));
   }
 
+  function hasDescriptionSignal(value: string): boolean {
+    return /\b(job description|responsibilities|requirements|qualifications|minimum qualifications|preferred qualifications|what you(?:'ll| will) do|about the role|about this role|you will|what you bring|who you are)\b/i
+      .test(value);
+  }
+
+  function looksLikeBuiltInShell(value: string): boolean {
+    const normalized = value.toLowerCase().replace(/\s+/g, " ");
+    return normalized.includes("built in") &&
+      normalized.includes("search jobs") &&
+      normalized.includes("post a job");
+  }
+
+  function structuredDescriptionFromSections(
+    requirements: readonly string[],
+    responsibilities: readonly string[],
+  ): string {
+    return [
+      requirements.length > 0
+        ? ["Requirements", ...requirements.map((item) => `- ${item}`)].join("\n")
+        : "",
+      responsibilities.length > 0
+        ? ["Responsibilities", ...responsibilities.map((item) => `- ${item}`)].join("\n")
+        : "",
+    ].filter(Boolean).join("\n\n");
+  }
+
+  function selectDescription(
+    rawDescription: string,
+    requirements: readonly string[],
+    responsibilities: readonly string[],
+  ): string {
+    const structured = structuredDescriptionFromSections(requirements, responsibilities);
+    if (structured && looksLikeBuiltInShell(rawDescription)) return structured;
+    if (rawDescription.length < 250 && structured) return structured;
+    if (rawDescription && hasDescriptionSignal(rawDescription)) return rawDescription;
+    return structured || rawDescription;
+  }
+
   function industriesFromText(value: string): string[] {
     const industryLine = lines(value).find((line) => line.includes("•") && line.length <= 180 && !/^Top Skills/i.test(line));
     if (!industryLine) return [];
@@ -646,6 +684,22 @@ export async function extractBuiltInDetail(): Promise<BuiltInDetail> {
   const bestApplyUrl = pickBestUrl(applyCandidates) || window.location.href;
   const sponsorshipSupport = parseSponsorshipStatus(rawText);
   const clearance = requiresActiveClearance(rawText);
+  const responsibilities = extractSectionItems(rawText, [
+    /^Responsibilities\b/i,
+    /^What You'll Do\b/i,
+    /^What You Will Do\b/i,
+    /^You Will\b/i,
+    /^In This Role\b/i,
+  ], 12);
+  const requiredQualifications = extractSectionItems(rawText, [
+    /^Requirements\b/i,
+    /^Qualifications\b/i,
+    /^Minimum Qualifications\b/i,
+    /^Preferred Qualifications\b/i,
+    /^You'll Be a Good Fit If\b/i,
+    /^What You Bring\b/i,
+    /^About You\b/i,
+  ], 12);
 
   return {
     position: 1,
@@ -660,25 +714,11 @@ export async function extractBuiltInDetail(): Promise<BuiltInDetail> {
     expLevelMatch: null,
     skillMatch: null,
     industryExpMatch: null,
-    description: compact(rawText).slice(0, MAX_DESC_CHARS),
+    description: selectDescription(compact(rawText), requiredQualifications, responsibilities).slice(0, MAX_DESC_CHARS),
     industries: industriesFromText(rawText),
     recommendationTags: [],
-    responsibilities: extractSectionItems(rawText, [
-      /^Responsibilities\b/i,
-      /^What You'll Do\b/i,
-      /^What You Will Do\b/i,
-      /^You Will\b/i,
-      /^In This Role\b/i,
-    ], 12),
-    requiredQualifications: extractSectionItems(rawText, [
-      /^Requirements\b/i,
-      /^Qualifications\b/i,
-      /^Minimum Qualifications\b/i,
-      /^Preferred Qualifications\b/i,
-      /^You'll Be a Good Fit If\b/i,
-      /^What You Bring\b/i,
-      /^About You\b/i,
-    ], 12),
+    responsibilities,
+    requiredQualifications,
     skillTags: extractTopSkills(rawText),
     taxonomy: [],
     companyWebsite: null,

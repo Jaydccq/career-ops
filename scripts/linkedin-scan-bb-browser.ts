@@ -438,9 +438,11 @@ async function collectLinkedInRows(
     const listTabId = await openBbTab(pageUrl);
     try {
       await assertLinkedInReady(listTabId);
+      await waitForLinkedInSearchContent(listTabId);
       let pageRows = await collectLinkedInPageRows(listTabId, options);
       if (pageRows.length === 0) {
         await sleep(1_500);
+        await waitForLinkedInSearchContent(listTabId);
         pageRows = await collectLinkedInPageRows(listTabId, options);
       }
       rows.push(...pageRows);
@@ -456,6 +458,51 @@ async function collectLinkedInRows(
   }
 
   return { rows };
+}
+
+async function waitForLinkedInSearchContent(tabId: string): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const state = await evaluateBrowserJson<{
+      url: string;
+      title: string;
+      text: string;
+      dataJobCount: number;
+      jobLinkCount: number;
+      currentJobId: string | null;
+    }>(tabId, linkedInSearchContentState);
+
+    if (
+      state.dataJobCount > 0 ||
+      (
+        Boolean(state.currentJobId) &&
+        state.jobLinkCount > 0 &&
+        /\b\d+\s+results?\b/i.test(state.text)
+      )
+    ) {
+      return;
+    }
+
+    await sleep(750);
+  }
+}
+
+function linkedInSearchContentState(): {
+  url: string;
+  title: string;
+  text: string;
+  dataJobCount: number;
+  jobLinkCount: number;
+  currentJobId: string | null;
+} {
+  const url = window.location.href;
+  return {
+    url,
+    title: document.title,
+    text: (document.body?.innerText ?? "").slice(0, 4_000),
+    dataJobCount: document.querySelectorAll("[data-job-id]").length,
+    jobLinkCount: document.querySelectorAll("a[href*='/jobs/view/']").length,
+    currentJobId: new URL(url).searchParams.get("currentJobId"),
+  };
 }
 
 async function collectLinkedInPageRows(tabId: string, options: Options): Promise<NewGradRow[]> {
@@ -924,6 +971,8 @@ async function extractExternalAtsJobDetail(): Promise<ExternalAtsDetail> {
   const descriptionSource = firstText(
     "[data-automation-id='jobPostingDescription']",
     "[data-testid='job-description']",
+    "[class*='ats-description']",
+    "[class*='atsDescription']",
     "[class*='job-description']",
     "[class*='jobDescription']",
     "[class*='description']",

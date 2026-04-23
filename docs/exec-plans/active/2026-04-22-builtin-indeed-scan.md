@@ -18,6 +18,15 @@ and capped direct evaluation. Built In has an older `scan.mjs --builtin-only`
 path plus a pending endpoint. Indeed has a read-only `bb-browser site` adapter
 but no Career-Ops mode.
 
+2026-04-23 follow-up: after finding low-value `Description excerpt` pollution in
+LinkedIn and JobRight/newgrad enrich paths, the user asked for the same logic to
+be applied to Built In and Indeed and for a real `bb-browser` walkthrough of
+both flows. Success means the shared Built In/Indeed runner rejects page shell,
+search/list, login, and promotional text as JD excerpts, preserves useful job
+description snippets, and a bounded read-only scan shows whether each source can
+actually collect useful detail text. The flow must not click Apply or any
+mutating control.
+
 The user approved the complete path for both Built In and Indeed:
 
 ```text
@@ -1319,10 +1328,9 @@ USER FLOW COVERAGE
 
 Current verified coverage: source mapping, pending parsing, scan-history tags,
 normalizer mapping, Indeed URL paging, runner help, Built In score-only, Indeed
-score-only, Indeed no-evaluate, and capped default-evaluate no-candidate
-smokes are tested. Remaining live gap: no first-page rows survived scoring, so
-detail write/evaluation queue behavior with a surviving Built In or Indeed
-candidate was not exercised against the live sites in this pass.
+score-only, Built In no-evaluate detail enrichment, Indeed no-evaluate detail
+enrichment, and capped default-evaluate no-candidate smokes are tested. Detail
+fetch now has live coverage for both Built In and Indeed promoted rows.
 
 ## Verification Approach
 
@@ -1342,6 +1350,10 @@ candidate was not exercised against the live sites in this pass.
 - Add Indeed as a first-class scanner source with `indeed-scan` tag.
 - Preserve full Indeed URL filters by adding adapter `--url` support.
 - Treat verification walls as manual user recovery states.
+- Capture `bb-browser fetch` detail responses through a temporary stdout file
+  instead of an `execFile` pipe. Indeed detail HTML was truncated to the first
+  8KB through the pipe, before the job body, while file-backed stdout returned
+  the full page.
 
 ## Risks And Blockers
 
@@ -1426,6 +1438,41 @@ candidate was not exercised against the live sites in this pass.
   `daemon.json`; clearing it and starting `dist/daemon.js` directly made site
   adapters work. Both bridge and bb-browser daemon processes were stopped after
   verification.
+- 2026-04-23: Audited the Built In/Indeed enrich path after the LinkedIn and
+  JobRight `Description excerpt` fixes. The shared runner converted the whole
+  `bb-browser fetch` response into `detail.description`, so page shell, search
+  chrome, verification text, or truncated HTML could still pollute model input.
+- 2026-04-23: Added shared job-board detail sanitization for Built In and
+  Indeed. It preserves real JD sections, falls back to useful adapter snippets
+  when a verification shell is fetched, rejects board chrome, and normalizes
+  salary only when it looks like pay.
+- 2026-04-23: Added quick-evaluation prompt guards for job-board verification
+  shell, and tightened Built In extension detail extraction so shell-heavy page
+  text prefers structured requirements/responsibilities.
+- 2026-04-23: Live `bb-browser` walkthrough found a second root cause:
+  `execFile("bb-browser", ["fetch", url])` captured only the first 8KB of an
+  Indeed detail response, which ended before `Full job description`; the scanner
+  therefore logged `Detail text ... 0 chars`. Redirecting `bb-browser fetch` to
+  a file returned the full 533KB page and the sanitizer extracted 5048 useful
+  characters. The runner now captures detail fetch stdout via a temporary file.
+- 2026-04-23: Live read-only smoke results:
+  - `bb-browser site builtin/jobs "Software Engineer" 3 "/jobs/hybrid/national/dev-engineering" 1 --json`: passed; returned 3 rows from 25 parsed cards with useful summaries and detail URLs.
+  - `bb-browser site indeed/jobs "Software Engineer" "Remote" 3 1 "" "3" "" --json`: passed; returned 3 rows from 17 parsed cards; snippets were empty in the sampled Remote results, so detail fetch is required for useful JD text.
+  - `npm run builtin-scan -- --score-only --limit 8 --pages 1 --query "Software Engineer" --path "/jobs/hybrid/national/dev-engineering"`: passed; promoted 7, filtered 1, no bridge write endpoints.
+  - `npm run indeed-scan -- --score-only --limit 8 --pages 1 --query "Software Engineer" --location "Remote"`: passed; promoted 1, filtered 7, no bridge write endpoints.
+  - `npm run builtin-scan -- --no-evaluate --enrich-limit 1 --limit 8 --pages 1 --query "Software Engineer" --path "/jobs/hybrid/national/dev-engineering"`: passed; Built In detail text for Grainger was 8149 chars after sanitization; bridge enrich skipped it as `experience_too_high`; no direct evaluation queued.
+  - `npm run indeed-scan -- --no-evaluate --enrich-limit 1 --limit 8 --pages 1 --query "Software Engineer" --location "Remote"`: passed after the stdout-file fix; Indeed detail text for 24 DATA was 5048 chars after sanitization; bridge enrich skipped it as `salary_below_minimum`; no direct evaluation queued.
+- 2026-04-23: Verification results:
+  - `npm --prefix bridge run test -- src/adapters/job-board-detail-text.test.ts src/adapters/claude-pipeline.test.ts`: passed, 2 files / 23 tests.
+  - `npm --prefix bridge run typecheck`: passed.
+  - `npm --prefix extension run typecheck`: passed.
+  - `npm --prefix bridge exec -- tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --types node --skipLibCheck --allowImportingTsExtensions scripts/job-board-scan-bb-browser.ts`: passed.
+  - `npm run builtin-scan -- --help`: passed.
+  - `npm run indeed-scan -- --help`: passed.
+  - `npm run ext:build`: passed.
+  - `git diff --check`: passed.
+  - `npm run verify`: passed with 0 errors and 2 pre-existing duplicate warnings
+    (`#271/#272 RemoteHunter - Software Engineer`, `#3/#8/#9 Anduril Industries - Software Engineer`).
 
 ## Final Outcome
 
@@ -1437,10 +1484,18 @@ for focused tests, bridge typecheck, command help, live score-only smokes,
 bridge-backed no-evaluate/default smokes with no surviving candidates, and
 repository verify.
 
-Remaining risk: live detail enrichment, pipeline write, and direct evaluation
-queue behavior for Built In/Indeed candidates was not exercised with a
-surviving live row because the sampled first-page rows were all filtered by
-existing scoring rules. The implemented path reuses the existing
+2026-04-23 follow-up outcome: Built In and Indeed now share the same
+low-quality JD guard as the LinkedIn/JobRight fixes. The scanner no longer
+trusts raw page text as a JD excerpt; it extracts useful JD sections, falls back
+only to useful card snippets, rejects verification/search/page shell, filters
+fake salary text, and avoids the `bb-browser fetch` pipe truncation that caused
+Indeed detail text to be empty. Live no-evaluate smokes confirmed useful detail
+text for both sources.
+
+Remaining risk: direct evaluation queue behavior for Built In/Indeed candidates
+was not exercised with a surviving live row because the sampled enriched rows
+were skipped by existing policy (`experience_too_high` for Built In and
+`salary_below_minimum` for Indeed). The implemented path reuses the existing
 `/v1/newgrad-scan/enrich` and `/v1/evaluate` contracts; run with broader pages
 or adjusted filters when a survivor is available.
 

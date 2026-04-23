@@ -275,6 +275,103 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
     };
   }
 
+  function currentJobIdFromPage(): string {
+    return linkedInJobId(window.location.href) ||
+      Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href*='/jobs/view/']"))
+        .map((anchor) => linkedInJobId(anchor.href || anchor.getAttribute("href")))
+        .find(Boolean) ||
+      "";
+  }
+
+  function selectedTitleFromPage(jobId: string, bodyLines: string[]): string {
+    const titleAnchor = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href*='/jobs/view/']"))
+      .find((anchor) => linkedInJobId(anchor.href || anchor.getAttribute("href")) === jobId);
+    const anchorTitle = compact(text(titleAnchor));
+    if (anchorTitle) return anchorTitle;
+
+    const titleMatch = document.title.match(/^(.+?)\s+\|\s+.+?\s+\|\s+LinkedIn$/i);
+    const titleFromDocument = compact(titleMatch?.[1] ?? "");
+    if (titleFromDocument) return titleFromDocument;
+
+    return bodyLines.find((line) => line.length > 10 && line.length <= 180) ?? "";
+  }
+
+  function selectedCompanyFromPage(title: string, titleIndex: number, bodyLines: string[]): string {
+    if (titleIndex >= 0) {
+      for (const line of bodyLines.slice(titleIndex + 1, titleIndex + 5)) {
+        if (!line || line === title) continue;
+        if (isLocationLine(line, "")) continue;
+        if (/\b(alumni|applicant|posted|saved|apply)\b/i.test(line)) continue;
+        return line;
+      }
+    }
+
+    const titleMatch = document.title.match(/^.+?\s+\|\s+(.+?)\s+\|\s+LinkedIn$/i);
+    return compact(titleMatch?.[1] ?? "");
+  }
+
+  function selectedJobBlockFromLines(titleIndex: number, bodyLines: string[], fallbackText: string): string {
+    if (titleIndex < 0) return fallbackText.slice(0, 2000);
+
+    const maxEnd = Math.min(bodyLines.length, titleIndex + 18);
+    const postedIndex = bodyLines
+      .slice(titleIndex + 1, maxEnd)
+      .findIndex((line) => /^posted\s+/i.test(line));
+
+    if (postedIndex >= 0) {
+      const absolutePostedIndex = titleIndex + 1 + postedIndex;
+      const nextLine = bodyLines[absolutePostedIndex + 1] ?? "";
+      const end = normalizePostedAgo(nextLine)
+        ? absolutePostedIndex + 2
+        : absolutePostedIndex + 1;
+      return bodyLines.slice(titleIndex, Math.min(end, maxEnd)).join("\n");
+    }
+
+    return bodyLines.slice(titleIndex, Math.min(bodyLines.length, titleIndex + 10)).join("\n");
+  }
+
+  function rowFromSelectedJobText(): LinkedInRow | null {
+    const jobId = currentJobIdFromPage();
+    if (!jobId) return null;
+
+    const bodyText = text(document.body);
+    const bodyLines = lines(bodyText);
+    const title = selectedTitleFromPage(jobId, bodyLines);
+    if (!title) return null;
+
+    const titleIndex = bodyLines.findIndex((line) => line === title);
+    const company = selectedCompanyFromPage(title, titleIndex, bodyLines);
+    if (!company) return null;
+
+    const localBlock = selectedJobBlockFromLines(titleIndex, bodyLines, bodyText);
+    const location = bodyLines.slice(Math.max(titleIndex + 2, 0), Math.max(titleIndex + 12, 12))
+      .find((line) => isLocationLine(line, "")) ?? "";
+    const workModel = workModelFromText(location || localBlock);
+    const sponsorship = sponsorshipStatus(localBlock);
+
+    return {
+      source: "linkedin.com",
+      position: 1,
+      title,
+      postedAgo: normalizePostedAgo(localBlock) || normalizePostedAgo(bodyText) || "unknown",
+      applyUrl: canonicalJobUrl(jobId),
+      detailUrl: canonicalJobUrl(jobId),
+      workModel,
+      location,
+      company,
+      salary: salaryFromText(localBlock),
+      companySize: null,
+      industry: null,
+      qualifications: localBlock.slice(0, 4000),
+      h1bSponsored: sponsorship === "yes",
+      sponsorshipSupport: sponsorship,
+      confirmedSponsorshipSupport: "unknown",
+      requiresActiveSecurityClearance: requiresActiveClearance(localBlock),
+      confirmedRequiresActiveSecurityClearance: false,
+      isNewGrad: isEarlyCareer(title, localBlock),
+    };
+  }
+
   function extractVisibleRows(root: ParentNode = document): LinkedInRow[] {
     const seenIds = new Set<string>();
     const rows: LinkedInRow[] = [];
@@ -287,6 +384,11 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
       if (seenIds.has(key)) continue;
       seenIds.add(key);
       rows.push({ ...row, position: rows.length + 1 });
+    }
+
+    if (rows.length === 0) {
+      const selectedRow = rowFromSelectedJobText();
+      if (selectedRow) rows.push(selectedRow);
     }
 
     return rows;
@@ -318,6 +420,90 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     for (const selector of selectors) {
       const value = compact(text(document.querySelector(selector)));
       if (value) return value;
+    }
+    return "";
+  }
+
+  function cleanDescriptionText(value: string): string {
+    const stopPatterns = [
+      /^looking for talent\?$/i,
+      /^post a job$/i,
+      /^accessibility$/i,
+      /^talent solutions$/i,
+      /^community guidelines$/i,
+      /^privacy & terms$/i,
+      /^ad choices$/i,
+      /^advertising$/i,
+      /^sales solutions$/i,
+      /^linkedin corporation ©/i,
+      /^questions\?$/i,
+      /^manage your account and privacy$/i,
+      /^recommendation transparency$/i,
+      /^select language$/i,
+    ];
+    const skipPatterns = [
+      /^apply$/i,
+      /^save$/i,
+      /^use ai to assess how you fit$/i,
+      /^promoted by hirer/i,
+      /^responses managed off linkedin$/i,
+      /^\d+\s+people clicked apply$/i,
+      /^show more$/i,
+      /^show less$/i,
+    ];
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+
+    for (const line of lines(value)) {
+      if (stopPatterns.some((pattern) => pattern.test(line))) break;
+      if (skipPatterns.some((pattern) => pattern.test(line))) continue;
+      const key = line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(line);
+    }
+
+    return cleaned.join("\n").trim();
+  }
+
+  function linkedInChromeSignalCount(value: string): number {
+    const normalized = compact(value).toLowerCase();
+    return [
+      "looking for talent?",
+      "post a job",
+      "privacy & terms",
+      "ad choices",
+      "sales solutions",
+      "linkedin corporation",
+      "recommendation transparency",
+      "select language",
+    ].filter((signal) => normalized.includes(signal)).length;
+  }
+
+  function hasStrongJobDescriptionSignal(value: string): boolean {
+    return /\b(job description|responsibilities|requirements|qualifications|basic qualifications|preferred qualifications|minimum qualifications|what you(?:'ll| will) do|about the role|about this role|you will|we are looking for|who you are|what you bring)\b/i
+      .test(value);
+  }
+
+  function hasWeakJobDescriptionSignal(value: string): boolean {
+    return /\b(build|design|develop|implement|maintain|collaborate|ship|own|support|optimize)\b/i.test(value) &&
+      /\b(software|systems|services|platform|applications|models|data|machine learning|engineering|customers|product|team|experience|skills)\b/i.test(value);
+  }
+
+  function isLikelyJobDescription(value: string): boolean {
+    const normalized = compact(value);
+    if (normalized.length < 250) return false;
+    if (linkedInChromeSignalCount(value) >= 3 && !hasStrongJobDescriptionSignal(value)) {
+      return false;
+    }
+    return hasStrongJobDescriptionSignal(value) ||
+      (normalized.length >= 650 && hasWeakJobDescriptionSignal(value));
+  }
+
+  function firstLikelyDescription(...selectors: string[]): string {
+    for (const selector of selectors) {
+      const cleaned = cleanDescriptionText(text(document.querySelector(selector)));
+      if (cleaned && isLikelyJobDescription(cleaned)) return cleaned;
     }
     return "";
   }
@@ -481,10 +667,14 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     ".jobs-unified-top-card",
     ".jobs-search__job-details--container",
   );
-  const description = firstText(
+  const description = firstLikelyDescription(
     ".jobs-description__content",
     ".jobs-box__html-content",
     ".jobs-description-content__text",
+    ".jobs-description",
+    ".jobs-description__container",
+    ".description__text",
+    ".show-more-less-html__markup",
     ".jobs-search__job-details",
     "main",
   ).slice(0, 20_000);

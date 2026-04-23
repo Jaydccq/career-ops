@@ -239,6 +239,94 @@ test("buildQuickEvaluationPrompt stays compact and embeds structured signals", (
   expect(prompt).not.toContain("Evaluación Completa A-G");
 });
 
+test("quick evaluation pageText strips LinkedIn chrome-only detail excerpts", () => {
+  const pageText = [
+    "URL: https://www.linkedin.com/jobs/view/4405249033/",
+    "",
+    "Company: Capital One",
+    "",
+    "Role: Machine Learning Engineering - Intelligent Foundations and Experiences (IFX)",
+    "",
+    "Location: Richmond, VA (On-site)",
+    "",
+    "Local enrich reasons: linkedin_review_fallback",
+    "",
+    "Description excerpt:",
+    "Capital One",
+    "Machine Learning Engineering - Intelligent Foundations and Experiences (IFX)",
+    "Richmond, VA · 6 hours ago · 9 people clicked apply",
+    "Promoted by hirer · Responses managed off LinkedIn",
+    "Full-time",
+    "Apply",
+    "Save",
+    "Use AI to assess how you fit",
+    "",
+    "Looking for talent?",
+    "Post a job",
+    "Privacy & Terms",
+    "Ad Choices",
+    "Recommendation transparency",
+    "Select language",
+    "LinkedIn Corporation © 2026",
+  ].join("\n");
+
+  const sanitized = __internal.sanitizeQuickEvaluationPageText(pageText);
+
+  expect(sanitized).toContain("Local enrich reasons: linkedin_review_fallback");
+  expect(sanitized).not.toContain("Looking for talent?");
+  expect(sanitized).not.toContain("Privacy & Terms");
+  expect(sanitized).not.toContain("LinkedIn Corporation");
+  expect(sanitized).not.toContain("Machine Learning Engineering - Intelligent Foundations and Experiences (IFX)\nRichmond");
+});
+
+test("quick evaluation pageText strips low-value JobRight shell excerpts", () => {
+  const pageText = [
+    "URL: https://jobright.ai/jobs/info/abc",
+    "",
+    "Company: BillGO",
+    "",
+    "Role: AI Engineer I",
+    "",
+    "Salary: Turbo for Students: Get Hired Faster!",
+    "",
+    "Requirements:",
+    "- Demonstrated proficiency with Java, Python, or JavaScript/TypeScript",
+    "- Understanding of REST APIs, microservices, and cloud platforms",
+    "",
+    "Responsibilities:",
+    "- Collaborate with cross-functional teams to design and deploy software solutions",
+    "",
+    "Description excerpt:",
+    "Represents the skills you have",
+  ].join("\n");
+
+  const sanitized = __internal.sanitizeQuickEvaluationPageText(pageText);
+
+  expect(sanitized).toContain("Requirements:");
+  expect(sanitized).toContain("Responsibilities:");
+  expect(sanitized).not.toContain("Turbo for Students");
+  expect(sanitized).not.toContain("Description excerpt:");
+  expect(sanitized).not.toContain("Represents the skills you have");
+});
+
+test("quick evaluation pageText strips job-board verification shell excerpts", () => {
+  const pageText = [
+    "URL: https://www.indeed.com/viewjob?jk=abc",
+    "Company: Indeed Co",
+    "Role: Software Engineer I",
+    "Requirements:",
+    "- Build backend services with Python and Java.",
+    "Description excerpt:",
+    "Find jobs Company reviews Upload your resume Employers / Post Job Additional verification required",
+  ].join("\n\n");
+
+  const sanitized = __internal.sanitizeQuickEvaluationPageText(pageText);
+
+  expect(sanitized).toContain("Requirements:");
+  expect(sanitized).not.toContain("Description excerpt:");
+  expect(sanitized).not.toContain("Additional verification required");
+});
+
 test("buildLocalQuickScreen skips obvious hard blockers without invoking codex", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-skip-1",
