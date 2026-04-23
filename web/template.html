@@ -1360,6 +1360,8 @@ function badgeClass(raw) {
 }
 const reportByPath = new Map(D.reports.map(r => [`reports/${r.filename}`, r]));
 const APPLY_DONE_KEY = 'career_ops_apply_done_v1';
+const generatedApplyDocs = {};
+let lastApplyRowsByKey = new Map();
 function loadApplyDone() {
   try {
     const raw = window.localStorage.getItem(APPLY_DONE_KEY);
@@ -1532,6 +1534,187 @@ function buildApplyNextRows() {
   });
 }
 
+function applyDocKey(rowKey, type) {
+  return `${type}::${rowKey}`;
+}
+
+function slugifyForFile(s, fallback = 'document') {
+  const slug = (s || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72)
+    .replace(/-+$/g, '');
+  return slug || fallback;
+}
+
+function generatedDateStamp() {
+  const d = D.generated ? new Date(D.generated) : new Date();
+  return isNaN(d.getTime()) ? new Date().toISOString().slice(0, 10) : d.toISOString().slice(0, 10);
+}
+
+function stripMarkdown(s) {
+  return (s || '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/#+\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clipText(s, max = 1200) {
+  const text = (s || '').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).replace(/\s+\S*$/, '')}...`;
+}
+
+function extractReportSection(content, letter) {
+  if (!content) return '';
+  const heading = new RegExp(`^##\\s+${letter}\\)\\s+.*$`, 'mi');
+  const match = heading.exec(content);
+  if (!match) return '';
+  const rest = content.slice(match.index + match[0].length);
+  const next = rest.search(/^##\s+[A-Z]\)\s+/m);
+  return (next === -1 ? rest : rest.slice(0, next)).trim();
+}
+
+function firstUsefulSentence(markdown) {
+  const text = stripMarkdown((markdown || '').split('\n').find((line) => {
+    const trimmed = line.trim();
+    return trimmed && !trimmed.startsWith('|') && !trimmed.startsWith('-') && !trimmed.startsWith('---');
+  }) || markdown);
+  return clipText(text, 260);
+}
+
+function candidateNameFromCv() {
+  const match = (D.cvMarkdown || '').match(/^#\s+(.+)$/m);
+  return match ? stripMarkdown(match[1]) : 'Hongxi Chen';
+}
+
+function contactLineFromCv() {
+  const cv = D.cvMarkdown || '';
+  const email = (cv.match(/\*\*Email:\*\*\s*(.+)/) || [])[1];
+  const mobile = (cv.match(/\*\*Mobile:\*\*\s*(.+)/) || [])[1];
+  const github = (cv.match(/\*\*GitHub:\*\*\s*(.+)/) || [])[1];
+  return [email, mobile, github].filter(Boolean).map(stripMarkdown).join(' | ');
+}
+
+function evidenceItemsFromReport(content) {
+  const section = extractReportSection(content, 'B');
+  if (!section) return [];
+  const rows = section.split('\n')
+    .filter((line) => /^\|.+\|$/.test(line.trim()))
+    .map((line) => line.split('|').slice(1, -1).map((cell) => stripMarkdown(cell)));
+  return rows
+    .filter((cells) => cells.length >= 3 && !/^[-:\s]+$/.test(cells.join('')) && !/^jd requirement/i.test(cells[0]))
+    .filter((cells) => !cells[2] || /^([4-5](?:\.0)?|5\/5|4\/5)/.test(cells[2]))
+    .slice(0, 4)
+    .map((cells) => ({ requirement: cells[0], evidence: cells[1], match: cells[2] }));
+}
+
+function buildCvDraft(row) {
+  const report = row.report || {};
+  const candidate = candidateNameFromCv();
+  const date = generatedDateStamp();
+  const summary = extractReportSection(report.content, 'A');
+  const match = extractReportSection(report.content, 'B');
+  const tailoring = extractReportSection(report.content, 'E');
+  const baseCv = (D.cvMarkdown || '').trim();
+
+  return [
+    `# Tailored CV Draft: ${candidate} for ${row.company}`,
+    `Generated: ${date}`,
+    `Target role: ${row.role}`,
+    `Company: ${row.company}`,
+    `Score: ${row.score || 'unscored'}`,
+    row.jobUrl ? `Job URL: ${row.jobUrl}` : '',
+    row.reportPath ? `Source dossier: ../${row.reportPath}` : '',
+    '## Targeted Summary Input',
+    firstUsefulSentence(summary) || row.notes || 'Use the base CV summary and emphasize the strongest role-specific match.',
+    '## Tailoring Plan From Dossier',
+    tailoring || summary || 'No dossier tailoring section was available for this row.',
+    '## Match Evidence From Dossier',
+    clipText(match || 'No dossier match section was available for this row.', 4000),
+    '## Base CV Source',
+    baseCv || 'cv.md was not available when the dashboard was generated.',
+  ].filter(Boolean).join('\n\n') + '\n';
+}
+
+function buildCoverLetterDraft(row) {
+  const report = row.report || {};
+  const candidate = candidateNameFromCv();
+  const contact = contactLineFromCv();
+  const date = generatedDateStamp();
+  const summary = firstUsefulSentence(extractReportSection(report.content, 'A'));
+  const tailoring = firstUsefulSentence(extractReportSection(report.content, 'E'));
+  const evidence = evidenceItemsFromReport(report.content);
+  const evidenceSentence = evidence.length
+    ? evidence.map((item) => `${item.requirement}: ${item.evidence}`).join('; ')
+    : (row.notes || 'the role matches my applied software engineering and AI systems background');
+
+  return [
+    `# Cover Letter Draft: ${row.company} - ${row.role}`,
+    `Generated: ${date}`,
+    row.jobUrl ? `Job URL: ${row.jobUrl}` : '',
+    row.reportPath ? `Source dossier: ../${row.reportPath}` : '',
+    contact,
+    '',
+    date,
+    '',
+    'Dear Hiring Team,',
+    '',
+    `I am applying for the ${row.role} role at ${row.company}. ${summary || 'The role is a strong match for my software engineering, AI systems, and product-focused project background.'}`,
+    '',
+    `The strongest evidence I would bring into this application is: ${clipText(evidenceSentence, 900)}`,
+    '',
+    `${tailoring || 'I would tailor the application around shipped systems, measurable technical impact, and the closest match between the job description and my CV evidence.'}`,
+    '',
+    `I would welcome the chance to discuss how this background can help ${row.company} ship reliable software and AI-enabled products.`,
+    '',
+    'Sincerely,',
+    candidate,
+  ].filter((line) => line !== null && line !== undefined).join('\n') + '\n';
+}
+
+function buildApplyDocument(row, type) {
+  const date = generatedDateStamp();
+  const company = slugifyForFile(row.company, 'company');
+  const role = slugifyForFile(row.role, 'role');
+  const filename = `${type}-${company}-${role}-${date}.md`;
+  return {
+    filename,
+    mime: 'text/markdown;charset=utf-8',
+    content: type === 'cv' ? buildCvDraft(row) : buildCoverLetterDraft(row),
+  };
+}
+
+function downloadGeneratedDoc(doc) {
+  const blob = new Blob([doc.content], { type: doc.mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = doc.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function renderDocumentActions(row) {
+  const cvDoc = generatedApplyDocs[applyDocKey(row.key, 'cv')];
+  const coverDoc = generatedApplyDocs[applyDocKey(row.key, 'cover-letter')];
+  return `
+    <button class="action-btn js-doc-generate" data-key="${escapeHtml(row.key)}" data-doc-type="cv">Generate CV</button>
+    ${cvDoc ? `<button class="action-btn done js-doc-download" data-key="${escapeHtml(row.key)}" data-doc-type="cv">Download CV</button>` : ''}
+    <button class="action-btn js-doc-generate" data-key="${escapeHtml(row.key)}" data-doc-type="cover-letter">Generate Cover Letter</button>
+    ${coverDoc ? `<button class="action-btn done js-doc-download" data-key="${escapeHtml(row.key)}" data-doc-type="cover-letter">Download Cover Letter</button>` : ''}
+  `;
+}
+
 function renderApplyCard(row, mode) {
   const eyebrow =
     mode === 'priority' ? 'Apply now' :
@@ -1559,6 +1742,7 @@ function renderApplyCard(row, mode) {
       <div class="apply-actions">
         ${row.jobUrl ? `<a class="action-link" href="${escapeHtml(row.jobUrl)}" target="_blank" rel="noreferrer">Open job</a>` : ''}
         ${row.reportPath ? `<a class="action-link" href="../${escapeHtml(row.reportPath)}" target="_blank" rel="noreferrer">Open dossier</a>` : ''}
+        ${renderDocumentActions(row)}
         <button class="action-btn ${row.localDone ? 'done' : 'primary'} js-apply-toggle" data-key="${escapeHtml(row.key)}">${escapeHtml(toggleLabel)}</button>
       </div>
     </article>
@@ -1567,6 +1751,7 @@ function renderApplyCard(row, mode) {
 
 function renderApplyNext() {
   const rows = buildApplyNextRows();
+  lastApplyRowsByKey = new Map(rows.map((row) => [row.key, row]));
   const recommended = rows.filter((row) => row.status === 'Evaluated' && row.scoreValue != null);
   const priority = recommended.filter((row) => row.scoreValue >= 4 && !row.localDone).sort(compareApplyRows);
   const selective = recommended.filter((row) => row.scoreValue >= 3.5 && row.scoreValue < 4 && !row.localDone).sort(compareApplyRows);
@@ -1606,6 +1791,23 @@ function renderApplyNext() {
       else applyDoneState[key] = { markedAt: new Date().toISOString() };
       saveApplyDone();
       renderApplyNext();
+    };
+  });
+
+  document.querySelectorAll('.js-doc-generate').forEach((button) => {
+    button.onclick = () => {
+      const row = lastApplyRowsByKey.get(button.dataset.key);
+      const type = button.dataset.docType;
+      if (!row || !type) return;
+      generatedApplyDocs[applyDocKey(row.key, type)] = buildApplyDocument(row, type);
+      renderApplyNext();
+    };
+  });
+
+  document.querySelectorAll('.js-doc-download').forEach((button) => {
+    button.onclick = () => {
+      const doc = generatedApplyDocs[applyDocKey(button.dataset.key, button.dataset.docType)];
+      if (doc) downloadGeneratedDoc(doc);
     };
   });
 }

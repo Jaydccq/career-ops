@@ -98,7 +98,92 @@ Make `/career-ops newgrad-scan` actionable without requiring the user to manuall
 - 2026-04-21: Tracker rows were added for Relativity, WisdomAI, Morgan Stanley, Klaviyo, CAI, Bayview, and Bose. Goldman report 288 was generated, but tracker merge skipped the row as a duplicate of an existing Goldman Sachs application.
 - 2026-04-21: Rebuilt the dashboard with `npm run dashboard`; generated `web/index.html` now reports 259 reports, 183 applications, 381 pipeline entries, and 828 scan-history rows.
 - 2026-04-21: Verification passed: `npm run newgrad-scan -- --help`, script-level `tsc --noEmit` for `scripts/newgrad-scan-autonomous.ts`, `npm --prefix bridge run typecheck`, `npm --prefix bridge run test -- src/server.test.ts src/adapters/newgrad-links.test.ts src/adapters/newgrad-value-scorer.test.ts`, and `npm run verify`.
+- 2026-04-22: User invoked `/career-ops newgrad-scan`.
+- 2026-04-22: Current run goal is to execute the default repo-native
+  autonomous newgrad scan for today's 24-hour window, including direct
+  evaluations for enrich survivors unless the bridge or scanner reports a
+  concrete blocker.
+- 2026-04-22: Success criteria for this run: update/setup checks pass, bridge
+  health passes or is started successfully, `npm run newgrad-scan` completes or
+  stops with an actionable failure, resulting data/report/dashboard changes are
+  inspected, targeted verification is run, and this plan records the outcome.
+- 2026-04-22: Assumptions: required user setup files already present remain the
+  source of truth, the existing persistent Jobright profile should be reused,
+  default evaluation queueing is desired, and unrelated worktree changes must
+  not be reverted.
+- 2026-04-22: Update check returned `up-to-date` at `1.3.0`; required setup
+  files `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml`, and
+  `data/applications.md` are present.
+- 2026-04-22: Initial bridge health check found no listener, so started
+  `npm run ext:bridge` in `real-codex` mode. Authenticated `/v1/health`
+  passed with tracker, CV/profile, Codex CLI, and Playwright Chromium OK.
+- 2026-04-22: `npm run newgrad-scan` used the JobRight API source and returned
+  126 rows within 24 hours. It promoted 43, filtered 83, enriched all 43 detail
+  pages, added 8 pipeline candidates, and skipped 35. Skip breakdown:
+  14 `site_match_below_bar`, 9 `site_signal_mixed`, 8 `no_sponsorship`,
+  3 `pipeline_threshold`, and 1 `active_clearance_required`.
+- 2026-04-22: Added and queued direct evaluations for AppLovin, Aurora, MUFG,
+  Gumloop, Axle, Amazon, AgileGrid Solutions, and Charles Schwab. The scanner's
+  built-in evaluation wait completed 4 jobs and timed out on 4 still-running
+  bridge jobs; manual bridge polling confirmed all 8 jobs eventually completed.
+- 2026-04-22: Generated reports 298-305: AppLovin `4.2/5`, Aurora `3.95/5`,
+  MUFG `4.15/5`, Gumloop `4.55/5`, Amazon Applied Scientist `4.15/5`, Axle
+  `3.55/5`, AgileGrid Solutions `3.15/5`, and Charles Schwab `2.65/5`. Tracker
+  rows were added or updated for all eight.
+- 2026-04-22: Rebuilt the dashboard with `npm run dashboard`; generated
+  `web/index.html` now reports 273 reports, 193 applications, 389 pipeline
+  entries, and 929 scan-history rows.
+- 2026-04-22: Verification: `npm run newgrad-scan -- --help` passed.
+  `npm run verify` failed because three bridge tests exceeded Vitest's default
+  5-second timeout, while tracker/status/report checks, bridge typecheck,
+  extension typecheck, and extension build passed. Rerunning the failed bridge
+  tests with `npm --prefix bridge run test -- --testTimeout=20000
+  src/server.test.ts src/batch/batch-runner.e2e.test.ts` passed.
 - 2026-04-21: `npm run verify` finished with 0 errors and 2 existing duplicate warnings: RemoteHunter Software Engineer rows and Anduril Industries Software Engineer rows.
+- 2026-04-23: User invoked `/career-ops newgrad-scan`.
+- 2026-04-23: Goal: execute the repo-native autonomous newgrad scan for the
+  current 24-hour JobRight/newgrad window and let qualifying enrich survivors
+  queue direct `newgrad_quick` evaluations.
+- 2026-04-23: Success criteria: update/setup checks pass, bridge health is
+  available in real Codex mode, `npm run newgrad-scan` completes or reports a
+  concrete blocker, generated data/report/dashboard changes are inspected,
+  targeted verification is run, and this plan records the outcome.
+- 2026-04-23: Assumptions: the persistent scanner browser profile should be
+  reused, default direct evaluation is desired, no application should be
+  submitted, and unrelated dirty worktree changes must be preserved.
+- 2026-04-23: Uncertainties: JobRight may change its API/page shape, login
+  state may be stale, live evaluation jobs may outlive the scanner wait window,
+  and full verification may hit the known bridge test timeout issue.
+- 2026-04-23: Simplest viable path: use existing `npm run newgrad-scan`
+  without code changes, start the bridge only if health is unavailable, rebuild
+  the dashboard after completed evaluations, then run focused verification.
+- 2026-04-23: Update check returned `up-to-date` at `1.3.0`; required setup
+  files `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml`, and
+  `data/applications.md` are present. `npm run newgrad-scan -- --help` passed.
+- 2026-04-23: Initial authenticated bridge health check failed, so started
+  `npm run ext:bridge` in `real-codex` mode. `/v1/health` then passed with
+  tracker, CV/profile, Codex CLI, and Playwright Chromium OK.
+- 2026-04-23: `npm run newgrad-scan` first attempted Google Chrome with the
+  persistent scanner profile, hit `Browser window not found`, and automatically
+  fell back to bundled Playwright Chromium. The scan continued successfully.
+- 2026-04-23: The JobRight API list source returned 184 rows within 24 hours.
+  The scanner promoted 61, filtered 123, enriched all 61 detail pages, added 5
+  pipeline candidates, and skipped 56. Skip breakdown:
+  26 `site_match_below_bar`, 12 `site_signal_mixed`, 7 `no_sponsorship`,
+  7 `pipeline_threshold`, 2 `seniority_too_high`, 1 `already_evaluated_report`,
+  and 1 `detail_value_threshold`.
+- 2026-04-23: Added and queued direct evaluations for BillGO, LendingClub,
+  Nextdoor, Salesforce, and IXL Learning. All 5 evaluations completed with no
+  queue failures or timeouts, and all 5 tracker merges returned true.
+- 2026-04-23: Generated reports 310-314: LendingClub `3.85/5`, BillGO
+  `4.1/5`, Salesforce `4.35/5`, Nextdoor `4.2/5`, and IXL Learning `3.8/5`.
+- 2026-04-23: Rebuilt the dashboard with `npm run dashboard`; generated
+  `web/index.html` now reports 282 reports, 202 applications, 394 pipeline
+  rows, and 1010 scan-history rows.
+- 2026-04-23: Verification passed: `npm run newgrad-scan -- --help` passed, and
+  `npm run verify` completed with 0 errors and 2 existing duplicate warnings
+  for RemoteHunter Software Engineer and Anduril Industries Software Engineer
+  tracker rows.
 
 ## Key Decisions
 
@@ -119,6 +204,9 @@ Make `/career-ops newgrad-scan` actionable without requiring the user to manuall
 - The repository has unrelated dirty worktree changes from prior work; this task did not revert them.
 - The scanner succeeded in writing a Goldman report, but tracker merge skipped it as a duplicate of an existing Goldman Sachs row. This preserves deduplication but means report 288 is not represented as a new top tracker row.
 - `npm run verify` currently reports duplicate warnings for RemoteHunter and Anduril rows. They do not block pipeline health, but they remain cleanup candidates.
+- The full `npm run verify` command can fail on local bridge test timeout
+  thresholds even when the failed tests pass with a longer Vitest timeout. This
+  is a verification-environment issue to address separately from scan behavior.
 
 ## Final Outcome
 
@@ -195,3 +283,28 @@ Login cookie import retest:
 - Added 8 pipeline entries and generated reports 284-291.
 - Tracker now includes new rows for Bose, Bayview, CAI, Klaviyo, Morgan Stanley, WisdomAI, and Relativity. Goldman report 288 exists, but the tracker row was dedup-skipped against the existing Goldman Sachs row.
 - Fixed scanner polling auth and structured-signal truncation, then verified with help smoke, script typecheck, bridge typecheck, focused bridge tests, dashboard rebuild, and `npm run verify`.
+
+2026-04-22 live run:
+
+- `npm run newgrad-scan` completed scan/enrich/pipeline write successfully and
+  queued 8 direct evaluations. The scanner wait window returned with 4 complete
+  and 4 timed out, but the bridge continued running and all 8 evaluations
+  reached terminal `completed` state after manual monitoring.
+- Generated reports 298-305 and updated tracker/dashboard state for AppLovin,
+  Aurora, MUFG, Gumloop, Amazon Applied Scientist, Axle, AgileGrid Solutions,
+  and Charles Schwab.
+- `npm run dashboard` and `npm run newgrad-scan -- --help` passed.
+- Full `npm run verify` completed tracker/status/report checks but failed on 3
+  bridge test timeouts under the default 5-second Vitest limit. The same failed
+  bridge tests passed with `--testTimeout=20000`.
+
+2026-04-23 live run:
+
+- `npm run newgrad-scan` completed scan/enrich/pipeline write successfully and
+  queued 5 direct evaluations.
+- Generated reports 310-314 and merged tracker rows for LendingClub, BillGO,
+  Salesforce, Nextdoor, and IXL Learning.
+- Rebuilt `web/index.html`; dashboard counts are now 282 reports,
+  202 applications, 394 pipeline rows, and 1010 scan-history rows.
+- `npm run newgrad-scan -- --help` and `npm run verify` passed. Verification
+  has 0 errors and 2 pre-existing duplicate tracker warnings.

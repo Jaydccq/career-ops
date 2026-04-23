@@ -98,6 +98,7 @@ function parseKeywordStats() {
 
 const data = {
   generated: new Date().toISOString(),
+  cvMarkdown: readOr(join(ROOT, 'cv.md')),
   reports: parseReports(),
   applications: parseApplications(),
   pipeline: parsePipeline(),

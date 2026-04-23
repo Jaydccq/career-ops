@@ -102,9 +102,10 @@ Usage:
 
 Options:
   --url <url>             Source URL. Default: ${DEFAULT_URL}
-  --headless              Run browser headless.
-  --headed                Run browser headed. Default.
-  --chromium              Use bundled Playwright Chromium instead of Google Chrome.
+  --headless              Run browser headless. Default.
+  --headed                Run browser headed for debugging or manual observation.
+  --chromium              Use bundled Playwright Chromium. Default.
+  --chrome                Try Google Chrome, then fall back to bundled Chromium.
   --limit <n>             Limit extracted list rows before scoring.
   --enrich-limit <n>      Limit promoted rows before detail enrichment.
   --concurrent <n>        Detail pages open at once. Default: ${DEFAULT_CONCURRENT}
@@ -133,8 +134,8 @@ function parseArgs(argv: string[]): Options {
     bridgeHost: DEFAULT_HOST,
     bridgePort: DEFAULT_PORT,
     userDataDir: DEFAULT_USER_DATA_DIR,
-    headless: false,
-    useChrome: true,
+    headless: true,
+    useChrome: false,
     limit: null,
     enrichLimit: null,
     concurrent: DEFAULT_CONCURRENT,
@@ -174,6 +175,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--chromium":
         options.useChrome = false;
+        break;
+      case "--chrome":
+        options.useChrome = true;
         break;
       case "--limit":
         options.limit = positiveInt(next(), arg);
@@ -274,10 +278,11 @@ async function main(): Promise<void> {
 
   const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
   const bridgeBase = `http://${options.bridgeHost}:${options.bridgePort}`;
-  const context = await launchContext(options);
+  let context: BrowserContext | undefined;
 
   try {
     await assertBridgeHealthy(bridgeBase, token);
+    context = await launchContext(options);
 
     const listPage = await context.newPage();
     console.log(`Opening ${options.url}`);
@@ -293,6 +298,7 @@ async function main(): Promise<void> {
     if (options.limit !== null) {
       rows = rows.slice(0, options.limit);
     }
+    await listPage.close();
     console.log(`Extracted ${rows.length} ${source.kind} rows`);
 
     if (rows.length === 0) {
@@ -321,6 +327,9 @@ async function main(): Promise<void> {
 
     const { enrichedRows, failed } = await enrichDetails(context, promoted, options);
     console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
+    await context.close();
+    context = undefined;
+    console.log("Closed scan browser after detail enrichment.");
 
     if (enrichedRows.length === 0) {
       console.log("No enriched rows; nothing to write to pipeline.");
@@ -389,7 +398,7 @@ async function main(): Promise<void> {
       console.log("Evaluation jobs queued; not waiting because --no-wait-evaluations was set.");
     }
   } finally {
-    await context.close();
+    await context?.close();
   }
 }
 

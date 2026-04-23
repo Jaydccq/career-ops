@@ -66,6 +66,7 @@ type Options = {
   pageSize: number;
   scrollSteps: number;
   enrichLimit: number | null;
+  openExternalApply: boolean;
   scoreOnly: boolean;
   evaluate: boolean;
   evaluateLimit: number | null;
@@ -92,9 +93,55 @@ type BbOpenData = {
   url?: string;
 };
 
+type BbTabInfo = {
+  index?: number;
+  url?: string;
+  title?: string;
+  active?: boolean;
+  tabId?: string;
+  tab?: string;
+};
+
+type BbTabListData = {
+  tabs?: BbTabInfo[];
+  activeIndex?: number;
+};
+
 type BbEvalData = {
   result?: unknown;
   tab?: string;
+};
+
+type ApplyClickResult = {
+  status: "not_found" | "easy_apply_skipped" | "clicked" | "external_href" | "clicked_no_url";
+  label?: string;
+  href?: string;
+  beforeUrl?: string;
+  afterUrl?: string;
+  observedUrls?: string[];
+  clicked?: boolean;
+};
+
+type ExternalApplyProbeResult = {
+  status: ApplyClickResult["status"] | "external_url_found";
+  label?: string;
+  url: string | null;
+  flowUrls: string[];
+  clicked: boolean;
+};
+
+type ExternalAtsDetail = {
+  finalUrl: string;
+  title: string;
+  company: string;
+  location: string;
+  workModel: string | null;
+  employmentType: string | null;
+  salaryRange: string | null;
+  description: string;
+  responsibilities: string[];
+  requiredQualifications: string[];
+  skillTags: string[];
 };
 
 type EvaluationCreateResult = {
@@ -141,6 +188,7 @@ Options:
   --page-size <n>                LinkedIn start offset increment for --pages. Default: ${DEFAULT_PAGE_SIZE}.
   --scroll-steps <n>             Per-page result-list scroll probes. Default: 2.
   --enrich-limit <n>             Limit promoted rows before opening detail pages.
+  --open-external-apply          Click non-Easy-Apply Apply controls, open the external ATS URL, and read its JD text. Never submits forms.
   --evaluate-limit <n>           Limit enrich survivors sent to /v1/evaluate.
   --evaluation-mode <mode>       Evaluation mode: newgrad_quick or default. Default: newgrad_quick.
   --no-wait-evaluations          Queue evaluation jobs and exit without waiting for tracker merge.
@@ -158,7 +206,8 @@ Login recovery:
   Log in manually in that managed browser, then rerun this command.
 
 Safety:
-  This scanner never clicks LinkedIn Apply, Easy Apply, Save, Dismiss, or message controls.
+  This scanner never clicks Easy Apply, Save, Dismiss, or message controls.
+  With --open-external-apply, it may click a non-Easy-Apply Apply control, open the external ATS page to read JD text, then stops before any form action.
 `;
 }
 
@@ -172,6 +221,7 @@ function parseArgs(argv: string[]): Options {
     pageSize: DEFAULT_PAGE_SIZE,
     scrollSteps: 2,
     enrichLimit: null,
+    openExternalApply: false,
     scoreOnly: false,
     evaluate: true,
     evaluateLimit: null,
@@ -217,6 +267,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--enrich-limit":
         options.enrichLimit = positiveInt(next(), arg);
+        break;
+      case "--open-external-apply":
+        options.openExternalApply = true;
         break;
       case "--evaluate-limit":
         options.evaluateLimit = positiveInt(next(), arg);
@@ -317,7 +370,7 @@ async function main(): Promise<void> {
     : [...score.promoted].slice(0, options.enrichLimit);
   console.log(`Enriching ${promoted.length} promoted LinkedIn rows`);
 
-  const { enrichedRows, failed } = await enrichLinkedInDetails(promoted);
+  const { enrichedRows, failed } = await enrichLinkedInDetails(promoted, options);
   console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
   if (enrichedRows.length === 0) return;
 
@@ -496,6 +549,11 @@ async function closeBbTab(tabId: string): Promise<void> {
   });
 }
 
+async function listBbTabs(): Promise<BbTabInfo[]> {
+  const data = await runBbJson<BbTabListData>(["tab", "list", "--json"]);
+  return data.tabs ?? [];
+}
+
 async function evaluateBrowserJson<T>(tabId: string, func: () => unknown | Promise<unknown>): Promise<T> {
   const script = `(() => { const __name = (target) => target; return (async () => JSON.stringify(await (${func.toString()})()))(); })()`;
   const data = await runBbJson<BbEvalData>(["eval", script, "--json", "--tab", tabId]);
@@ -630,6 +688,7 @@ async function scoreRows(
 
 async function enrichLinkedInDetails(
   promotedRows: readonly ScoredRow[],
+  options: Options,
 ): Promise<{ enrichedRows: EnrichedRow[]; failed: number }> {
   const enrichedRows: EnrichedRow[] = [];
   let failed = 0;
@@ -639,18 +698,38 @@ async function enrichLinkedInDetails(
     try {
       await assertLinkedInReady(detailTabId);
       const rawDetail = await evaluateBrowserJson<NewGradDetail>(detailTabId, extractLinkedInDetail);
+      const externalApply = options.openExternalApply
+        ? await probeExternalApplyUrl(detailTabId)
+        : null;
+      const externalDetail = externalApply?.url
+        ? await readExternalAtsDetail(externalApply.url)
+        : null;
+      if (externalApply) {
+        const label = externalApply.label ? ` (${externalApply.label})` : "";
+        if (externalApply.url) {
+          console.log(`External Apply URL${label}: ${scored.row.company} - ${scored.row.title}: ${externalApply.url}`);
+          if (externalDetail?.description) {
+            console.log(`External ATS detail: ${externalDetail.description.length} chars from ${externalDetail.finalUrl}`);
+          }
+        } else {
+          console.log(`External Apply probe ${externalApply.status}${label}: ${scored.row.company} - ${scored.row.title}`);
+        }
+      }
+      const mergedDetail = mergeExternalAtsDetail(rawDetail, externalDetail);
       const detail: NewGradDetail = {
-        ...rawDetail,
+        ...mergedDetail,
         position: scored.row.position,
-        title: rawDetail.title || scored.row.title,
-        company: rawDetail.company || scored.row.company,
-        location: rawDetail.location || scored.row.location,
-        workModel: rawDetail.workModel || scored.row.workModel || null,
-        salaryRange: rawDetail.salaryRange || scored.row.salary,
-        originalPostUrl: rawDetail.originalPostUrl || scored.row.detailUrl,
-        applyNowUrl: rawDetail.applyNowUrl || scored.row.applyUrl,
+        title: mergedDetail.title || scored.row.title,
+        company: mergedDetail.company || scored.row.company,
+        location: mergedDetail.location || scored.row.location,
+        workModel: mergedDetail.workModel || scored.row.workModel || null,
+        salaryRange: mergedDetail.salaryRange || scored.row.salary,
+        originalPostUrl: mergedDetail.originalPostUrl || scored.row.detailUrl,
+        applyNowUrl: externalApply?.url || rawDetail.applyNowUrl || scored.row.applyUrl,
         applyFlowUrls: Array.from(new Set([
-          ...(rawDetail.applyFlowUrls ?? []),
+          ...(externalApply?.flowUrls ?? []),
+          ...(externalApply?.url ? [externalApply.url] : []),
+          ...(mergedDetail.applyFlowUrls ?? []),
           scored.row.detailUrl,
         ])),
       };
@@ -665,6 +744,401 @@ async function enrichLinkedInDetails(
   }
 
   return { enrichedRows, failed };
+}
+
+async function readExternalAtsDetail(url: string): Promise<ExternalAtsDetail | null> {
+  const tabId = await openBbTab(url);
+  try {
+    await sleep(3_500);
+    const detail = await evaluateBrowserJson<ExternalAtsDetail>(tabId, extractExternalAtsJobDetail);
+    return detail.description.trim().length >= 200 ? detail : null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`External ATS detail read failed for ${url}: ${message}`);
+    return null;
+  } finally {
+    await closeBbTab(tabId);
+  }
+}
+
+function mergeExternalAtsDetail(
+  linkedIn: NewGradDetail,
+  external: ExternalAtsDetail | null,
+): NewGradDetail {
+  if (!external?.description) return linkedIn;
+
+  const externalSection = [
+    `External ATS URL: ${external.finalUrl}`,
+    external.description,
+  ].filter(Boolean).join("\n\n");
+  const linkedInSection = linkedIn.description
+    ? `LinkedIn detail excerpt:\n${linkedIn.description}`
+    : "";
+  const description = [
+    externalSection,
+    linkedInSection,
+  ].filter(Boolean).join("\n\n---\n\n").slice(0, 30_000);
+
+  return {
+    ...linkedIn,
+    title: linkedIn.title || external.title,
+    company: linkedIn.company || external.company,
+    location: external.location || linkedIn.location,
+    employmentType: external.employmentType || linkedIn.employmentType,
+    workModel: external.workModel || linkedIn.workModel,
+    salaryRange: external.salaryRange || linkedIn.salaryRange,
+    description,
+    responsibilities: uniqueStrings([
+      ...external.responsibilities,
+      ...linkedIn.responsibilities,
+    ]).slice(0, 20),
+    requiredQualifications: uniqueStrings([
+      ...external.requiredQualifications,
+      ...linkedIn.requiredQualifications,
+    ]).slice(0, 20),
+    skillTags: uniqueStrings([
+      ...external.skillTags,
+      ...linkedIn.skillTags,
+    ]).slice(0, 30),
+    applyNowUrl: external.finalUrl || linkedIn.applyNowUrl,
+    applyFlowUrls: uniqueStrings([
+      external.finalUrl,
+      ...linkedIn.applyFlowUrls,
+    ]),
+  };
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+async function extractExternalAtsJobDetail(): Promise<ExternalAtsDetail> {
+  function text(el: Element | null | undefined): string {
+    if (!el) return "";
+    return ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
+  }
+
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
+  }
+
+  function firstText(...selectors: string[]): string {
+    for (const selector of selectors) {
+      const value = compact(text(document.querySelector(selector)));
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function meta(name: string): string {
+    return compact(
+      document.querySelector<HTMLMetaElement>(`meta[property="${name}"], meta[name="${name}"]`)?.content ?? "",
+    );
+  }
+
+  function cleanLines(value: string): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of value.split(/\r?\n/)) {
+      const line = compact(raw);
+      if (!line) continue;
+      if (/^(apply|apply now|save|share|sign in|log in|create alert|back to search|view all jobs)$/i.test(line)) continue;
+      const key = line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(line);
+    }
+    return out;
+  }
+
+  function sectionItems(source: string, headingPattern: RegExp): string[] {
+    const sourceLines = cleanLines(source);
+    const start = sourceLines.findIndex((line) => headingPattern.test(line));
+    if (start === -1) return [];
+
+    const items: string[] = [];
+    for (const line of sourceLines.slice(start + 1)) {
+      if (/^(benefits|qualifications|requirements|responsibilities|skills|about|what you|you will|who you are|preferred)$/i.test(line)) {
+        if (items.length > 0) break;
+        continue;
+      }
+      const cleaned = compact(line.replace(/^[-•*]\s*/, ""));
+      if (cleaned.length < 20 || cleaned.length > 500) continue;
+      items.push(cleaned);
+      if (items.length >= 12) break;
+    }
+    return items;
+  }
+
+  function salaryFromText(value: string): string | null {
+    const match = compact(value).match(
+      /\$\s?\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*(?:k|K)?\s*(?:\/\s?(?:yr|year|hr|hour))?\s*[-–]\s*\$\s?\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*(?:k|K)?(?:\s*\/\s?(?:yr|year|hr|hour))?/i,
+    );
+    return match?.[0] ? compact(match[0]) : null;
+  }
+
+  function workModelFromText(value: string): string | null {
+    if (/\bremote\b/i.test(value)) return "Remote";
+    if (/\bhybrid\b/i.test(value)) return "Hybrid";
+    if (/\b(on-site|onsite)\b/i.test(value)) return "On-site";
+    return null;
+  }
+
+  function skillTagsFromText(value: string): string[] {
+    const skills = [
+      "TypeScript",
+      "JavaScript",
+      "Python",
+      "React",
+      "Node.js",
+      "Java",
+      "Go",
+      "C++",
+      "SQL",
+      "AWS",
+      "Azure",
+      "GCP",
+      "Kubernetes",
+      "Docker",
+      "LLM",
+      "AI",
+      "Machine Learning",
+      "Spring",
+      "Kafka",
+    ];
+    const normalized = value.toLowerCase();
+    return skills.filter((skill) => normalized.includes(skill.toLowerCase())).slice(0, 18);
+  }
+
+  const bodyText = compact(document.body?.innerText ?? "");
+  const descriptionSource = firstText(
+    "[data-automation-id='jobPostingDescription']",
+    "[data-testid='job-description']",
+    "[class*='job-description']",
+    "[class*='jobDescription']",
+    "[class*='description']",
+    "article",
+    "main",
+  ) || bodyText;
+  const description = cleanLines(descriptionSource).join("\n").slice(0, 30_000);
+  const title = firstText("h1", "[data-automation-id='jobPostingHeader']", "[class*='job-title']", "[class*='jobTitle']") ||
+    meta("og:title") ||
+    document.title;
+  const company = firstText("[data-automation-id='company']", "[class*='company']") || meta("og:site_name");
+  const location = firstText("[data-automation-id='locations']", "[class*='location']", "[class*='Location']");
+
+  return {
+    finalUrl: window.location.href,
+    title: compact(title),
+    company: compact(company),
+    location: compact(location),
+    workModel: workModelFromText(description || bodyText),
+    employmentType: /\b(full[-\s]?time|part[-\s]?time|internship|contract)\b/i.exec(description || bodyText)?.[0] ?? null,
+    salaryRange: salaryFromText(description || bodyText),
+    description,
+    responsibilities: sectionItems(description, /^(responsibilities|what you will do|you will|role responsibilities|about the role)$/i),
+    requiredQualifications: sectionItems(description, /^(qualifications|requirements|basic qualifications|required qualifications|what you bring)$/i),
+    skillTags: skillTagsFromText(description || bodyText),
+  };
+}
+
+async function probeExternalApplyUrl(tabId: string): Promise<ExternalApplyProbeResult> {
+  const beforeTabs = await listBbTabs();
+  const beforeIds = new Set(beforeTabs.map((tab) => tab.tabId).filter((id): id is string => Boolean(id)));
+  const click = await evaluateBrowserJson<ApplyClickResult>(tabId, clickLinkedInExternalApplyButton);
+  const flowUrls = new Set<string>();
+
+  addCandidateApplyUrls(flowUrls, click.href);
+  addCandidateApplyUrls(flowUrls, click.afterUrl);
+  for (const url of click.observedUrls ?? []) {
+    addCandidateApplyUrls(flowUrls, url);
+  }
+
+  const openedTabs = new Map<string, BbTabInfo>();
+  if (click.clicked) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const tabs = await listBbTabs();
+      for (const tab of tabs) {
+        if (!tab.tabId || beforeIds.has(tab.tabId)) continue;
+        openedTabs.set(tab.tabId, tab);
+        addCandidateApplyUrls(flowUrls, tab.url);
+      }
+      if (flowUrls.size > 0) break;
+      await sleep(750);
+    }
+  }
+
+  for (const tab of openedTabs.values()) {
+    if (tab.tabId) await closeBbTab(tab.tabId);
+  }
+
+  const urls = [...flowUrls];
+  return {
+    status: urls.length > 0 ? "external_url_found" : click.status,
+    label: click.label,
+    url: urls[0] ?? null,
+    flowUrls: urls,
+    clicked: Boolean(click.clicked),
+  };
+}
+
+function addCandidateApplyUrls(target: Set<string>, raw: string | null | undefined): void {
+  const url = normalizeUrl(raw);
+  if (!url) return;
+  if (isUsefulExternalApplyUrl(url)) {
+    target.add(url);
+  }
+
+  for (const nested of nestedExternalUrls(url)) {
+    target.add(nested);
+  }
+}
+
+function isUsefulExternalApplyUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (!/^https?:$/.test(parsed.protocol)) return false;
+  const host = parsed.hostname.toLowerCase();
+  if (host === "linkedin.com" || host.endsWith(".linkedin.com")) {
+    return false;
+  }
+  return true;
+}
+
+function nestedExternalUrls(raw: string): string[] {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return [];
+  }
+
+  const urls: string[] = [];
+  for (const value of parsed.searchParams.values()) {
+    const decoded = decodeURIComponent(value);
+    const nested = normalizeUrl(decoded);
+    if (nested && isUsefulExternalApplyUrl(nested)) {
+      urls.push(nested);
+    }
+  }
+  return urls;
+}
+
+async function clickLinkedInExternalApplyButton(): Promise<ApplyClickResult> {
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
+  }
+
+  function labelFor(el: Element): string {
+    const html = el as HTMLElement;
+    return compact([
+      el.getAttribute("aria-label") ?? "",
+      el.getAttribute("title") ?? "",
+      html.innerText ?? el.textContent ?? "",
+    ].filter(Boolean).join(" "));
+  }
+
+  function isVisible(el: Element): boolean {
+    const html = el as HTMLElement;
+    const rect = html.getBoundingClientRect();
+    const style = window.getComputedStyle(html);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none" &&
+      !html.hasAttribute("disabled") &&
+      el.getAttribute("aria-disabled") !== "true";
+  }
+
+  function hrefFor(el: Element): string {
+    const anchor = el instanceof HTMLAnchorElement ? el : el.closest<HTMLAnchorElement>("a[href]");
+    if (!anchor?.href) return "";
+    try {
+      const parsed = new URL(anchor.href, window.location.href);
+      parsed.hash = "";
+      return parsed.toString();
+    } catch {
+      return "";
+    }
+  }
+
+  function resourceUrls(): string[] {
+    return performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter(Boolean)
+      .slice(-200);
+  }
+
+  const controls = Array.from(document.querySelectorAll<HTMLElement>("button, a[href]"))
+    .filter(isVisible)
+    .map((el) => ({ el, label: labelFor(el), href: hrefFor(el) }))
+    .filter((item) => /\bapply\b/i.test(item.label));
+
+  const easyApply = controls.find((item) => /\beasy\s+apply\b/i.test(item.label));
+  const candidates = controls
+    .filter((item) => !/\beasy\s+apply\b/i.test(item.label))
+    .filter((item) => /\bapply\b/i.test(item.label) && !/\b(applied|applicants?)\b/i.test(item.label))
+    .sort((a, b) => {
+      const aTopCard = a.el.closest(".job-details-jobs-unified-top-card, .jobs-unified-top-card") ? 1 : 0;
+      const bTopCard = b.el.closest(".job-details-jobs-unified-top-card, .jobs-unified-top-card") ? 1 : 0;
+      return bTopCard - aTopCard;
+    });
+
+  const candidate = candidates[0];
+  if (!candidate) {
+    return easyApply
+      ? { status: "easy_apply_skipped", label: easyApply.label, clicked: false }
+      : { status: "not_found", clicked: false };
+  }
+
+  const beforeUrl = window.location.href;
+  const beforeResources = new Set(resourceUrls());
+  if (candidate.href && !/linkedin\.com\/jobs\/view\//i.test(candidate.href)) {
+    candidate.el.scrollIntoView({ block: "center", inline: "center" });
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    candidate.el.click();
+    await new Promise((resolve) => window.setTimeout(resolve, 2500));
+    return {
+      status: "external_href",
+      label: candidate.label,
+      href: candidate.href,
+      beforeUrl,
+      afterUrl: window.location.href,
+      observedUrls: resourceUrls().filter((url) => !beforeResources.has(url)).slice(0, 100),
+      clicked: true,
+    };
+  }
+
+  candidate.el.scrollIntoView({ block: "center", inline: "center" });
+  await new Promise((resolve) => window.setTimeout(resolve, 250));
+  candidate.el.click();
+  await new Promise((resolve) => window.setTimeout(resolve, 2500));
+
+  const afterUrl = window.location.href;
+  return {
+    status: beforeUrl !== afterUrl ? "clicked" : "clicked_no_url",
+    label: candidate.label,
+    href: candidate.href,
+    beforeUrl,
+    afterUrl,
+    observedUrls: resourceUrls().filter((url) => !beforeResources.has(url)).slice(0, 100),
+    clicked: true,
+  };
 }
 
 async function writeEnrichedRows(

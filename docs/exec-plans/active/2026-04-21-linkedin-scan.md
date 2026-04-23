@@ -46,8 +46,11 @@ Implement a source-specific `/career-ops linkedin-scan` mode that:
 2. Extracts visible job rows without clicking mutating LinkedIn controls.
 3. Scores and deduplicates rows through the existing bridge.
 4. Enriches promoted LinkedIn job detail pages.
-5. Writes qualifying rows as `linkedin-scan` pipeline/history entries.
-6. Optionally queues direct evaluations using the existing `newgrad_quick` path.
+5. When explicitly enabled, probes non-Easy-Apply external Apply links, captures
+   the external ATS URL, and reads visible ATS/JD text without submitting or
+   advancing an application.
+6. Writes qualifying rows as `linkedin-scan` pipeline/history entries.
+7. Optionally queues direct evaluations using the existing `newgrad_quick` path.
 
 ## Scope
 
@@ -60,11 +63,13 @@ In scope:
   LinkedIn text normalization.
 - Add `/career-ops linkedin-scan` router and mode documentation.
 - Add concise discoverability docs and npm script alias.
+- Add read-only external Apply probing behind an explicit flag, excluding Easy
+  Apply and mutating controls.
 
 Out of scope:
 
-- Applying, Easy Apply, saving jobs, dismissing jobs, messaging recruiters, or
-  clicking Apply to discover external URLs.
+- Applying, Easy Apply, saving jobs, dismissing jobs, messaging recruiters, form
+  filling, or advancing any external application workflow.
 - A public LinkedIn API client.
 - A private `~/.bb-browser` adapter as the durable implementation.
 - Pagination beyond visible/infinite-scroll first-page collection in the first
@@ -88,8 +93,13 @@ Out of scope:
 - Some LinkedIn result rows are promoted or related results, not exact matches.
   Existing scoring should filter them.
 - The Apply button often hides external ATS URLs behind a click. The first
-  version should keep LinkedIn job-view URLs as pipeline URLs rather than
-  clicking Apply.
+  version kept LinkedIn job-view URLs as pipeline URLs; on 2026-04-22 the user
+  explicitly expanded scope to allow read-only non-Easy-Apply click-through,
+  external ATS URL capture, and visible ATS/JD text extraction.
+- 2026-04-23 routing review: Playwright may be technically possible, but it
+  would require a separate persistent LinkedIn profile or session-cookie import,
+  has higher checkpoint/bot-detection risk, and would duplicate the existing
+  `bb-browser` authenticated-tab cleanup and external apply safeguards.
 
 ## Simplest Viable Path
 
@@ -116,6 +126,28 @@ EnrichedRow[]
   v
 PipelineEntry[] tagged linkedin-scan
 ```
+
+## Runtime Decision
+
+Use `bb-browser` rather than Playwright for `linkedin-scan`.
+
+Reasons:
+
+- LinkedIn's hard part is authenticated session continuity, checkpoint recovery,
+  and manual MFA/CAPTCHA handling. `bb-browser` uses the managed browser where
+  the user logs in manually; Playwright would need a separate profile or cookie
+  transfer.
+- The current scanner already opens list/detail/external tabs through
+  `bb-browser` and closes only the tabs it opened in `finally` blocks.
+- `bb-browser` keeps login recovery explicit:
+  `bb-browser open https://www.linkedin.com/login`, with no credentials or
+  session tokens in chat.
+- The implementation already has LinkedIn-specific safety boundaries for Easy
+  Apply, Save, Dismiss, messaging, and external apply probing.
+
+Playwright remains useful for JobRight/newgrad because that flow can rely on a
+public paginated API and a headless bundled Chromium context. It is not the
+better default for LinkedIn.
 
 ## What Already Exists
 
@@ -479,6 +511,230 @@ error path.
   src/adapters/linkedin-scan-normalizer.test.ts
   src/adapters/claude-pipeline.test.ts
   src/adapters/newgrad-value-scorer.test.ts` passed with 27 tests.
+- 2026-04-22: User requested `/career-ops linkedin-scan`. Goal: run the existing
+  LinkedIn Jobs scanner against the documented 24-hour search path and report
+  concrete extraction, scoring, enrichment, write, evaluation, and dashboard
+  results. Success criteria: bridge health is verified; `bb-browser` is
+  available and LinkedIn is not blocked by login/checkpoint; `--score-only`
+  preview runs before writes; bounded enrich/write records either qualifying
+  `linkedin-scan` candidates or exact skip reasons; dashboard and relevant
+  verification complete; this plan records the final outcome. Assumptions: no
+  `config/profile.yml -> linkedin_scan.search_url` is configured, so use the
+  documented 24-hour LinkedIn Jobs URL; follow the mode's conservative
+  `--no-evaluate --enrich-limit 5` write path for this run; do not click any
+  LinkedIn Apply, Easy Apply, Save, Dismiss, message, or recruiter controls.
+- 2026-04-22: Operational recovery before the run: `bb-browser` 0.11.3 was
+  available, but the managed browser initially had no page targets, causing
+  `bb-browser open` to fail with `No page target found`. Created a blank managed
+  tab with `bb-browser tab new --json`, then reran the scanner. The first bridge
+  instance was started without `CAREER_OPS_BRIDGE_MODE=real`, so its enrich
+  summary was fake/non-durable; restarted the bridge as
+  `CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start` and reran the
+  documented preview/write sequence before relying on results.
+- 2026-04-22: Real-mode no-write preview passed. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&keywords=software%20ai%20engineer%20new%20graduate%20job%20posted%20in%20the%20past%2024%20hours&origin=JOB_SEARCH_PAGE_JOB_FILTER&f_TPR=r86400" --score-only --limit 20`.
+  Result: 18 raw LinkedIn rows, 6 unique after canonical URL dedupe, 1 promoted,
+  5 filtered, no bridge write endpoints called. Promoted row: Capital One -
+  Machine Learning Engineering - Intelligent Foundations and Experiences (IFX),
+  score 5/9, `https://www.linkedin.com/jobs/view/4405249033/`.
+- 2026-04-22: Real-mode bounded enrich/write run completed without pipeline
+  additions. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&keywords=software%20ai%20engineer%20new%20graduate%20job%20posted%20in%20the%20past%2024%20hours&origin=JOB_SEARCH_PAGE_JOB_FILTER&f_TPR=r86400" --no-evaluate --enrich-limit 5`.
+  Result: 12 raw rows, 6 unique after dedupe, 1 promoted, 5 filtered; detail
+  enrichment succeeded for the 1 promoted row; bridge enrich reported
+  `added=0`, `skipped=1`, `candidates=0`, skip breakdown
+  `{"detail_value_threshold":1}`. Direct evaluation was disabled by
+  `--no-evaluate`, so no tracker/report evaluation was queued. `data/pipeline.md`
+  stayed at 389 dashboard entries; `data/applications.md` and reports stayed at
+  193 and 273 dashboard entries. `data/scan-history.tsv` gained 3 durable
+  LinkedIn filtered rows from this search: Capital One Manager, Ontology & Data
+  Modeling; Deloitte Cyber Fullstack Senior Engineer/Senior Consultant; and PwC
+  AI Engineer / Data Scientist, AI Senior Associate, all as `negative_title`.
+- 2026-04-22: Dashboard rebuild and verification passed. `npm run dashboard`
+  wrote `web/index.html` with reports=273, applications=193, pipeline=389, and
+  scan-history=932. `npm run linkedin-scan -- --help` passed. `npm run verify`
+  passed with 0 errors and 2 pre-existing duplicate warnings:
+  RemoteHunter - Software Engineer (#271/#272) and Anduril Industries -
+  Software Engineer (#3/#8/#9).
+- 2026-04-22: User asked why the LinkedIn scan found so few rows and requested a
+  larger scan. Diagnosis: the previous command intentionally used the documented
+  narrow 24-hour LinkedIn URL, one LinkedIn result page, and the conservative
+  `--no-evaluate` path; LinkedIn `search-results` exposes only a small
+  virtualized page window per offset, and existing scan-history/pipeline dedupe
+  plus new-grad fit filters reduce promoted rows further. New goal: scan a
+  larger paginated LinkedIn sample while preserving safety and repo durability.
+  Success criteria: run larger no-write previews with `--pages`/`--limit`, use
+  the query with better volume and relevance for bounded write/evaluation, never
+  click mutating LinkedIn controls, rebuild the dashboard, run verification, and
+  record exact counts and blockers here.
+- 2026-04-22: Larger preview and interrupted write/evaluation attempt before
+  user correction. New-grad query
+  `software engineer new grad` with `--score-only --pages 8 --limit 100
+  --scroll-steps 1` produced 16 raw rows, 15 unique rows, 4 promoted, and 11
+  filtered. Broader entry-level query `software engineer` with `f_E=2` and
+  `--score-only --pages 10 --limit 120 --scroll-steps 0` produced 62 raw rows,
+  55 unique rows, 9 promoted, and 46 filtered. A bounded real/Claude run on the
+  broader query produced 69 raw rows, 61 unique rows, 9 promoted, 52 filtered,
+  and 9/9 enriched details; bridge enrich skipped all 9 (`seniority_too_high`:
+  4, `detail_value_threshold`: 4, `pipeline_threshold`: 1), then queued 4
+  fallback evaluations. All 4 evaluations failed under the accidentally selected
+  real/Claude bridge. User then interrupted and clarified two requirements:
+  click non-Easy-Apply Apply to discover ATS URLs, and run enrich/evaluation
+  through Codex rather than Claude.
+- 2026-04-22: Updated implementation plan for the correction. Scope: add an
+  explicit `--open-external-apply` option that may click only LinkedIn
+  non-Easy-Apply Apply controls, records any external ATS URL, closes any opened
+  tab after URL capture, and never submits, fills, or advances an external
+  application form. Also update the mode to start `npm run ext:bridge`, which
+  runs the bridge in `real/codex` mode. Success criteria: help text documents
+  the option, mode docs encode the new safety rule, typecheck/help verification
+  pass, live bridge health shows `realExecutor=codex`, and a bounded live scan
+  proves whether external Apply URLs are captured.
+- 2026-04-22: Implemented the correction. `scripts/linkedin-scan-bb-browser.ts`
+  now supports `--open-external-apply`, clicks only visible non-Easy-Apply Apply
+  controls, captures external URLs from direct hrefs, opened tabs, current-tab
+  navigation, nested redirect parameters, and post-click resource URLs, then
+  closes any opened tab. `modes/linkedin-scan.md` now requires `npm run
+  ext:bridge` and records the safety rule: no Easy Apply, no form fill, no form
+  submit, and no external form advancement. `bridge/src/adapters/newgrad-links.ts`
+  now prefers non-LinkedIn Apply-flow URLs over LinkedIn job-view fallbacks, with
+  tests for Truist and Appcast/Prng-style Apply redirect URLs.
+- 2026-04-22: Live smoke in `real/codex` mode passed. Health showed
+  `execution.mode=real` and `execution.realExecutor=codex`. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&f_TPR=r86400&f_E=2" --pages 3 --limit 30 --scroll-steps 0 --open-external-apply --no-evaluate --enrich-limit 2`.
+  Result: 21 raw rows, 19 unique rows, 4 promoted, 15 filtered; detail
+  enrichment succeeded for 2/2; external Apply URLs were captured for Jobs via
+  Dice and Capital One; bridge enrich skipped both (`detail_value_threshold`: 1,
+  `seniority_too_high`: 1); no evaluation was queued because `--no-evaluate`
+  was set.
+- 2026-04-22: Final larger `real/codex` scan passed. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&f_TPR=r86400&f_E=2" --pages 10 --limit 120 --scroll-steps 0 --open-external-apply --enrich-limit 9 --evaluate-limit 5`.
+  Result: 55 raw rows, 51 unique rows, 7 promoted, 44 filtered; detail
+  enrichment succeeded for 7/7; external Apply URLs were captured for all 7
+  promoted rows: Capital One Back End (`https://dsp.prng.co/kgvoqtb`), Jobs via
+  Dice (`https://click.appcast.io/t/orxmr7zovw5kwrxqxs59tkxrb40gyhc5e4lxuxd0rd4=`),
+  Morton (`https://jobs.themortonway.com/full-stack-engineer-8826-jobs-in-richmond-virginia/14030146`),
+  Truist (`https://careers.truist.com/us/en/job/tbjtbfusr0103225externalenus/software-engineer-iii-real-estate-mortgage-servicing?source=linkedin&utm_medium=phenom-feeds&utm_source=linkedin`),
+  Capital One Bank Tech (`https://dsp.prng.co/zqlu7rb`), Capital One Cyber
+  (`https://dsp.prng.co/j3vog8b`), and Genworth
+  (`https://careers.genworth.com/us/en/job/gfogfyusreq250526externalenus/cloud-solutions-architect?utm_medium=phenom-feeds&utm_source=linkedin`).
+  Bridge enrich skipped all 7 (`seniority_too_high`: 3,
+  `detail_value_threshold`: 3, `pipeline_threshold`: 1), then LinkedIn fallback
+  sent 3 value-threshold rows through Codex quick evaluation. Codex completed
+  3/3: Jobs via Dice 1.6/5 report 306, Morton 1.2/5 report 307, Truist 1.2/5
+  report 308. Tracker merge succeeded for all three as `SKIP`, so no new Apply
+  Next rows were created.
+- 2026-04-22: Corrected generated report URL metadata for reports 306-308 to
+  the captured external Apply URLs after the URL selector fix. Dashboard rebuild
+  passed with reports=276, applications=196, pipeline=389, scan-history=970.
+  Verification passed: focused link/normalizer tests passed (20 tests), bridge
+  typecheck passed, extension typecheck passed, script ESM typecheck passed,
+  `npm run linkedin-scan -- --help` passed, and final `npm run verify` passed
+  with 0 errors and the same 2 pre-existing duplicate warnings:
+  RemoteHunter - Software Engineer (#271/#272) and Anduril Industries -
+  Software Engineer (#3/#8/#9).
+- 2026-04-22: User challenged that external ATS URL capture is still
+  under-enriched because ATS pages often contain fuller JD text, and requested
+  Codex as the default executor for both LinkedIn scan and newgrad scan. Goal:
+  after capturing a non-Easy-Apply external ATS URL, open that external page,
+  read its job-description text, merge that text into `NewGradDetail`, and use
+  the merged detail for bridge enrich and Codex evaluation. Also make
+  `CAREER_OPS_BRIDGE_MODE=real` default to `CAREER_OPS_REAL_EXECUTOR=codex`
+  when the executor env var is omitted, and update newgrad/linkedin mode docs to
+  start `npm run ext:bridge`. Success criteria: external ATS detail character
+  counts appear in live scan logs, evaluation page text contains external ATS
+  detail, real bridge health defaults to Codex, focused tests/typechecks pass,
+  and no application form is filled/submitted/advanced.
+- 2026-04-22: Implemented external ATS detail enrichment and Codex defaults.
+  After `--open-external-apply` captures an external URL, the scanner now opens
+  that URL in `bb-browser`, reads generic ATS/job-page text, extracts title,
+  location, salary, work model, requirements, responsibilities, and skill tags
+  where visible, then merges the external ATS text ahead of the LinkedIn detail
+  excerpt before bridge enrich/evaluation. Short redirect pages that expose no
+  readable JD remain URL-only. `CAREER_OPS_BRIDGE_MODE=real` now defaults
+  `CAREER_OPS_REAL_EXECUTOR` to `codex` when unset; `claude` remains available
+  only by explicit `CAREER_OPS_REAL_EXECUTOR=claude`. Updated
+  `modes/newgrad-scan.md`, `modes/linkedin-scan.md`, and
+  `docs/BROWSER_EXTENSION.md` to reflect Codex-default bridge startup and the
+  external ATS detail behavior.
+- 2026-04-22: Verification for the correction passed. Focused tests passed:
+  `npm --prefix bridge run test -- src/adapters/newgrad-links.test.ts
+  src/adapters/linkedin-scan-normalizer.test.ts src/adapters/claude-pipeline.test.ts`
+  with 36 tests. `npm --prefix bridge run typecheck` passed. Script ESM
+  typecheck passed. `npm run linkedin-scan -- --help` passed and documents that
+  `--open-external-apply` opens the external ATS URL and reads JD text. Starting
+  the bridge with only `CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run
+  start` produced health `execution.realExecutor=codex`, proving the new default.
+- 2026-04-22: Live external ATS detail smoke passed. Query:
+  `cloud solutions architect genworth`, `--pages 2 --limit 20 --scroll-steps 0
+  --open-external-apply --no-evaluate --enrich-limit 3`. Result: 13 raw rows,
+  13 unique, 3 promoted, 10 filtered; external Apply URLs were captured for two
+  Jobs via Dice rows and Genworth. The Genworth ATS page was opened and yielded
+  `External ATS detail: 402 chars` from the employer careers URL, then bridge
+  enrich skipped all 3 (`detail_value_threshold`: 2, `seniority_too_high`: 1).
+  No evaluation was queued because `--no-evaluate` was set. Dashboard rebuild
+  passed with reports=276, applications=196, pipeline=389, scan-history=972.
+  Final `npm run verify` passed with 0 errors and the same 2 pre-existing
+  duplicate warnings.
+- 2026-04-22: User requested a fresh rerun experiment after the external ATS
+  detail and Codex-default changes. Goal: run the latest LinkedIn scanner
+  end-to-end enough to prove the corrected behavior, not merely inspect code.
+  Success criteria: bridge health shows `execution.mode=real` and
+  `execution.realExecutor=codex` with no executor env override; score-only
+  preview confirms realistic row volume; bounded live run uses
+  `--open-external-apply`, captures external Apply URLs, logs external ATS
+  detail character counts when JD text is available, sends eligible rows through
+  Codex evaluation, rebuilds dashboard, runs verification, and records exact
+  counts here. Assumption: do not submit, fill, save, Easy Apply, or advance any
+  external application form.
+- 2026-04-22: Fresh rerun bridge health passed. Started with only
+  `CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start`; health showed
+  `execution.mode=real` and `execution.realExecutor=codex`, proving the Codex
+  default without `CAREER_OPS_REAL_EXECUTOR`.
+- 2026-04-22: Fresh score-only preview passed. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&f_TPR=r86400&f_E=2" --score-only --pages 10 --limit 120 --scroll-steps 0`.
+  Result: 69 raw LinkedIn rows, 61 unique after dedupe, 6 promoted, 55 filtered.
+  LinkedIn exposed 6-7 list rows per page through the current virtualized jobs
+  result window. No bridge write endpoints were called.
+- 2026-04-22: Fresh bounded live run passed. Command:
+  `npm run linkedin-scan -- --url "https://www.linkedin.com/jobs/search-results/?keywords=software%20engineer&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&f_TPR=r86400&f_E=2" --pages 10 --limit 120 --scroll-steps 0 --open-external-apply --enrich-limit 6 --evaluate-limit 3`.
+  Result: same 69 raw / 61 unique / 6 promoted pool. Detail enrichment attempted
+  6 promoted rows, enriched 5, and failed 1 LinkedIn detail read with
+  `Unterminated string in JSON at position 8192`. The run captured external
+  Apply URLs for all 5 enriched rows. Genworth's external Phenom ATS page was
+  opened and yielded `External ATS detail: 402 chars` from the employer careers
+  URL. Bridge enrich added 0 rows, skipped 5, and produced 0 normal candidates;
+  skip breakdown was `seniority_too_high`: 4 and `detail_value_threshold`: 1.
+  The LinkedIn review fallback queued the 1 value-threshold row for direct
+  Codex evaluation; direct evaluation completed 1/1 and generated
+  `reports/309-capital-one-2026-04-22.md` with score 2/5, Decision `skip`, and
+  tracker merge `true`.
+- 2026-04-22: Fresh rerun interpretation: the small evaluation count came from
+  filtering, not from list extraction stopping early. The observed funnel was
+  69 raw -> 61 unique -> 6 promoted -> 5 enriched -> 0 normal pipeline
+  candidates -> 1 fallback Codex evaluation. For larger useful output, use a
+  broader or more entry-level query and/or revisit the seniority/detail-value
+  thresholds; the external Apply click-through and ATS/JD text merge now have
+  live evidence.
+- 2026-04-22: Dashboard rebuild after the rerun succeeded:
+  `npm run dashboard` wrote `web/index.html` with reports=277,
+  applications=197, pipeline=389, scan-history=975. Verification ultimately
+  passed: an initial full `npm run verify` and a second full run hit unrelated
+  5s Vitest timeouts under load; the failed tests then passed when rerun
+  directly, the real bridge was stopped, and the final full `npm run verify`
+  passed with 0 errors and the same 2 pre-existing duplicate warnings.
+- 2026-04-22: Post-rerun report review found one remaining URL metadata gap:
+  fallback evaluation report 309 used the LinkedIn job-view URL even though the
+  row had captured `https://dsp.prng.co/voof7ub`. Root cause: URL selection
+  scored LinkedIn job views higher than opaque external Apply redirects when
+  both were present in `applyFlowUrls`. Fixed `pickPipelineEntryUrl` to prefer a
+  non-LinkedIn Apply-flow URL before scoring mixed Apply-flow candidates, added
+  a `dsp.prng.co` regression test, corrected report 309's URL metadata to the
+  captured external Apply URL, rebuilt the dashboard, and reran verification.
+  `npm --prefix bridge run test -- src/adapters/newgrad-links.test.ts` passed
+  14 tests, `npm --prefix bridge run typecheck` passed, and final
+  `npm run verify` passed with 0 errors and the same 2 pre-existing duplicate
+  warnings.
 
 ## Plan Eng Review
 
@@ -600,6 +856,23 @@ now enter direct evaluation and tracker/report merge through this fallback. The
 tested LinkedIn rows did not enter Apply Next because the model scored them
 1.0-2.0/5 and marked them SKIP; Apply Next still requires `Evaluated` tracker
 status and score >= 3.5.
+
+Follow-up correction on 2026-04-22 added explicit read-only external Apply
+probing with `--open-external-apply`. The scanner skips Easy Apply and mutating
+controls, captures non-LinkedIn Apply URLs, opens the external ATS page when
+available, and merges readable ATS/JD text into the detail payload before bridge
+enrichment/evaluation. Real-mode bridge startup now defaults to Codex when
+`CAREER_OPS_REAL_EXECUTOR` is unset; Claude is only selected explicitly.
+
+Fresh rerun verification on 2026-04-22 used a 10-page LinkedIn software
+engineer query and observed 69 raw / 61 unique / 6 promoted. The bounded live
+run captured external Apply URLs for 5 enriched rows, read 402 characters from a
+Genworth external ATS page, completed 1/1 Codex fallback evaluation, generated
+`reports/309-capital-one-2026-04-22.md`, then corrected fallback URL selection
+so opaque external Apply redirects beat LinkedIn job-view fallbacks. Report 309
+now records the captured external Apply URL. The dashboard was rebuilt, and
+final `npm run verify` passed with 0 errors and 2 pre-existing duplicate
+warnings.
 
 ## GSTACK REVIEW REPORT
 

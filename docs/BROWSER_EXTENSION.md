@@ -88,6 +88,7 @@ Optional modes:
 ```bash
 CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start
 CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=codex npm --prefix bridge run start
+CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=claude npm --prefix bridge run start
 CAREER_OPS_BRIDGE_MODE=sdk ANTHROPIC_API_KEY=... npm --prefix bridge run start
 ```
 
@@ -99,7 +100,7 @@ Bridge notes:
 - Generates or reuses `bridge/.bridge-token`
 - Rejects requests without `x-career-ops-token`
 - Refuses to boot `sdk` mode unless `ANTHROPIC_API_KEY` is present
-- `real` mode defaults to `claude`; set `CAREER_OPS_REAL_EXECUTOR=codex` to run the same bridge flow through `codex exec`
+- `real` mode defaults to `codex`; set `CAREER_OPS_REAL_EXECUTOR=claude` to run the same bridge flow through `claude -p`
 
 Quick health check:
 
@@ -146,8 +147,8 @@ Artifacts still land in the normal career-ops locations:
 
 - `fake`: best for UI work, popup QA, and contract-level smoke tests
 - `real`: best when you want the bridge to reuse the checked-in career-ops pipeline with a real CLI agent
-- `real` + `CAREER_OPS_REAL_EXECUTOR=claude`: uses `claude -p` and preserves the existing behavior
-- `real` + `CAREER_OPS_REAL_EXECUTOR=codex`: uses `codex exec` as a CLI wrapper around the same batch prompt and artifact flow
+- `real` + default / `CAREER_OPS_REAL_EXECUTOR=codex`: uses `codex exec` as a CLI wrapper around the same batch prompt and artifact flow
+- `real` + `CAREER_OPS_REAL_EXECUTOR=claude`: uses `claude -p` as the legacy fallback
 - `sdk`: best when you want direct Anthropic API calls without spawning the Claude CLI
 
 ## Current Limits
@@ -165,5 +166,5 @@ Artifacts still land in the normal career-ops locations:
 - `BRIDGE_NOT_READY`: required local files like `cv.md` or `config/profile.yml` are missing
 - `RATE_LIMITED`: the bridge allows 3 evaluations per minute
 - Health works but evaluation fails in `sdk` mode: verify `ANTHROPIC_API_KEY`
-- Health works but `real` mode fails: verify the `claude` CLI is installed and on `PATH`
-- Health works but `real` + Codex fails: verify the `codex` CLI is installed, authenticated, and on `PATH`
+- Health works but default `real` mode fails: verify the `codex` CLI is installed, authenticated, and on `PATH`
+- Health works but `real` + Claude fails: verify the `claude` CLI is installed and on `PATH`

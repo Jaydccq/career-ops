@@ -2,8 +2,8 @@
  * claude-pipeline.ts — real PipelineAdapter that shells out to a CLI agent.
  *
  * Supported real executors:
- *   • `claude -p`   (default, existing behavior)
- *   • `codex exec`  (CLI-wrapper integration for fast bring-up)
+ *   • `codex exec`  (default CLI-wrapper integration)
+ *   • `claude -p`   (legacy fallback)
  *
  * Both paths reuse the same batch prompt contract and the same artifact
  * layout in reports/, output/, and batch/tracker-additions/.
@@ -209,7 +209,7 @@ export const __internal = {
 export function createClaudePipelineAdapter(
   config: PipelineConfig
 ): PipelineAdapter {
-  const realExecutor = config.realExecutor ?? "claude";
+  const realExecutor = config.realExecutor ?? "codex";
   const selectedCliBin =
     realExecutor === "codex" ? config.codexBin ?? null : config.claudeBin;
 
@@ -1746,7 +1746,7 @@ function buildExecutionPlan(
     allowSearch: boolean;
   }
 ): ExecutionPlan {
-  const realExecutor = config.realExecutor ?? "claude";
+  const realExecutor = config.realExecutor ?? "codex";
 
   if (realExecutor === "codex") {
     if (!config.codexBin) {
@@ -1820,7 +1820,7 @@ function buildQuickExecutionPlan(
     prompt: string;
   }
 ): ExecutionPlan {
-  const realExecutor = config.realExecutor ?? "claude";
+  const realExecutor = config.realExecutor ?? "codex";
 
   if (realExecutor === "codex") {
     if (!config.codexBin) {

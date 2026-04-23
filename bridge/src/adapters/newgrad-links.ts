@@ -176,9 +176,31 @@ export function pickPipelineEntryUrl(
   detail: Pick<NewGradDetail, "originalPostUrl" | "applyNowUrl" | "applyFlowUrls">,
   row: Pick<NewGradRow, "applyUrl" | "detailUrl">
 ): string {
+  const externalApplyFlowUrl = pickBestNewGradUrl(
+    ...[
+      detail.applyNowUrl,
+      ...(detail.applyFlowUrls ?? []),
+    ].filter((url) => {
+      const normalized = normalizeUrlCandidate(url);
+      return normalized && !isLinkedInJobsUrl(normalized);
+    }),
+  );
+  if (externalApplyFlowUrl && !isLinkedInJobsUrl(externalApplyFlowUrl)) {
+    return externalApplyFlowUrl;
+  }
+
+  const applyFlowUrl = pickBestNewGradUrl(
+    detail.applyNowUrl,
+    ...(detail.applyFlowUrls ?? []),
+  );
+  if (applyFlowUrl && !isLinkedInJobsUrl(applyFlowUrl)) {
+    return applyFlowUrl;
+  }
+
   return (
     pickBestNewGradUrl(
       detail.originalPostUrl,
+      applyFlowUrl,
       detail.applyNowUrl,
       ...(detail.applyFlowUrls ?? []),
       row.applyUrl,

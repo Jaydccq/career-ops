@@ -6,7 +6,7 @@ evaluations for enrich survivors.
 
 ## Prerequisites
 
-- Bridge server running (`npm --prefix bridge run start`)
+- Bridge server running in real Codex mode (`npm run ext:bridge`)
 - Playwright browser installed (`npx playwright install chromium` if missing)
 - Google Chrome installed when a manual Jobright login is needed
 
@@ -19,7 +19,10 @@ Chrome extension and sends results through the existing bridge endpoints.
 
 Check `/v1/health`. If not reachable, tell the user:
 
-> "Start the bridge first: `npm --prefix bridge run start`"
+> "Start the bridge first: `npm run ext:bridge`"
+
+The health response should show `execution.mode=real` and
+`execution.realExecutor=codex` before queueing evaluations.
 
 ### Step 2: Login when Jobright requires it
 
@@ -44,20 +47,25 @@ Run:
 npm run newgrad-scan
 ```
 
-This opens `https://www.newgrad-jobs.com/`, resolves the embedded Jobright
-source, extracts list rows, scores them with the bridge, enriches promoted
-detail pages, writes qualifying rows to `data/pipeline.md`, then sends enrich
-survivors to `/v1/evaluate` using `newgrad_quick` so reports and tracker rows
-can be written to `data/applications.md`.
+This opens `https://www.newgrad-jobs.com/` in a headless bundled Chromium scan
+browser, resolves the embedded Jobright source, extracts list rows, scores them
+with the bridge, enriches promoted detail pages, writes qualifying rows to
+`data/pipeline.md`, then sends enrich survivors to `/v1/evaluate` using
+`newgrad_quick` so reports and tracker rows can be written to
+`data/applications.md`.
 
 The runner uses a persistent browser profile at
 `data/browser-profiles/newgrad-scan`, so Jobright login cookies can be reused
 between scan runs. Close any manually opened scan browser before running a scan.
+The autonomous runner closes its scan browser after detail enrichment, before it
+waits for direct evaluation jobs.
 
 Useful options:
 
 ```bash
 npm run newgrad-scan -- --headless
+npm run newgrad-scan -- --headed
+npm run newgrad-scan -- --chrome
 npm run newgrad-scan -- --score-only
 npm run newgrad-scan -- --no-evaluate
 npm run newgrad-scan -- --evaluate-limit 3

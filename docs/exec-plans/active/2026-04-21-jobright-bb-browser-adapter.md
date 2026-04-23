@@ -63,23 +63,59 @@ listing data from the JobRight newgrad minisite.
   `bb-browser site search jobright --json`,
   `bb-browser site info jobright/newgrad`, and
   `bb-browser site jobright/newgrad 5 --json`.
+- 2026-04-23: User asked how to fix the adapter only returning 50
+  `initialJobs` rows. New goal: make the adapter use JobRight's paginated
+  `/swan/mini-sites/list` API first, keep `initialJobs` as fallback, and verify
+  that `bb-browser site jobright/newgrad 2500 us/swe 24 --json` can cover the
+  full 24-hour window.
+- 2026-04-23: Updated `bb-browser/sites/jobright/newgrad.js` to call the
+  paginated API with `position` and `count`, raise the row cap to 2500, include
+  `sourceMode`, `pageSize`, and `offset`, and keep `initialJobs` as fallback
+  only when the API cannot be used without an offset.
+- 2026-04-23: Installed the updated adapter to
+  `~/.bb-browser/sites/jobright/newgrad.js` for local bb-browser use.
+- 2026-04-23: Verification passed:
+  `node --check bb-browser/sites/jobright/newgrad.js`,
+  `node --check ~/.bb-browser/sites/jobright/newgrad.js`,
+  `bb-browser site info jobright/newgrad`,
+  `bb-browser site jobright/newgrad 2500 us/swe 24 --json --jq
+  '{sourceMode:.sourceMode,count:.count,totalAvailable:.totalAvailable,maxAgeHours:.maxAgeHours,pageSize:.pageSize,offset:.offset}'`
+  returned `sourceMode=api` and `count=199`, and
+  `bb-browser site jobright/newgrad 5 us/swe 24 --json` returned valid job
+  rows.
+- 2026-04-23: Verified positional offset paging with
+  `bb-browser site jobright/newgrad 5 us/swe 24 50 50 --json`; it returned
+  positions 51-55. Adapter args should be passed positionally for this
+  bb-browser version because adapter-specific `--offset` flags were not
+  preserved by the top-level CLI parser in testing.
+- 2026-04-23: `npm run verify` passed with 0 errors and 2 existing duplicate
+  tracker warnings.
 
 ## Key Decisions
 
 - Use `initialJobs` from `__NEXT_DATA__` rather than DOM table scraping. This
   preserves structured fields and avoids depending on generated CSS class names.
 - Keep the adapter read-only. It fetches and parses listing data only.
+- 2026-04-23 update: prefer the paginated JobRight API over `initialJobs` so
+  the adapter can cover more than the server-rendered first page.
+- Large full JSON payloads should be consumed with `--jq` summaries or
+  positional offset paging. In testing, full non-`--jq` JSON output for 199 rows
+  was truncated at 8192 bytes and could not be parsed directly.
 
 ## Risks And Blockers
 
 - JobRight may rename or move the `initialJobs` payload.
+- JobRight may change the `/swan/mini-sites/list` API contract or category
+  format.
 - The adapter depends on the browser being able to access JobRight; login or
   network issues should surface as structured errors.
+- Full-row bb-browser JSON output can exceed this bb-browser version's practical
+  output size. Consumers should page through rows or use `--jq` for summaries.
 
 ## Final Outcome
 
-`jobright/newgrad` is available as a local bb-browser site adapter. It fetches
-the JobRight newgrad minisite in the browser context, parses
-`props.pageProps.initialJobs`, and returns structured JSON rows. The adapter is
+`jobright/newgrad` is available as a local bb-browser site adapter. It now uses
+JobRight's paginated `/swan/mini-sites/list` API first and falls back to
+`props.pageProps.initialJobs` only when the API cannot be used. The adapter is
 read-only and does not mutate Career-Ops tracker, pipeline, scan history, or
 application state.

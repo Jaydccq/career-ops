@@ -6,7 +6,7 @@ promoted detail pages, and optionally queues `newgrad_quick` evaluations.
 
 ## Prerequisites
 
-- Bridge server running (`npm --prefix bridge run start`)
+- Bridge server running in real Codex mode (`npm run ext:bridge`)
 - `bb-browser` installed and on `PATH`
 - LinkedIn logged in inside the `bb-browser` managed browser
 
@@ -24,7 +24,10 @@ Log in manually in that browser, then rerun the scan.
 
 Check `/v1/health`. If it is not reachable, tell the user:
 
-> "Start the bridge first: `npm --prefix bridge run start`"
+> "Start the bridge first: `npm run ext:bridge`"
+
+The health response should show `execution.mode=real` and
+`execution.realExecutor=codex` before queueing evaluations.
 
 ### Step 2: Run a no-write preview
 
@@ -62,6 +65,7 @@ Useful options:
 ```bash
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 5
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --pages 4 --limit 100
+npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --open-external-apply --enrich-limit 5
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 2
 npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --evaluate-limit 3
 npm run linkedin-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
@@ -81,9 +85,14 @@ If no `--url` is passed, the script reads
 ## Safety Boundaries
 
 - Never submit applications.
-- Never click Apply, Easy Apply, Save, Dismiss, message, or recruiter controls.
-- Keep LinkedIn job-view URLs as pipeline URLs when the external ATS URL is
-  hidden behind an Apply button.
+- Never click Easy Apply, Save, Dismiss, message, recruiter controls, or any
+  external application form controls.
+- Only when explicitly requested or when `--open-external-apply` is present, the
+  scanner may click LinkedIn's non-Easy-Apply `Apply` control, open the external
+  ATS page, read job-description text, and close the page. It must not submit,
+  fill, or advance any application form.
+- Keep LinkedIn job-view URLs as pipeline URLs when the external ATS URL is not
+  available or the visible control is Easy Apply.
 - Treat login, checkpoint, and account-verification pages as manual recovery
   states.
 
@@ -95,5 +104,7 @@ When reporting results, include:
 - Rows extracted.
 - Promoted and filtered counts.
 - Detail enrichment successes and failures.
+- External Apply URL discoveries/skips and external ATS detail character counts
+  when `--open-external-apply` was used.
 - Pipeline entries added or skipped.
 - Evaluation jobs queued/completed unless `--no-evaluate` was used.

@@ -123,6 +123,64 @@ test("pickPipelineEntryUrl accepts LinkedIn job views but ignores LinkedIn compa
   expect(best).toBe("https://www.linkedin.com/jobs/view/4347121472/");
 });
 
+test("pickPipelineEntryUrl prefers LinkedIn Apply flow external URLs over LinkedIn job views", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.linkedin.com/jobs/view/4404332749/",
+      applyNowUrl: "https://careers.truist.com/us/en/job/tbjtbfusr0103225externalenus/software-engineer-iii-real-estate-mortgage-servicing?source=linkedin",
+      applyFlowUrls: [
+        "https://www.linkedin.com/jobs/view/4404332749/",
+        "https://careers.truist.com/us/en/job/tbjtbfusr0103225externalenus/software-engineer-iii-real-estate-mortgage-servicing?source=linkedin",
+      ],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4404332749/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4404332749/",
+    },
+  );
+
+  expect(best).toBe(
+    "https://careers.truist.com/us/en/job/tbjtbfusr0103225externalenus/software-engineer-iii-real-estate-mortgage-servicing?source=linkedin",
+  );
+});
+
+test("pickPipelineEntryUrl accepts LinkedIn Apply redirect hosts captured from the click", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.linkedin.com/jobs/view/4404466625/",
+      applyNowUrl: "https://click.appcast.io/t/orxmr7zovw5kwrxqxs59tkxrb40gyhc5e4lxuxd0rd4=",
+      applyFlowUrls: [
+        "https://click.appcast.io/t/orxmr7zovw5kwrxqxs59tkxrb40gyhc5e4lxuxd0rd4=",
+      ],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4404466625/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4404466625/",
+    },
+  );
+
+  expect(best).toBe("https://click.appcast.io/t/orxmr7zovw5kwrxqxs59tkxrb40gyhc5e4lxuxd0rd4=");
+});
+
+test("pickPipelineEntryUrl prefers opaque external Apply redirects over LinkedIn job views", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.linkedin.com/jobs/view/4405249033/",
+      applyNowUrl: "https://dsp.prng.co/voof7ub",
+      applyFlowUrls: [
+        "https://dsp.prng.co/voof7ub",
+        "https://www.linkedin.com/jobs/view/4405249033/",
+      ],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4405249033/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4405249033/",
+    },
+  );
+
+  expect(best).toBe("https://dsp.prng.co/voof7ub");
+});
+
 test("pickPipelineEntryUrl ignores auth and analytics URLs captured during apply probing", () => {
   const best = pickPipelineEntryUrl(
     {
