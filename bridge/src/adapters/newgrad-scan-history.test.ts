@@ -62,7 +62,7 @@ describe("newgrad-scan-history", () => {
     expect(seen.urls.has("https://newgrad-jobs.com/detail/seen")).toBe(true);
     expect(seen.urls.has("https://example.com/pipeline-job")).toBe(true);
     expect(seen.urls.has("https://example.com/tracked")).toBe(false);
-    expect(seen.companyRoles.has("seen co|software engineer")).toBe(true);
+    expect(seen.companyRoles.has("seen|software engineer")).toBe(true);
     expect(seen.companyRoles.has("tracker co|backend engineer")).toBe(false);
   });
 
@@ -94,7 +94,7 @@ describe("newgrad-scan-history", () => {
     const seen = loadNewGradSeenKeys(repoRoot);
 
     expect(seen.urls.has("https://careers.example.com/job/123")).toBe(true);
-    expect(seen.companyRoles.has("vizient, inc|associate software engineer")).toBe(true);
+    expect(seen.companyRoles.has("vizient|associate software engineer")).toBe(true);
   });
 
   test("loadNewGradSeenKeys canonicalizes tracking params in scan history and pipeline", () => {

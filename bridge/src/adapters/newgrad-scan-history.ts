@@ -8,7 +8,7 @@ import {
 import { dirname, join } from "node:path";
 
 import type { NewGradRow } from "../contracts/newgrad.js";
-import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
+import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePostedAgo } from "./newgrad-scorer.js";
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 
@@ -31,7 +31,7 @@ export function newGradRowUrl(row: NewGradRow): string {
 }
 
 export function newGradCompanyRoleKey(row: NewGradRow): string {
-  return companyRoleKey(row.company, row.title);
+  return jobCompanyRoleKey(row.company, row.title);
 }
 
 export function wasNewGradRowSeen(row: NewGradRow, seen: NewGradSeenKeys): boolean {
@@ -109,7 +109,7 @@ function readScanHistory(
     const status = (cells[5] ?? "").trim();
     if (!isTerminalScanStatus(status)) continue;
     if (url) urls.add(url);
-    const key = companyRoleKey(company, title);
+    const key = jobCompanyRoleKey(company, title);
     if (key) companyRoles.add(key);
   }
 }
@@ -128,7 +128,7 @@ function readPipelineUrls(
     if (url) urls.add(url);
   }
   for (const match of text.matchAll(/- \[[ x]\] https?:\/\/\S+\s+—\s+(.+?)\s+\|\s+(.+?)\s+\(/g)) {
-    const key = companyRoleKey(match[1] ?? "", match[2] ?? "");
+    const key = jobCompanyRoleKey(match[1] ?? "", match[2] ?? "");
     if (key) companyRoles.add(key);
   }
 }
@@ -138,18 +138,7 @@ function isTerminalScanStatus(status: string): boolean {
 }
 
 function normalizeUrl(value: string): string {
-  return canonicalizeJobUrl(value) ?? value.trim();
-}
-
-function companyRoleKey(company: string, role: string): string {
-  const normalizedCompany = normalizeText(company);
-  const normalizedRole = normalizeText(role);
-  if (!normalizedCompany || !normalizedRole) return "";
-  return `${normalizedCompany}|${normalizedRole}`;
-}
-
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
+  return normalizeJobUrl(value);
 }
 
 function tsvCell(value: string): string {

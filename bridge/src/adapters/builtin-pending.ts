@@ -6,9 +6,9 @@ import type {
   BuiltInPendingResult,
   NewGradScanConfig,
 } from "../contracts/newgrad.js";
-import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
 import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePendingValueReasons } from "./newgrad-pipeline-metadata.js";
 import {
   loadNegativeKeywords,
@@ -54,15 +54,15 @@ export function readBuiltInPendingEntries(
     if (!parsed) continue;
 
     const { url, company, role } = parsed;
-    if (tracked.has(`${company.toLowerCase()}|${role.toLowerCase()}`)) continue;
+    const companyRoleKey = pendingCompanyRoleKey(company, role);
+    if (tracked.has(companyRoleKey)) continue;
     if (matchesNegativeKeyword(role, negativeKeywords)) continue;
     if (isBlockedCompany(company, scanConfig)) continue;
     if (matchesHardFilterPhrase(role, scanConfig)) continue;
 
-    const companyRoleKey = pendingCompanyRoleKey(company, role);
     if (seenCompanyRoles.has(companyRoleKey)) continue;
 
-    const canonicalUrl = canonicalizeJobUrl(url) ?? url;
+    const canonicalUrl = normalizeJobUrl(url);
     if (seenUrls.has(canonicalUrl) || evaluatedReportUrls.has(canonicalUrl)) continue;
 
     seenUrls.add(canonicalUrl);
@@ -122,7 +122,7 @@ function parseBuiltInPendingLine(line: string): ParsedBuiltInPendingLine | null 
 }
 
 function pendingCompanyRoleKey(company: string, role: string): string {
-  return `${normalizeSearchText(company)}|${normalizeSearchText(role)}`;
+  return jobCompanyRoleKey(company, role);
 }
 
 function isBlockedCompany(company: string, config: NewGradScanConfig): boolean {

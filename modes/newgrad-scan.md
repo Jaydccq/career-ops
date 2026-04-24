@@ -91,9 +91,23 @@ List source behavior:
 Evaluation behavior:
 - Default: queue formal `newgrad_quick` evaluations for all enrich survivors and
   wait for completion so tracker merges can finish.
+- `newgrad_quick` can finish as `deep_eval`, `skip`, or `manual_review`.
+  `manual_review` writes a quick-screen report/tracker row and does not spend a
+  full evaluation.
+- If model quick eval fails, the runner only falls back to full eval for strong
+  local-value candidates. Ordinary quick failures are surfaced instead of
+  silently spending full-eval budget.
 - Use `--no-evaluate` to keep the old enrich-to-pipeline-only behavior.
 - Use `--evaluate-limit N` to cap how many survivors are sent to evaluation.
 - Use `--no-wait-evaluations` to queue jobs and return immediately.
+
+Run artifacts:
+- Every autonomous run writes `data/scan-runs/{scan_run_id}.jsonl` and
+  `data/scan-runs/{scan_run_id}-summary.json`.
+- The JSONL log records list-filter, detail-gate, queue, completion, failure,
+  and timeout events without full JD/page text.
+- The CLI prints the summary path before exiting. Use that summary first when
+  debugging why a scan found, skipped, queued, or evaluated a role.
 
 If browser automation is unavailable, use the extension fallback:
 

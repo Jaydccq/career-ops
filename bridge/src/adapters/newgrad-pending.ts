@@ -15,10 +15,10 @@ import type {
   NewGradPendingResult,
   NewGradScanConfig,
 } from "../contracts/newgrad.js";
-import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
 import { writeJdFile } from "../lib/write-jd-file.js";
 import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePendingValueReasons } from "./newgrad-pipeline-metadata.js";
 import {
   loadNegativeKeywords,
@@ -194,19 +194,19 @@ function readPipelineEntries(
     const role = (groups.role ?? "").trim();
     const score = Number(groups.score ?? 0);
     if (score < scanConfig.pipeline_threshold) continue;
-    if (tracked.has(`${company.toLowerCase()}|${role.toLowerCase()}`)) {
+    const companyRoleKey = pendingCompanyRoleKey(company, role);
+    if (tracked.has(companyRoleKey)) {
       continue;
     }
     if (matchesNegativeKeyword(role, negativeKeywords)) continue;
     if (isBlockedCompany(company, scanConfig)) continue;
     if (matchesHardFilterPhrase(role, scanConfig)) continue;
-    const companyRoleKey = pendingCompanyRoleKey(company, role);
     if (seenCompanyRoles.has(companyRoleKey)) continue;
 
     const localJdPath = normalizeLocalPath(groups.localJdPath);
     const pageText = localJdPath ? readLocalJd(repoRoot, localJdPath) : undefined;
     const url = groups.url ?? "";
-    const canonicalUrl = canonicalizeJobUrl(url) ?? url;
+    const canonicalUrl = normalizeJobUrl(url);
     if (seenUrls.has(canonicalUrl) || evaluatedReportUrls.has(canonicalUrl)) continue;
     seenUrls.add(canonicalUrl);
     seenCompanyRoles.add(companyRoleKey);
@@ -229,7 +229,7 @@ function readPipelineEntries(
 }
 
 function pendingCompanyRoleKey(company: string, role: string): string {
-  return `${normalizeSearchText(company)}|${normalizeSearchText(role)}`;
+  return jobCompanyRoleKey(company, role);
 }
 
 function isBlockedCompany(company: string, config: NewGradScanConfig): boolean {
@@ -353,8 +353,8 @@ function pendingLineMatches(
   if (!match) return false;
 
   const groups = match.groups ?? {};
-  const lineUrl = canonicalizeJobUrl(groups.url ?? "") ?? (groups.url ?? "");
-  const inputUrl = canonicalizeJobUrl(input.url) ?? input.url;
+  const lineUrl = normalizeJobUrl(groups.url ?? "");
+  const inputUrl = normalizeJobUrl(input.url);
   if (lineUrl !== inputUrl) return false;
 
   return (

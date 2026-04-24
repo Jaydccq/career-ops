@@ -237,6 +237,32 @@ export interface PipelineEntry {
 }
 
 /**
+ * One enriched row that was inspected but not promoted to the pipeline.
+ * Optional in `NewGradEnrichResult` so older callers can ignore row-level
+ * tracing and keep using aggregate `skipBreakdown`.
+ */
+export interface NewGradEnrichSkip {
+  /** Best available URL for the skipped row. */
+  url: string;
+  /** Company name. */
+  company: string;
+  /** Job title / role. */
+  role: string;
+  /** Source identifier, e.g. "newgrad-jobs.com". */
+  source: string;
+  /** Machine-readable skip reason. */
+  reason: string;
+  /** Human-readable detail when available. */
+  detail?: string;
+  /** Local list/detail score when available. */
+  score?: number;
+  /** Detailed value score when available. */
+  valueScore?: number;
+  /** Threshold that the row failed when available. */
+  threshold?: number;
+}
+
+/**
  * One unchecked newgrad-scan entry recovered from data/pipeline.md.
  */
 export interface NewGradPendingEntry extends PipelineEntry {
@@ -355,6 +381,8 @@ export interface NewGradEnrichResult {
   skipped: number;
   /** Counts by machine-readable skip reason for rows not promoted after detail enrichment. */
   skipBreakdown?: Readonly<Record<string, number>>;
+  /** Row-level skip traces for scanner run logs and debugging. */
+  skips?: readonly NewGradEnrichSkip[];
   /**
    * Rows that passed re-scoring + hard filters and are eligible for direct
    * evaluation, even if they were not appended to pipeline.md due to dedupe.

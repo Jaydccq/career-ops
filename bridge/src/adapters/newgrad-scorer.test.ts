@@ -636,7 +636,7 @@ describe("scoreAndFilter", () => {
     const config = makeConfig();
     const rows = [makeRow({ company: "Acme Corp", title: "Software Engineer" })];
     const negativeKeywords: string[] = [];
-    const tracked = new Set(["acme corp|software engineer"]);
+    const tracked = new Set(["acme|software engineer"]);
 
     const result = scoreAndFilter(rows, config, negativeKeywords, tracked);
 
@@ -730,7 +730,7 @@ describe("scoreAndFilter", () => {
     const config = makeConfig();
     const rows = [makeRow({ title: "Intern", company: "Acme Corp" })];
     const negativeKeywords = ["intern"];
-    const tracked = new Set(["acme corp|intern"]);
+    const tracked = new Set(["acme|intern"]);
 
     const result = scoreAndFilter(rows, config, negativeKeywords, tracked);
 

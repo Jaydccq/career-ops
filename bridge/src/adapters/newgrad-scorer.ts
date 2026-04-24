@@ -17,6 +17,7 @@ import type {
   ScoredRow,
 } from "../contracts/newgrad.js";
 import { matchActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
+import { jobCompanyRoleKey } from "./job-identity.js";
 import { findSkillKeywordMatches } from "./newgrad-skill-match.js";
 
 /* -------------------------------------------------------------------------- */
@@ -245,7 +246,7 @@ export function scoreRow(row: NewGradRow, config: NewGradScanConfig): ScoredRow 
  *   3. `active_clearance_required` — company is on the clearance blocklist
  *   4. `no_sponsorship` — original employer posting confirms no sponsorship
  *   5. `active_clearance_required` — original employer posting confirms active secret clearance
- *   6. `already_tracked` — `company|title` (lowercased) exists in trackedCompanyRoles
+ *   6. `already_tracked` — normalized `company|title` exists in trackedCompanyRoles
  *
  * **Soft filter:**
  *   3. `below_threshold` — score < list_threshold
@@ -403,7 +404,7 @@ export function scoreAndFilter(
     }
 
     // Hard filter 7: already tracked
-    const trackingKey = `${row.company.toLowerCase()}|${titleLower}`;
+    const trackingKey = jobCompanyRoleKey(row.company, row.title);
     if (trackedCompanyRoles.has(trackingKey)) {
       filtered.push({
         row,

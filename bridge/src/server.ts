@@ -859,6 +859,7 @@ export function buildServer(args: BuildServerArgs) {
         added: result.added,
         skipped: result.skipped,
         skipBreakdown: result.skipBreakdown,
+        skips: result.skips,
         entries: result.entries,
         candidates: result.candidates,
       });

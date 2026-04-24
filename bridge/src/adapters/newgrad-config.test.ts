@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
+  loadTrackedCompanyRoles,
   persistBlockedCompanies,
 } from "./newgrad-config.js";
 
@@ -121,6 +122,25 @@ describe("newgrad-config", () => {
     );
 
     expect(loadNegativeKeywords(repoRoot)).toEqual(["PhD", "Top Secret"]);
+  });
+
+  test("loadTrackedCompanyRoles uses normalized job identity keys", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "data/applications.md"),
+      [
+        "# Applications Tracker",
+        "",
+        "| # | Date | Company | Role | Score | Status | PDF | Report | Notes |",
+        "|---|------|---------|------|-------|--------|-----|--------|-------|",
+        "| 1 | 2026-04-24 | Acme, Inc. | Software Engineer I / Full-Stack | 4.0/5 | Evaluated | ❌ | [001](reports/001.md) | done |",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const tracked = loadTrackedCompanyRoles(repoRoot);
+
+    expect(tracked.has("acme|software engineer i full stack")).toBe(true);
   });
 
   test("persistBlockedCompanies writes deduped company memory", () => {

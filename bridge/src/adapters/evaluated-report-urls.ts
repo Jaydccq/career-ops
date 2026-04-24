@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
+import { normalizeJobUrl } from "./job-identity.js";
 
 export function loadEvaluatedReportUrls(repoRoot: string): Set<string> {
   const reportsDir = join(repoRoot, "reports");
@@ -12,7 +12,7 @@ export function loadEvaluatedReportUrls(repoRoot: string): Set<string> {
     if (!file.endsWith(".md")) continue;
     const markdown = readFileSync(join(reportsDir, file), "utf-8");
     const match = markdown.match(/^\*\*URL:\*\*\s+(.+)$/m);
-    const canonical = canonicalizeJobUrl(match?.[1]);
+    const canonical = normalizeJobUrl(match?.[1]);
     if (canonical) {
       urls.add(canonical);
     }

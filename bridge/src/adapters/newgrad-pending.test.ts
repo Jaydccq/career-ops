@@ -87,6 +87,31 @@ describe("readNewGradPendingEntries", () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  test("excludes tracker rows using normalized company-role identity", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "data/pipeline.md"),
+      "- [ ] https://example.com/acme — Acme Inc. | Software Engineer I / Full-Stack (via newgrad-scan, score: 8/9)\n",
+      "utf-8",
+    );
+    writeFileSync(
+      join(repoRoot, "data/applications.md"),
+      [
+        "# Career-Ops Applications Tracker",
+        "",
+        "| # | Date | Company | Role | Score | Status | PDF | Report | Notes |",
+        "|---|------|---------|------|-------|--------|-----|--------|-------|",
+        "| 1 | 2026-04-24 | Acme, Inc | Software Engineer I Full Stack | 4.0/5 | Evaluated | ❌ | [001](reports/001.md) | done |",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = readNewGradPendingEntries(repoRoot, 10);
+
+    expect(result.total).toBe(0);
+    expect(result.entries).toHaveLength(0);
+  });
+
   test("reads builtin-scan pipeline entries with BuiltIn source", () => {
     const repoRoot = makeRepoRoot();
     writeFileSync(

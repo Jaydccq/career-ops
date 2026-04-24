@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { FilteredRow, NewGradScanConfig } from "../contracts/newgrad.js";
-import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
+import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 
 const COMPANY_MEMORY_PATH = "data/newgrad-company-memory.yml";
 
@@ -314,10 +314,11 @@ export function loadTrackedCompanyRoles(repoRoot: string): Set<string> {
       const cols = line.split("|").map((segment) => segment.trim());
       if (cols.length < 5) continue;
 
-      const company = cols[3]?.toLowerCase() ?? "";
-      const role = cols[4]?.toLowerCase() ?? "";
-      if (company && role) {
-        tracked.add(`${company}|${role}`);
+      const company = cols[3] ?? "";
+      const role = cols[4] ?? "";
+      const key = jobCompanyRoleKey(company, role);
+      if (key) {
+        tracked.add(key);
       }
     }
   } catch {
@@ -337,7 +338,7 @@ export function loadPipelineUrls(repoRoot: string): Set<string> {
     for (const line of content.split("\n")) {
       const match = /^\s*-\s+\[[ xX]?\]\s+(\S+)/.exec(line);
       if (match?.[1]) {
-        urls.add(canonicalizeJobUrl(match[1]) ?? match[1]);
+        urls.add(normalizeJobUrl(match[1]));
       }
     }
   } catch {

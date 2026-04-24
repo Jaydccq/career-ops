@@ -50,6 +50,7 @@ import type {
   EnrichedRow,
   NewGradScoreResult,
   NewGradEnrichResult,
+  NewGradEnrichSkip,
   PipelineEntry,
 } from "../contracts/newgrad.js";
 
@@ -431,6 +432,7 @@ export function createSdkPipelineAdapter(
 
       const entries: PipelineEntry[] = [];
       const candidates: PipelineEntry[] = [];
+      const skips: NewGradEnrichSkip[] = [];
       const skipBreakdown: Record<string, number> = {};
       let skipped = 0;
       let processed = 0;
@@ -438,6 +440,17 @@ export function createSdkPipelineAdapter(
       const skipRow = (reason: string, row: EnrichedRow) => {
         skipped++;
         skipBreakdown[reason] = (skipBreakdown[reason] ?? 0) + 1;
+        skips.push({
+          url:
+            row.detail.originalPostUrl ||
+            row.detail.applyNowUrl ||
+            row.row.row.applyUrl ||
+            row.row.row.detailUrl,
+          company: row.detail.company || row.row.row.company,
+          role: row.detail.title || row.row.row.title,
+          source: scanSourceForRow(row.row.row),
+          reason,
+        });
         onProgress?.(processed, rows.length, row);
       };
 
@@ -544,7 +557,7 @@ export function createSdkPipelineAdapter(
         appendFileSync(pipelinePath, "\n" + lines.join("\n") + "\n", "utf-8");
       }
 
-      return { added: entries.length, skipped, skipBreakdown, entries, candidates };
+      return { added: entries.length, skipped, skipBreakdown, skips, entries, candidates };
     },
 
     async readNewGradPendingEntries(limit: number) {

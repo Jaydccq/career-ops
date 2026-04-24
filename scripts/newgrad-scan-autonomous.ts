@@ -4,6 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import {
+  createScanRunId,
+  createScanRunRecorder,
+  type ScanRunRecorder,
+} from "../bridge/src/adapters/newgrad-scan-run-log.ts";
+import {
   extractNewGradDetail,
   extractNewGradList,
 } from "../extension/src/content/extract-newgrad.ts";
@@ -276,19 +281,27 @@ async function main(): Promise<void> {
     return;
   }
 
-  const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
   const bridgeBase = `http://${options.bridgeHost}:${options.bridgePort}`;
+  const scanRun = createScanRunRecorder({
+    repoRoot,
+    scanRunId: createScanRunId("newgrad"),
+    source: "newgrad-scan",
+  });
   let context: BrowserContext | undefined;
 
   try {
+    const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
+    scanRun.record("bridge_health_check_started", { bridgeBase });
     await assertBridgeHealthy(bridgeBase, token);
     context = await launchContext(options);
 
     const listPage = await context.newPage();
     console.log(`Opening ${options.url}`);
+    scanRun.record("source_open_started", { url: options.url });
     await gotoSettled(listPage, options.url);
 
     const source = await resolveScanSource(listPage, options.url);
+    scanRun.record("source_resolved", source);
     if (source.url !== listPage.url()) {
       console.log(`Opening embedded source ${source.url}`);
       await gotoSettled(listPage, source.url);
@@ -300,14 +313,21 @@ async function main(): Promise<void> {
     }
     await listPage.close();
     console.log(`Extracted ${rows.length} ${source.kind} rows`);
+    scanRun.increment("discovered", rows.length);
+    scanRun.record("rows_extracted", { count: rows.length, sourceKind: source.kind });
 
     if (rows.length === 0) {
       console.log("No rows extracted; nothing to score.");
+      const summary = scanRun.finalize("completed", { reason: "no_rows" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
       return;
     }
 
     const score = await scoreRows(bridgeBase, token, dedupeRows(rows));
     console.log(`Scored rows: promoted=${score.promoted.length}, filtered=${score.filtered.length}`);
+    scanRun.increment("listPromoted", score.promoted.length);
+    scanRun.increment("listFiltered", score.filtered.length);
+    recordListDecisions(scanRun, score);
 
     if (score.promoted.length > 0) {
       const top = score.promoted.slice(0, 10).map((row, index) =>
@@ -317,6 +337,10 @@ async function main(): Promise<void> {
     }
 
     if (options.scoreOnly || score.promoted.length === 0) {
+      const summary = scanRun.finalize("completed", {
+        reason: options.scoreOnly ? "score_only" : "no_promoted_rows",
+      });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
       return;
     }
 
@@ -327,12 +351,20 @@ async function main(): Promise<void> {
 
     const { enrichedRows, failed } = await enrichDetails(context, promoted, options);
     console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
+    scanRun.increment("enriched", enrichedRows.length);
+    scanRun.increment("enrichmentFailed", failed);
+    scanRun.record("detail_enrichment_completed", {
+      enriched: enrichedRows.length,
+      failed,
+    });
     await context.close();
     context = undefined;
     console.log("Closed scan browser after detail enrichment.");
 
     if (enrichedRows.length === 0) {
       console.log("No enriched rows; nothing to write to pipeline.");
+      const summary = scanRun.finalize("completed", { reason: "no_enriched_rows" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
       return;
     }
 
@@ -340,6 +372,15 @@ async function main(): Promise<void> {
     console.log(
       `Bridge enrich result: added=${enrich.added}, skipped=${enrich.skipped}, candidates=${enrich.candidates?.length ?? 0}`,
     );
+    scanRun.increment("detailAdded", enrich.added);
+    scanRun.increment("detailSkipped", enrich.skipped);
+    scanRun.record("bridge_enrich_completed", {
+      added: enrich.added,
+      skipped: enrich.skipped,
+      candidates: enrich.candidates?.length ?? 0,
+      skipBreakdown: enrich.skipBreakdown,
+    });
+    recordDetailDecisions(scanRun, enrich);
     if (enrich.skipBreakdown && Object.keys(enrich.skipBreakdown).length > 0) {
       console.log(`Skip breakdown: ${JSON.stringify(enrich.skipBreakdown)}`);
     }
@@ -352,6 +393,8 @@ async function main(): Promise<void> {
 
     if (!options.evaluate) {
       console.log("Direct evaluation disabled by --no-evaluate.");
+      const summary = scanRun.finalize("completed", { reason: "evaluation_disabled" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
       return;
     }
 
@@ -361,6 +404,8 @@ async function main(): Promise<void> {
     );
     if (evaluationCandidates.length === 0) {
       console.log("No enrich survivors eligible for direct evaluation.");
+      const summary = scanRun.finalize("completed", { reason: "no_evaluation_candidates" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
       return;
     }
 
@@ -374,6 +419,14 @@ async function main(): Promise<void> {
     console.log(
       `Direct evaluation queue: queued=${queued.jobs.length}, failed=${queued.failed.length}, skipped=${queued.skipped}`,
     );
+    scanRun.increment("queued", queued.jobs.length);
+    scanRun.increment("queueFailed", queued.failed.length);
+    scanRun.increment("queueSkipped", queued.skipped);
+    scanRun.record("direct_evaluation_queue_completed", {
+      queued: queued.jobs.length,
+      failed: queued.failed.length,
+      skipped: queued.skipped,
+    });
     for (const failedJob of queued.failed) {
       console.warn(`- failed to queue ${failedJob.company} — ${failedJob.role}: ${failedJob.error}`);
     }
@@ -383,20 +436,52 @@ async function main(): Promise<void> {
       console.log(
         `Direct evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`,
       );
+      scanRun.increment("completed", result.completed.length);
+      scanRun.increment("failed", result.failed.length);
+      scanRun.increment("timedOut", result.timedOut.length);
+      scanRun.record("direct_evaluation_wait_completed", {
+        completed: result.completed.length,
+        failed: result.failed.length,
+        timedOut: result.timedOut.length,
+      });
       for (const item of result.completed) {
+        scanRun.record("evaluation_completed", {
+          company: item.result.company,
+          role: item.result.role,
+          score: item.result.score,
+          reportPath: item.result.reportPath,
+          trackerMerged: item.result.trackerMerged,
+        });
         console.log(
           `- ${item.result.company} — ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`,
         );
       }
       for (const item of result.failed) {
+        scanRun.record("evaluation_failed", {
+          company: item.job.company,
+          role: item.job.role,
+          error: item.error,
+        });
         console.warn(`- failed ${item.job.company} — ${item.job.role}: ${item.error}`);
       }
       for (const item of result.timedOut) {
+        scanRun.record("evaluation_timed_out", {
+          company: item.company,
+          role: item.role,
+          jobId: item.jobId,
+        });
         console.warn(`- timed out waiting for ${item.company} — ${item.role}: job=${item.jobId}`);
       }
     } else if (queued.jobs.length > 0) {
       console.log("Evaluation jobs queued; not waiting because --no-wait-evaluations was set.");
     }
+    const summary = scanRun.finalize("completed");
+    console.log(`Scan run summary: ${summary.summaryPath}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const summary = scanRun.finalize("failed", { error: message });
+    console.error(`Scan run failed. Summary: ${summary.summaryPath}`);
+    throw error;
   } finally {
     await context?.close();
   }
@@ -707,6 +792,10 @@ async function writeEnrichedRows(
     merged.added += result.added;
     merged.skipped += result.skipped;
     merged.entries = [...merged.entries, ...result.entries];
+    merged.skips = [
+      ...(merged.skips ?? []),
+      ...(result.skips ?? []),
+    ];
     merged.candidates = [
       ...(merged.candidates ?? []),
       ...(result.candidates ?? result.entries),
@@ -715,6 +804,53 @@ async function writeEnrichedRows(
   }
 
   return merged;
+}
+
+function recordListDecisions(
+  scanRun: ScanRunRecorder,
+  score: NewGradScoreResult,
+): void {
+  for (const item of score.promoted) {
+    scanRun.record("list_filter_passed", {
+      company: item.row.company,
+      role: item.row.title,
+      url: normalizeUrl(item.row.applyUrl) ?? item.row.applyUrl,
+      score: item.score,
+      maxScore: item.maxScore,
+      breakdown: item.breakdown,
+    });
+  }
+
+  for (const item of score.filtered) {
+    scanRun.record("list_filter_skipped", {
+      company: item.row.company,
+      role: item.row.title,
+      url: normalizeUrl(item.row.applyUrl) ?? item.row.applyUrl,
+      reason: item.reason,
+      detail: item.detail,
+    });
+  }
+}
+
+function recordDetailDecisions(
+  scanRun: ScanRunRecorder,
+  enrich: NewGradEnrichResult,
+): void {
+  for (const entry of enrich.entries) {
+    scanRun.record("detail_gate_passed", {
+      company: entry.company,
+      role: entry.role,
+      url: entry.url,
+      score: entry.score,
+      valueScore: entry.valueScore,
+      valueReasons: entry.valueReasons,
+      source: entry.source,
+    });
+  }
+
+  for (const skip of enrich.skips ?? []) {
+    scanRun.record("detail_gate_skipped", skip as unknown as Record<string, unknown>);
+  }
 }
 
 async function queueDirectEvaluations(

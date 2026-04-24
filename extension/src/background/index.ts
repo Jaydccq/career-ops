@@ -2434,6 +2434,7 @@ async function handleNewGradEnrich(rows: EnrichedRow[], sessionId: string): Prom
     added: 0,
     skipped: 0,
     skipBreakdown: {},
+    skips: [],
     entries: [],
     candidates: [],
   };
@@ -2459,11 +2460,15 @@ async function handleNewGradEnrich(rows: EnrichedRow[], sessionId: string): Prom
               row: event.row,
             }).catch(() => { /* no listeners — OK */ });
           } else if (event.kind === "done") {
+            const eventSkips = event.skips as NonNullable<NewGradEnrichResult["skips"]> | undefined;
             chunkState.result = {
               added: event.added as number,
               skipped: event.skipped as number,
               ...((event.skipBreakdown as Record<string, number> | undefined)
                 ? { skipBreakdown: event.skipBreakdown as Record<string, number> }
+                : {}),
+              ...(eventSkips
+                ? { skips: eventSkips }
                 : {}),
               entries: event.entries as PipelineEntry[],
               ...((event.candidates as PipelineEntry[] | undefined)
@@ -2499,6 +2504,10 @@ async function handleNewGradEnrich(rows: EnrichedRow[], sessionId: string): Prom
     mergedResult.added += chunkResult.added;
     mergedResult.skipped += chunkResult.skipped;
     mergeSkipBreakdown(mergedResult.skipBreakdown, chunkResult.skipBreakdown);
+    mergedResult.skips = [
+      ...(mergedResult.skips ?? []),
+      ...(chunkResult.skips ?? []),
+    ];
     mergedResult.entries = [...mergedResult.entries, ...chunkResult.entries];
     mergedResult.candidates = [
       ...(mergedResult.candidates ?? []),
