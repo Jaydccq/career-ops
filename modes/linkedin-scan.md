@@ -6,7 +6,7 @@ promoted detail pages, and optionally queues `newgrad_quick` evaluations.
 
 ## Prerequisites
 
-- Bridge server running in real Codex mode (`npm run ext:bridge`)
+- Bridge server running in real Codex mode (`bun run ext:bridge`)
 - `bb-browser` installed and on `PATH`
 - LinkedIn logged in inside the `bb-browser` managed browser
 
@@ -24,7 +24,7 @@ Log in manually in that browser, then rerun the scan.
 
 Check `/v1/health`. If it is not reachable, tell the user:
 
-> "Start the bridge first: `npm run ext:bridge`"
+> "Start the bridge first: `bun run ext:bridge`"
 
 The health response should show `execution.mode=real` and
 `execution.realExecutor=codex` before queueing evaluations.
@@ -40,17 +40,19 @@ https://www.linkedin.com/jobs/search-results/?currentJobId=4347121472&keywords=s
 Preview:
 
 ```bash
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 20
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only
 ```
 
-`--score-only` extracts and scores rows without calling bridge write endpoints.
+By default, the scanner reads up to 100 unique rows across 6 LinkedIn result
+pages. `--score-only` extracts and scores rows without calling bridge write
+endpoints.
 
 ### Step 3: Enrich and write candidates
 
 Run:
 
 ```bash
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 5
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 20
 ```
 
 This opens promoted LinkedIn job-view pages, extracts detail text, writes
@@ -63,21 +65,22 @@ enrich survivors and waits for completion.
 Useful options:
 
 ```bash
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 5
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --pages 4 --limit 100
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --open-external-apply --enrich-limit 5
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 2
-npm run linkedin-scan -- --url "<LinkedIn Jobs URL>" --evaluate-limit 3
-npm run linkedin-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 5
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --pages 4 --limit 100
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --open-external-apply --enrich-limit 20
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 2
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --evaluate-limit 3
+bun run linkedin-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
 ```
 
-Use `--pages` for larger LinkedIn result-set testing. The scanner opens
-successive search-result URLs with `start` offsets. The current LinkedIn
-`search-results` route exposes 6 jobs per offset page by default; override with
-`--page-size` if LinkedIn changes the result shape. Rows are deduped by
-canonical LinkedIn job URL before scoring, so overlapping result pages do not
-create duplicate candidates. Use `--scroll-steps` to probe virtualized lists
-within each result page; each probe is a short read-only scroll plus re-extract.
+Use `--pages` and `--limit` for larger LinkedIn result-set testing. The scanner
+opens successive search-result URLs with `start` offsets and defaults to
+`--pages 6 --limit 100`. The current LinkedIn `search-results` route uses a
+25-row start offset convention; override `--page-size` if LinkedIn changes the
+result shape. Rows are deduped by canonical LinkedIn job URL before scoring, so
+overlapping result pages do not create duplicate candidates. Use `--scroll-steps`
+to probe virtualized lists within each result page; each probe is a short
+read-only scroll plus re-extract.
 
 If no `--url` is passed, the script reads
 `config/profile.yml -> linkedin_scan.search_url`.

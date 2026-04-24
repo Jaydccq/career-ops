@@ -7,8 +7,8 @@ and optionally queues `newgrad_quick` evaluations.
 ## Prerequisites
 
 - `bb-browser` installed and on `PATH`
-- Bridge server running for write/evaluate paths (`npm --prefix bridge run start`
-  or `npm run ext:bridge`)
+- Bridge server running for write/evaluate paths (`bun --cwd bridge run start`
+  or `bun run ext:bridge`)
 - Indeed accessible in the managed browser
 
 If Indeed requires login, verification, or a security check, run:
@@ -31,7 +31,7 @@ https://www.indeed.com/jobs?q=software%20engineer%2C%20AI%20engineer&l=&fromage=
 Preview without writes:
 
 ```bash
-npm run indeed-scan -- --url "<Indeed URL>" --score-only --limit 20
+bun run indeed-scan -- --url "<Indeed URL>" --score-only --limit 20
 ```
 
 `--score-only` extracts and scores rows without calling bridge write endpoints.
@@ -40,21 +40,21 @@ The full URL is preserved, including `fromage=7`, empty `l=`, and `sc=...`.
 Write pipeline candidates without evaluations:
 
 ```bash
-npm run indeed-scan -- --url "<Indeed URL>" --no-evaluate --enrich-limit 5
+bun run indeed-scan -- --url "<Indeed URL>" --no-evaluate --enrich-limit 5
 ```
 
 Scan and queue capped evaluations:
 
 ```bash
-npm run indeed-scan -- --url "<Indeed URL>" --evaluate-limit 3
+bun run indeed-scan -- --url "<Indeed URL>" --evaluate-limit 3
 ```
 
 Useful options:
 
 ```bash
-npm run indeed-scan -- --url "<Indeed URL>" --score-only --pages 3 --limit 60
-npm run indeed-scan -- --query "software engineer, AI engineer" --location "" --score-only
-npm run indeed-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
+bun run indeed-scan -- --url "<Indeed URL>" --score-only --pages 3 --limit 60
+bun run indeed-scan -- --query "software engineer, AI engineer" --location "" --score-only
+bun run indeed-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
 ```
 
 ## Safety Boundaries

@@ -40,6 +40,8 @@ export interface BridgeConfig {
   claudeBin: string | null;
   /** Absolute path to the codex CLI, or null if unresolved. */
   codexBin: string | null;
+  /** Codex model used for bridge evaluations. */
+  codexModel: string | null;
   /** Absolute path to the node CLI. */
   nodeBin: string;
   /** Which pipeline adapter to use. */
@@ -66,6 +68,7 @@ const DEFAULT_EVAL_TIMEOUT_SEC = 900;   // 15 min — claude -p can be slow
 const DEFAULT_EVAL_CONCURRENCY = 2;
 const DEFAULT_EVAL_RPM = 30;
 const DEFAULT_LIVENESS_TIMEOUT_SEC = 20;
+const DEFAULT_CODEX_MODEL = "gpt-5.4";
 
 function here(): string {
   return dirname(fileURLToPath(import.meta.url));
@@ -197,6 +200,11 @@ function parsePositiveInt(raw: string | undefined, fallback: number, envName: st
   return n;
 }
 
+function parseOptionalString(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  return value ? value : null;
+}
+
 export function loadConfig(): BridgeConfig {
   const { repoRoot, bridgeDir } = findRepoRoot();
 
@@ -228,6 +236,7 @@ export function loadConfig(): BridgeConfig {
   const token = loadOrGenerateToken(bridgeDir);
   const claudeBin = resolveBin("claude");
   const codexBin = resolveBin("codex");
+  const codexModel = parseOptionalString(process.env.CAREER_OPS_CODEX_MODEL) ?? DEFAULT_CODEX_MODEL;
   const nodeBin = resolveBin("node") ?? process.execPath;
   const mode = parseMode(process.env.CAREER_OPS_BRIDGE_MODE);
   const realExecutor = parseRealExecutor(process.env.CAREER_OPS_REAL_EXECUTOR);
@@ -264,6 +273,7 @@ export function loadConfig(): BridgeConfig {
     token,
     claudeBin,
     codexBin,
+    codexModel,
     nodeBin,
     mode,
     realExecutor,

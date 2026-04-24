@@ -120,16 +120,16 @@ must accept this tag anywhere `newgrad-scan`, `builtin-scan`, and
 Built In:
 
 ```bash
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --no-evaluate
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --evaluate-limit 3
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --no-evaluate
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --evaluate-limit 3
 ```
 
 Indeed:
 
 ```bash
-npm run indeed-scan -- --url "https://www.indeed.com/jobs?q=software%20engineer%2C%20AI%20engineer&l=&fromage=7&sc=0kf%3Aattr%28CF3CP%29explvl%28ENTRY_LEVEL%29%3B&from=searchOnDesktopSerp" --score-only
-npm run indeed-scan -- --url "https://www.indeed.com/jobs?q=software%20engineer%2C%20AI%20engineer&l=&fromage=7&sc=0kf%3Aattr%28CF3CP%29explvl%28ENTRY_LEVEL%29%3B&from=searchOnDesktopSerp" --evaluate-limit 3
+bun run indeed-scan -- --url "https://www.indeed.com/jobs?q=software%20engineer%2C%20AI%20engineer&l=&fromage=7&sc=0kf%3Aattr%28CF3CP%29explvl%28ENTRY_LEVEL%29%3B&from=searchOnDesktopSerp" --score-only
+bun run indeed-scan -- --url "https://www.indeed.com/jobs?q=software%20engineer%2C%20AI%20engineer&l=&fromage=7&sc=0kf%3Aattr%28CF3CP%29explvl%28ENTRY_LEVEL%29%3B&from=searchOnDesktopSerp" --evaluate-limit 3
 ```
 
 Mode docs should route `/career-ops builtin-scan` and `/career-ops indeed-scan`
@@ -167,7 +167,7 @@ adapter for the approved Indeed URL.
 ## Error Handling
 
 - Missing `bb-browser`: stop with setup guidance.
-- Bridge offline: stop with `npm run ext:bridge` guidance.
+- Bridge offline: stop with `bun run ext:bridge` guidance.
 - Adapter error or verification wall: stop with adapter `error`, `hint`, and
   `action`; do not retry with bypass behavior.
 - Zero rows: report source, URL, page count, raw parsed count, and whether the
@@ -201,10 +201,10 @@ Unit and structural tests:
 
 Script checks:
 
-- `npm run builtin-scan -- --help`
-- `npm run indeed-scan -- --help`
-- `npm run builtin-scan -- --url "<Built In URL>" --score-only --limit 20`
-- `npm run indeed-scan -- --url "<Indeed URL>" --score-only --limit 20`
+- `bun run builtin-scan -- --help`
+- `bun run indeed-scan -- --help`
+- `bun run builtin-scan -- --url "<Built In URL>" --score-only --limit 20`
+- `bun run indeed-scan -- --url "<Indeed URL>" --score-only --limit 20`
 
 Live capped checks:
 

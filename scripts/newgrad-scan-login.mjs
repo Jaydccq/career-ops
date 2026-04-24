@@ -12,7 +12,7 @@ function usage() {
   return `career-ops newgrad scan login browser
 
 Usage:
-  npm run newgrad-scan:login -- [options]
+  bun run newgrad-scan:login -- [options]
 
 Options:
   --url <url>             Login URL. Default: ${DEFAULT_URL}

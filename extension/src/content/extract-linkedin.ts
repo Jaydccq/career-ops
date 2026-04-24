@@ -424,6 +424,135 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     return "";
   }
 
+  async function expandJobDescription(): Promise<void> {
+    async function wait(ms: number): Promise<void> {
+      await new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    async function scrollDetailPanes(): Promise<void> {
+      const knownPanes = Array.from(document.querySelectorAll<HTMLElement>(
+        "main, .jobs-search__job-details, .jobs-search__job-details--container, .jobs-details, .scaffold-layout__detail, .scaffold-layout__main",
+      )).filter((node) => node.scrollHeight > node.clientHeight + 100);
+      const documentTitle = compact(document.title.replace(/\s+\|\s+.*$/i, ""));
+      const genericPanes = Array.from(document.querySelectorAll<HTMLElement>("main, section, article, div"))
+        .filter((node) => node.scrollHeight > node.clientHeight + 100)
+        .filter((node) => {
+          const rect = node.getBoundingClientRect();
+          if (rect.width < 280 || rect.height < 250) return false;
+          const value = text(node);
+          const hasCurrentTitle = Boolean(documentTitle && value.includes(documentTitle));
+          const hasTopCardSignal = /\b(apply|saved|people clicked apply|assessing your job match)\b/i.test(value);
+          const isRightSidePane = rect.left > window.innerWidth * 0.35;
+          return (hasCurrentTitle && hasTopCardSignal) || isRightSidePane;
+        });
+      const seen = new Set<HTMLElement>();
+      const panes = [...knownPanes, ...genericPanes]
+        .filter((node) => {
+          if (seen.has(node)) return false;
+          seen.add(node);
+          return true;
+        })
+        .sort((a, b) => b.getBoundingClientRect().left - a.getBoundingClientRect().left);
+
+      for (const pane of panes.slice(0, 6)) {
+        const originalTop = pane.scrollTop;
+        for (const ratio of [0.25, 0.5, 0.75, 0.95]) {
+          pane.scrollTop = Math.floor((pane.scrollHeight - pane.clientHeight) * ratio);
+          pane.dispatchEvent(new Event("scroll", { bubbles: true }));
+          await wait(350);
+          if (/\babout the job\b|\brole summary\b|\bprimary responsibilities\b|\brequirements\b/i.test(text(pane))) {
+            break;
+          }
+        }
+        pane.scrollTop = originalTop;
+        pane.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+    }
+
+    function isDescriptionLike(value: string): boolean {
+      return /\babout the job\b|\bdescription\b|\brole summary\b|\bprimary responsibilities\b|\brequirements\b|\bqualifications\b/i
+        .test(value);
+    }
+
+    function isFooterOrChrome(value: string): boolean {
+      return linkedInChromeSignalCount(value) >= 3 && !isDescriptionLike(value);
+    }
+
+    async function waitForDescriptionSignals(): Promise<void> {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (isDescriptionLike(text(document.body))) return;
+        await scrollDetailPanes();
+        await wait(900);
+      }
+    }
+
+    await waitForDescriptionSignals();
+    await scrollDetailPanes();
+
+    const containers = Array.from(document.querySelectorAll<HTMLElement>(
+      [
+        ".jobs-description__content",
+        ".jobs-box__html-content",
+        ".jobs-description-content__text",
+        ".jobs-description",
+        ".jobs-description__container",
+        ".description__text",
+        ".show-more-less-html__markup",
+        ".jobs-search__job-details",
+        "main",
+      ].join(", "),
+    ));
+
+    const descriptionContainers = containers.filter((node) => {
+      const value = text(node);
+      return isDescriptionLike(value) && !isFooterOrChrome(value);
+    });
+
+    function descriptionContextForButton(button: HTMLElement, boundary: HTMLElement): string {
+      let node: HTMLElement | null = button.parentElement;
+      let depth = 0;
+      while (node && node !== document.body && depth < 8) {
+        const value = text(node);
+        if (isFooterOrChrome(value)) return "";
+        if (isDescriptionLike(value)) return value;
+        if (node === boundary) break;
+        node = node.parentElement;
+        depth += 1;
+      }
+
+      const boundaryText = text(boundary);
+      return isDescriptionLike(boundaryText) && !isFooterOrChrome(boundaryText)
+        ? boundaryText
+        : "";
+    }
+
+    for (const container of descriptionContainers) {
+      const buttons = Array.from(container.querySelectorAll<HTMLElement>(
+        "button, [role='button'], a",
+      ));
+      const expandButton = buttons.find((button) => {
+        const label = compact([
+          button.getAttribute("aria-label") ?? "",
+          button.getAttribute("title") ?? "",
+          text(button),
+        ].join(" "));
+        if (!label) return false;
+        if (/more options|show less|see less|collapse|try premium|post a job/i.test(label)) return false;
+        if (!descriptionContextForButton(button, container)) return false;
+        return /\b(show|see|read)\s+more\b|…\s*more|\.{3}\s*more|click to see more/i.test(label) ||
+          label.toLowerCase() === "more";
+      });
+      if (!expandButton) continue;
+
+      expandButton.scrollIntoView({ block: "center" });
+      await wait(500);
+      expandButton.click();
+      await wait(900);
+      return;
+    }
+  }
+
   function cleanDescriptionText(value: string): string {
     const stopPatterns = [
       /^looking for talent\?$/i,
@@ -440,6 +569,15 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
       /^manage your account and privacy$/i,
       /^recommendation transparency$/i,
       /^select language$/i,
+      /^set alert for similar jobs/i,
+      /^job search faster with premium/i,
+      /^access company insights/i,
+      /^millions of members use premium/i,
+      /^about the company$/i,
+      /^interested in working with us in the future/i,
+      /^people also viewed$/i,
+      /^similar jobs$/i,
+      /^show more jobs$/i,
     ];
     const skipPatterns = [
       /^apply$/i,
@@ -464,6 +602,42 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     }
 
     return cleaned.join("\n").trim();
+  }
+
+  function descriptionSegment(value: string): string {
+    const sourceLines = lines(value);
+    const start = sourceLines.findIndex((line, index) => {
+      if (/^about the job$/i.test(line)) return true;
+      if (/^job description$/i.test(line)) return true;
+      if (/^description$/i.test(line)) {
+        const nearby = sourceLines.slice(index, index + 40).join("\n");
+        return hasStrongJobDescriptionSignal(nearby) || hasWeakJobDescriptionSignal(nearby);
+      }
+      return /^(role summary|primary responsibilities|requirements)$/i.test(line);
+    });
+    if (start === -1) return value;
+
+    const stopPatterns = [
+      /^set alert for similar jobs/i,
+      /^job search faster with premium/i,
+      /^access company insights/i,
+      /^millions of members use premium/i,
+      /^try premium for/i,
+      /^about the company$/i,
+      /^interested in working with us in the future/i,
+      /^people also viewed$/i,
+      /^similar jobs$/i,
+      /^show more jobs$/i,
+      /^looking for talent\?$/i,
+    ];
+    const segment: string[] = [];
+
+    for (const line of sourceLines.slice(start)) {
+      if (segment.length >= 8 && stopPatterns.some((pattern) => pattern.test(line))) break;
+      segment.push(line);
+    }
+
+    return segment.join("\n").trim();
   }
 
   function linkedInChromeSignalCount(value: string): number {
@@ -502,8 +676,12 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
 
   function firstLikelyDescription(...selectors: string[]): string {
     for (const selector of selectors) {
-      const cleaned = cleanDescriptionText(text(document.querySelector(selector)));
-      if (cleaned && isLikelyJobDescription(cleaned)) return cleaned;
+      const raw = text(document.querySelector(selector));
+      const candidates = Array.from(new Set([descriptionSegment(raw), raw]));
+      for (const candidate of candidates) {
+        const cleaned = cleanDescriptionText(candidate);
+        if (cleaned && isLikelyJobDescription(cleaned)) return cleaned;
+      }
     }
     return "";
   }
@@ -655,13 +833,17 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     return skills.filter((skill) => normalized.includes(skill.toLowerCase())).slice(0, 14);
   }
 
-  const title = firstText("h1", ".job-details-jobs-unified-top-card__job-title", ".jobs-unified-top-card__job-title");
+  await expandJobDescription();
+
+  const pageTitleMatch = document.title.match(/^(.+?)\s+\|\s+(.+?)\s+\|\s+LinkedIn$/i);
+  const title = firstText("h1", ".job-details-jobs-unified-top-card__job-title", ".jobs-unified-top-card__job-title") ||
+    compact(pageTitleMatch?.[1] ?? "");
   const company = firstText(
     ".job-details-jobs-unified-top-card__company-name a",
     ".job-details-jobs-unified-top-card__company-name",
     ".jobs-unified-top-card__company-name a",
     ".jobs-unified-top-card__company-name",
-  );
+  ) || compact(pageTitleMatch?.[2] ?? "");
   const topCardText = firstText(
     ".job-details-jobs-unified-top-card",
     ".jobs-unified-top-card",
@@ -686,8 +868,8 @@ export async function extractLinkedInDetail(): Promise<LinkedInDetail> {
     .find((line) => /\b[A-Z][a-z]+(?: [A-Z][a-z]+)*,\s*[A-Z]{2}\b/.test(line) || /\bUnited States\b/i.test(line) || /\bRemote\b/i.test(line)) ?? "";
   const sponsorship = sponsorshipStatus(description || pageText);
   const requiresClearance = requiresActiveClearance(description || pageText);
-  const requiredQualifications = sectionItems(description, /^(qualifications|requirements|basic qualifications|required qualifications|what you bring)$/i);
-  const responsibilities = sectionItems(description, /^(responsibilities|what you will do|you will|about the role)$/i);
+  const requiredQualifications = sectionItems(description, /^(requirements|qualifications|basic qualifications|required qualifications|preferred qualifications|what you bring)$/i);
+  const responsibilities = sectionItems(description, /^(primary responsibilities|responsibilities|what you will do|you will|about the role)$/i);
 
   return {
     position: 0,

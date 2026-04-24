@@ -45,6 +45,8 @@ export interface PipelineConfig {
   claudeBin: string;
   /** Absolute path to the `codex` CLI binary when available. */
   codexBin?: string | null;
+  /** Codex model passed with `codex exec -m`, avoiding drift in user-level defaults. */
+  codexModel?: string | null;
   /** Absolute path to the `node` CLI binary. */
   nodeBin: string;
   /** Which CLI powers real mode. */

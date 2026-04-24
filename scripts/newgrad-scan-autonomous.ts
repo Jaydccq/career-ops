@@ -98,7 +98,7 @@ function usage(): string {
   return `career-ops autonomous newgrad scan
 
 Usage:
-  npm run newgrad-scan -- [options]
+  bun run newgrad-scan -- [options]
 
 Options:
   --url <url>             Source URL. Default: ${DEFAULT_URL}

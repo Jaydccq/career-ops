@@ -30,7 +30,10 @@ import type {
 } from "../bridge/src/contracts/jobs.ts";
 import {
   buildLinkedInSearchPageUrls,
+  canonicalLinkedInJobViewUrl,
   detectLinkedInAuthBlock,
+  parseLinkedInVisibleJobCardText,
+  type LinkedInVisibleJobCard,
   type LinkedInAuthStateInput,
 } from "../bridge/src/adapters/linkedin-scan-normalizer.ts";
 import {
@@ -51,7 +54,9 @@ import { pickPipelineEntryUrl } from "../bridge/src/adapters/newgrad-links.ts";
 const PROTOCOL_VERSION = "1.0.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 47319;
-const DEFAULT_PAGE_SIZE = 6;
+const DEFAULT_LIMIT = 100;
+const DEFAULT_PAGES = 6;
+const DEFAULT_PAGE_SIZE = 25;
 const SCORE_CHUNK_SIZE = 50;
 const ENRICH_CHUNK_SIZE = 3;
 const DEFAULT_EVALUATION_QUEUE_DELAY_MS = 2100;
@@ -169,6 +174,19 @@ type LinkedInScrollResult = {
   visibleJobs: number;
 };
 
+type LinkedInVisibleJobButton = {
+  index: number;
+  text: string;
+};
+
+type LinkedInSelectedJobState = {
+  url: string;
+  currentJobId: string | null;
+  selectedLink: string | null;
+  selectedTitle: string;
+  bodyText: string;
+};
+
 const execFile = promisify(execFileCallback);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -177,14 +195,14 @@ function usage(): string {
   return `career-ops LinkedIn scan via bb-browser
 
 Usage:
-  npm run linkedin-scan -- --url "<LinkedIn Jobs search URL>" [options]
+  bun run linkedin-scan -- --url "<LinkedIn Jobs search URL>" [options]
 
 Options:
   --url <url>                    LinkedIn Jobs search URL. If omitted, reads config/profile.yml -> linkedin_scan.search_url.
   --score-only                   Extract and score rows without bridge write endpoints.
   --no-evaluate                  Stop after bridge enrich/pipeline write; do not queue tracker evaluations.
-  --limit <n>                    Limit extracted list rows before scoring.
-  --pages <n>                    Number of LinkedIn search result pages to scan using start offsets. Default: 1.
+  --limit <n>                    Limit extracted list rows before scoring. Default: ${DEFAULT_LIMIT}.
+  --pages <n>                    Number of LinkedIn search result pages to scan using start offsets. Default: ${DEFAULT_PAGES}.
   --page-size <n>                LinkedIn start offset increment for --pages. Default: ${DEFAULT_PAGE_SIZE}.
   --scroll-steps <n>             Per-page result-list scroll probes. Default: 2.
   --enrich-limit <n>             Limit promoted rows before opening detail pages.
@@ -216,8 +234,8 @@ function parseArgs(argv: string[]): Options {
     url: null,
     bridgeHost: DEFAULT_HOST,
     bridgePort: DEFAULT_PORT,
-    limit: null,
-    pages: 1,
+    limit: DEFAULT_LIMIT,
+    pages: DEFAULT_PAGES,
     pageSize: DEFAULT_PAGE_SIZE,
     scrollSteps: 2,
     enrichLimit: null,
@@ -373,6 +391,7 @@ async function main(): Promise<void> {
   const { enrichedRows, failed } = await enrichLinkedInDetails(promoted, options);
   console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
   if (enrichedRows.length === 0) return;
+  printEnrichedValueScores(enrichedRows);
 
   const enrich = await writeEnrichedRows(bridgeBase, token, enrichedRows);
   console.log(`Bridge enrich result: added=${enrich.added}, skipped=${enrich.skipped}, candidates=${enrich.candidates?.length ?? 0}`);
@@ -468,11 +487,13 @@ async function waitForLinkedInSearchContent(tabId: string): Promise<void> {
       text: string;
       dataJobCount: number;
       jobLinkCount: number;
+      visibleJobButtonCount: number;
       currentJobId: string | null;
     }>(tabId, linkedInSearchContentState);
 
     if (
       state.dataJobCount > 0 ||
+      state.visibleJobButtonCount > 0 ||
       (
         Boolean(state.currentJobId) &&
         state.jobLinkCount > 0 &&
@@ -492,8 +513,34 @@ function linkedInSearchContentState(): {
   text: string;
   dataJobCount: number;
   jobLinkCount: number;
+  visibleJobButtonCount: number;
   currentJobId: string | null;
 } {
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function lines(value: string): string[] {
+    return value
+      .split(/\r?\n/)
+      .map((line) => compact(line))
+      .filter(Boolean);
+  }
+
+  function isVisibleJobButton(el: Element): boolean {
+    const html = el as HTMLElement;
+    const rect = html.getBoundingClientRect();
+    const style = window.getComputedStyle(html);
+    const text = lines(html.innerText ?? html.textContent ?? "").join("\n");
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none" &&
+      lines(text).length >= 3 &&
+      /\b(?:posted|reposted)\s+(?:\d+|an?|just|today)|\b\d+\s+(?:minutes?|mins?|hours?|hrs?|days?)\s+ago\b/i.test(text) &&
+      !/^(past 24 hours|remote|computer vision|llm|gen ai|data)$/i.test(text);
+  }
+
   const url = window.location.href;
   return {
     url,
@@ -501,15 +548,176 @@ function linkedInSearchContentState(): {
     text: (document.body?.innerText ?? "").slice(0, 4_000),
     dataJobCount: document.querySelectorAll("[data-job-id]").length,
     jobLinkCount: document.querySelectorAll("a[href*='/jobs/view/']").length,
+    visibleJobButtonCount: Array.from(document.querySelectorAll<HTMLElement>('[role="button"][tabindex="0"]'))
+      .filter(isVisibleJobButton).length,
     currentJobId: new URL(url).searchParams.get("currentJobId"),
   };
+}
+
+function extractLinkedInVisibleJobButtons(): LinkedInVisibleJobButton[] {
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function lines(value: string): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of value.split(/\r?\n/)) {
+      const line = compact(raw);
+      if (!line) continue;
+      const key = line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(line);
+    }
+    return result;
+  }
+
+  function textFor(el: Element): string {
+    return lines((el as HTMLElement).innerText ?? el.textContent ?? "").join("\n");
+  }
+
+  function isVisible(el: Element): boolean {
+    const html = el as HTMLElement;
+    const rect = html.getBoundingClientRect();
+    const style = window.getComputedStyle(html);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none";
+  }
+
+  function isLikelyJobButton(el: Element): boolean {
+    const text = textFor(el);
+    if (lines(text).length < 3) return false;
+    if (/^(past 24 hours|remote|computer vision|llm|gen ai|data|experience level|employment type|company)$/i.test(text)) {
+      return false;
+    }
+    return /\b(?:posted|reposted)\s+(?:\d+|an?|just|today)|\b\d+\s+(?:minutes?|mins?|hours?|hrs?|days?)\s+ago\b/i
+      .test(text);
+  }
+
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="button"][tabindex="0"]'))
+    .filter((button) => isVisible(button) && isLikelyJobButton(button))
+    .map((button, index) => ({
+      index,
+      text: textFor(button),
+    }));
+}
+
+async function selectLinkedInVisibleJobButton(
+  index: number,
+  expectedTitle: string,
+): Promise<LinkedInSelectedJobState> {
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function lines(value: string): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of value.split(/\r?\n/)) {
+      const line = compact(raw);
+      if (!line) continue;
+      const key = line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(line);
+    }
+    return result;
+  }
+
+  function textFor(el: Element): string {
+    return lines((el as HTMLElement).innerText ?? el.textContent ?? "").join("\n");
+  }
+
+  function delay(minMs: number, maxMs: number): Promise<void> {
+    const ms = minMs + Math.floor(Math.random() * Math.max(1, maxMs - minMs + 1));
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function isVisible(el: Element): boolean {
+    const html = el as HTMLElement;
+    const rect = html.getBoundingClientRect();
+    const style = window.getComputedStyle(html);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none";
+  }
+
+  function isLikelyJobButton(el: Element): boolean {
+    const text = textFor(el);
+    if (lines(text).length < 3) return false;
+    if (/^(past 24 hours|remote|computer vision|llm|gen ai|data|experience level|employment type|company)$/i.test(text)) {
+      return false;
+    }
+    return /\b(?:posted|reposted)\s+(?:\d+|an?|just|today)|\b\d+\s+(?:minutes?|mins?|hours?|hrs?|days?)\s+ago\b/i
+      .test(text);
+  }
+
+  function visibleButtons(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="button"][tabindex="0"]'))
+      .filter((button) => isVisible(button) && isLikelyJobButton(button));
+  }
+
+  function currentState(): LinkedInSelectedJobState {
+    const selectedAnchor = document.querySelector<HTMLAnchorElement>("a[href*='/jobs/view/']");
+    const currentJobId = new URL(window.location.href).searchParams.get("currentJobId");
+    return {
+      url: window.location.href,
+      currentJobId,
+      selectedLink: selectedAnchor?.href ?? null,
+      selectedTitle: compact(selectedAnchor?.innerText ?? selectedAnchor?.textContent ?? ""),
+      bodyText: (document.body?.innerText ?? "").slice(0, 4_000),
+    };
+  }
+
+  const target = visibleButtons()[index];
+  if (!target) return currentState();
+
+  const beforeJobId = currentState().currentJobId;
+  target.scrollIntoView({ block: "center" });
+  await delay(650, 1400);
+  target.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window }));
+  target.focus();
+  await delay(120, 320);
+  target.click();
+  await delay(800, 1800);
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const state = currentState();
+    if (
+      state.currentJobId &&
+      (
+        !expectedTitle ||
+        state.selectedTitle.toLowerCase() === expectedTitle.toLowerCase() ||
+        (!state.selectedTitle && state.currentJobId !== beforeJobId)
+      )
+    ) {
+      return state;
+    }
+  }
+
+  return currentState();
 }
 
 async function collectLinkedInPageRows(tabId: string, options: Options): Promise<NewGradRow[]> {
   const rows: NewGradRow[] = [];
 
   for (let step = 0; step <= options.scrollSteps; step += 1) {
-    rows.push(...await evaluateBrowserJson<NewGradRow[]>(tabId, extractLinkedInList));
+    const staticRows = await evaluateBrowserJson<NewGradRow[]>(tabId, extractLinkedInList);
+    rows.push(...staticRows);
+
+    const visibleButtons = await evaluateBrowserJson<LinkedInVisibleJobButton[]>(
+      tabId,
+      extractLinkedInVisibleJobButtons,
+    );
+    if (visibleButtons.length > staticRows.length) {
+      rows.push(...await collectLinkedInVisibleButtonRows(tabId, visibleButtons));
+    }
+
     if (step === options.scrollSteps) break;
 
     const scroll = await evaluateBrowserJson<LinkedInScrollResult>(tabId, advanceLinkedInResultsScroll);
@@ -520,7 +728,137 @@ async function collectLinkedInPageRows(tabId: string, options: Options): Promise
   return rows;
 }
 
+async function collectLinkedInVisibleButtonRows(
+  tabId: string,
+  buttons: readonly LinkedInVisibleJobButton[],
+): Promise<NewGradRow[]> {
+  const rows: NewGradRow[] = [];
+
+  for (const button of buttons) {
+    const parsed = parseLinkedInVisibleJobCardText(button.text);
+    if (!parsed) continue;
+
+    const selected = await evaluateBrowserJson<LinkedInSelectedJobState>(
+      tabId,
+      selectLinkedInVisibleJobButton,
+      [button.index, parsed.title],
+    );
+    const detailUrl = canonicalLinkedInJobViewUrl(selected.selectedLink) ??
+      canonicalLinkedInJobViewUrl(selected.url) ??
+      (
+        selected.currentJobId
+          ? canonicalLinkedInJobViewUrl(`https://www.linkedin.com/jobs/view/${selected.currentJobId}/`)
+          : null
+      );
+    if (!detailUrl) {
+      console.warn(`Visible LinkedIn row skipped without job id: ${parsed.company} - ${parsed.title}`);
+      continue;
+    }
+
+    rows.push(rowFromVisibleLinkedInJob(parsed, selected, detailUrl, rows.length + 1));
+  }
+
+  return rows;
+}
+
+function rowFromVisibleLinkedInJob(
+  parsed: LinkedInVisibleJobCard,
+  selected: LinkedInSelectedJobState,
+  detailUrl: string,
+  position: number,
+): NewGradRow {
+  const evidenceText = [parsed.text, selected.bodyText].filter(Boolean).join("\n").slice(0, 4_000);
+  const sponsorship = sponsorshipStatus(evidenceText);
+
+  return {
+    source: "linkedin.com",
+    position,
+    title: parsed.title,
+    postedAgo: parsed.postedAgo,
+    applyUrl: detailUrl,
+    detailUrl,
+    workModel: parsed.workModel,
+    location: parsed.location,
+    company: parsed.company,
+    salary: salaryFromText(evidenceText),
+    companySize: null,
+    industry: null,
+    qualifications: evidenceText,
+    h1bSponsored: sponsorship === "yes",
+    sponsorshipSupport: sponsorship,
+    confirmedSponsorshipSupport: "unknown",
+    requiresActiveSecurityClearance: requiresActiveClearance(evidenceText),
+    confirmedRequiresActiveSecurityClearance: false,
+    isNewGrad: isEarlyCareer(parsed.title, evidenceText),
+  };
+}
+
+function salaryFromText(value: string): string | null {
+  const match = value.replace(/\u00a0/g, " ").match(
+    /\$\s?\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*(?:k|K)?\s*(?:\/\s?(?:yr|year|hr|hour))?\s*[-–]\s*\$\s?\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*(?:k|K)?(?:\s*\/\s?(?:yr|year|hr|hour))?/i,
+  );
+  return match?.[0] ? match[0].replace(/\s+/g, " ").trim() : null;
+}
+
+function sponsorshipStatus(value: string): "yes" | "no" | "unknown" {
+  const normalized = value.replace(/\s+/g, " ").toLowerCase();
+  if (
+    normalized.includes("no sponsorship") ||
+    normalized.includes("without sponsorship") ||
+    normalized.includes("unable to sponsor") ||
+    normalized.includes("cannot sponsor") ||
+    normalized.includes("will not sponsor") ||
+    normalized.includes("sponsorship not available")
+  ) {
+    return "no";
+  }
+  if (
+    normalized.includes("visa sponsorship available") ||
+    normalized.includes("sponsorship available") ||
+    normalized.includes("will sponsor") ||
+    normalized.includes("immigration support")
+  ) {
+    return "yes";
+  }
+  return "unknown";
+}
+
+function requiresActiveClearance(value: string): boolean {
+  const normalized = value.replace(/\s+/g, " ").toLowerCase();
+  if (!/(security clearance|secret clearance|top secret|ts\/sci|sci clearance)/.test(normalized)) return false;
+  if (/\b(ability to obtain|eligible to obtain|obtain and maintain|preferred|nice to have|public trust)\b/.test(normalized)) {
+    return false;
+  }
+  return true;
+}
+
+function isEarlyCareer(title: string, value: string): boolean {
+  return /\b(new grad|new graduate|graduate|university grad|entry level|early career|junior|associate|software engineer i|internship)\b/i
+    .test(`${title}\n${value}`);
+}
+
 function advanceLinkedInResultsScroll(): LinkedInScrollResult {
+  function compact(value: string): string {
+    return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function lines(value: string): string[] {
+    return value
+      .split(/\r?\n/)
+      .map((line) => compact(line))
+      .filter(Boolean);
+  }
+
+  function visibleJobButtons(root: ParentNode): HTMLElement[] {
+    return Array.from(root.querySelectorAll<HTMLElement>('[role="button"][tabindex="0"]'))
+      .filter((button) => {
+        const text = lines(button.innerText ?? button.textContent ?? "").join("\n");
+        if (lines(text).length < 3) return false;
+        return /\b(?:posted|reposted)\s+(?:\d+|an?|just|today)|\b\d+\s+(?:minutes?|mins?|hours?|hrs?|days?)\s+ago\b/i
+          .test(text);
+      });
+  }
+
   const candidates = Array.from(document.querySelectorAll<HTMLElement>(
     [
       ".scaffold-layout__list",
@@ -533,7 +871,13 @@ function advanceLinkedInResultsScroll(): LinkedInScrollResult {
     ].join(", "),
   ));
   const target = candidates
-    .filter((node) => node.scrollHeight > node.clientHeight + 120 && Boolean(node.querySelector("[data-job-id]")))
+    .filter((node) => {
+      return node.scrollHeight > node.clientHeight + 120 &&
+        (
+          Boolean(node.querySelector("[data-job-id]")) ||
+          visibleJobButtons(node).length > 0
+        );
+    })
     .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))[0];
 
   if (!target) {
@@ -541,7 +885,7 @@ function advanceLinkedInResultsScroll(): LinkedInScrollResult {
       moved: false,
       top: 0,
       maxTop: 0,
-      visibleJobs: document.querySelectorAll("[data-job-id]").length,
+      visibleJobs: document.querySelectorAll("[data-job-id]").length + visibleJobButtons(document).length,
     };
   }
 
@@ -557,7 +901,7 @@ function advanceLinkedInResultsScroll(): LinkedInScrollResult {
     moved: target.scrollTop !== previousTop,
     top: target.scrollTop,
     maxTop,
-    visibleJobs: target.querySelectorAll("[data-job-id]").length,
+    visibleJobs: target.querySelectorAll("[data-job-id]").length + visibleJobButtons(target).length,
   };
 }
 
@@ -601,8 +945,12 @@ async function listBbTabs(): Promise<BbTabInfo[]> {
   return data.tabs ?? [];
 }
 
-async function evaluateBrowserJson<T>(tabId: string, func: () => unknown | Promise<unknown>): Promise<T> {
-  const script = `(() => { const __name = (target) => target; return (async () => JSON.stringify(await (${func.toString()})()))(); })()`;
+async function evaluateBrowserJson<T>(
+  tabId: string,
+  func: (...args: any[]) => unknown | Promise<unknown>,
+  args: readonly unknown[] = [],
+): Promise<T> {
+  const script = `(() => { const __name = (target) => target; const __args = ${JSON.stringify(args)}; return (async () => JSON.stringify(await (${func.toString()})(...__args)))(); })()`;
   const data = await runBbJson<BbEvalData>(["eval", script, "--json", "--tab", tabId]);
   const result = data.result;
   if (typeof result === "string") return JSON.parse(result) as T;
@@ -745,6 +1093,9 @@ async function enrichLinkedInDetails(
     try {
       await assertLinkedInReady(detailTabId);
       const rawDetail = await evaluateBrowserJson<NewGradDetail>(detailTabId, extractLinkedInDetail);
+      const linkedInGuestDetail = rawDetail.description.trim().length >= 400
+        ? null
+        : await readLinkedInGuestJobDetail(scored.row.detailUrl);
       const externalApply = options.openExternalApply
         ? await probeExternalApplyUrl(detailTabId)
         : null;
@@ -762,7 +1113,11 @@ async function enrichLinkedInDetails(
           console.log(`External Apply probe ${externalApply.status}${label}: ${scored.row.company} - ${scored.row.title}`);
         }
       }
-      const mergedDetail = mergeExternalAtsDetail(rawDetail, externalDetail);
+      if (linkedInGuestDetail?.description) {
+        console.log(`LinkedIn guest detail: ${linkedInGuestDetail.description.length} chars for ${scored.row.company} - ${scored.row.title}`);
+      }
+      const linkedInDetail = mergeLinkedInGuestDetail(rawDetail, linkedInGuestDetail);
+      const mergedDetail = mergeExternalAtsDetail(linkedInDetail, externalDetail);
       const detail: NewGradDetail = {
         ...mergedDetail,
         position: scored.row.position,
@@ -793,6 +1148,22 @@ async function enrichLinkedInDetails(
   return { enrichedRows, failed };
 }
 
+async function readLinkedInGuestJobDetail(url: string): Promise<ExternalAtsDetail | null> {
+  const jobId = linkedInJobIdFromUrl(url);
+  if (!jobId) return null;
+
+  const guestUrl = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
+  try {
+    const { stdout } = await runBb(["fetch", guestUrl]);
+    const detail = parseLinkedInGuestJobPostingHtml(stdout, guestUrl);
+    return detail.description.trim().length >= 400 ? detail : null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`LinkedIn guest detail read failed for ${url}: ${message}`);
+    return null;
+  }
+}
+
 async function readExternalAtsDetail(url: string): Promise<ExternalAtsDetail | null> {
   const tabId = await openBbTab(url);
   try {
@@ -806,6 +1177,36 @@ async function readExternalAtsDetail(url: string): Promise<ExternalAtsDetail | n
   } finally {
     await closeBbTab(tabId);
   }
+}
+
+function mergeLinkedInGuestDetail(
+  linkedIn: NewGradDetail,
+  guest: ExternalAtsDetail | null,
+): NewGradDetail {
+  if (!guest?.description) return linkedIn;
+
+  return {
+    ...linkedIn,
+    title: linkedIn.title || guest.title,
+    company: linkedIn.company || guest.company,
+    location: linkedIn.location || guest.location,
+    employmentType: linkedIn.employmentType || guest.employmentType,
+    workModel: linkedIn.workModel || guest.workModel,
+    salaryRange: linkedIn.salaryRange || guest.salaryRange,
+    description: guest.description.slice(0, 30_000),
+    responsibilities: uniqueStrings([
+      ...linkedIn.responsibilities,
+      ...guest.responsibilities,
+    ]).slice(0, 20),
+    requiredQualifications: uniqueStrings([
+      ...linkedIn.requiredQualifications,
+      ...guest.requiredQualifications,
+    ]).slice(0, 20),
+    skillTags: uniqueStrings([
+      ...linkedIn.skillTags,
+      ...guest.skillTags,
+    ]).slice(0, 30),
+  };
 }
 
 function mergeExternalAtsDetail(
@@ -867,6 +1268,130 @@ function uniqueStrings(values: readonly string[]): string[] {
     out.push(trimmed);
   }
   return out;
+}
+
+function linkedInJobIdFromUrl(value: string): string {
+  if (/^\d+$/.test(value.trim())) return value.trim();
+  try {
+    const parsed = new URL(value);
+    const currentJobId = parsed.searchParams.get("currentJobId");
+    if (currentJobId && /^\d+$/.test(currentJobId)) return currentJobId;
+    return parsed.pathname.match(/\/jobs\/view\/(?:[^/]+-)?(\d+)(?:\/|$)/i)?.[1] ?? "";
+  } catch {
+    return value.match(/\/jobs\/view\/(?:[^/]+-)?(\d+)(?:[/?#]|$)/i)?.[1] ?? "";
+  }
+}
+
+function parseLinkedInGuestJobPostingHtml(html: string, finalUrl: string): ExternalAtsDetail {
+  function decodeHtml(value: string): string {
+    const named: Record<string, string> = {
+      amp: "&",
+      gt: ">",
+      lt: "<",
+      nbsp: " ",
+      quot: '"',
+      apos: "'",
+    };
+    return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, code: string) => {
+      if (code[0] === "#") {
+        const raw = code[1]?.toLowerCase() === "x" ? code.slice(2) : code.slice(1);
+        const radix = code[1]?.toLowerCase() === "x" ? 16 : 10;
+        const point = Number.parseInt(raw, radix);
+        return Number.isFinite(point) ? String.fromCodePoint(point) : entity;
+      }
+      return named[code.toLowerCase()] ?? entity;
+    });
+  }
+
+  function htmlToText(value: string): string {
+    return decodeHtml(value)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|h[1-6]|li|ul|ol|section)>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function firstHtmlText(pattern: RegExp): string {
+    const match = html.match(pattern);
+    return match?.[1] ? htmlToText(match[1]) : "";
+  }
+
+  function sectionItems(source: string, headingPattern: RegExp): string[] {
+    const sourceLines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const start = sourceLines.findIndex((line) => headingPattern.test(line));
+    if (start === -1) return [];
+
+    const items: string[] = [];
+    for (const line of sourceLines.slice(start + 1)) {
+      if (/^(benefits|preferred qualifications|qualifications|requirements|responsibilities|skills|about|what you|you will|who you are)$/i.test(line)) {
+        if (items.length > 0) break;
+        continue;
+      }
+      const cleaned = line.replace(/^[-•*]\s*/, "").trim();
+      if (cleaned.length < 20 || cleaned.length > 500) continue;
+      items.push(cleaned);
+      if (items.length >= 12) break;
+    }
+    return items;
+  }
+
+  function skillTagsFromText(value: string): string[] {
+    const skills = [
+      "TypeScript",
+      "JavaScript",
+      "Python",
+      "React",
+      "Node.js",
+      "Java",
+      "Go",
+      "C++",
+      "SQL",
+      "AWS",
+      "Azure",
+      "GCP",
+      "Kubernetes",
+      "Docker",
+      "LLM",
+      "AI",
+      "Machine Learning",
+      "Spark",
+      "Kafka",
+      "Flink",
+      "ClickHouse",
+    ];
+    const normalized = value.toLowerCase();
+    return skills.filter((skill) => normalized.includes(skill.toLowerCase())).slice(0, 22);
+  }
+
+  const descriptionHtml = html.match(/<div class="description__text[^"]*"[^>]*>([\s\S]*?)<ul class="description__job-criteria-list/i)?.[1] ??
+    html.match(/<section class="[^"]*\bdescription\b[^"]*"[\s\S]*?<div class="description__text[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<ul/i)?.[1] ??
+    "";
+  const rawDescription = htmlToText(descriptionHtml)
+    .split(/\r?\n/)
+    .filter((line) => !/^(show more|show less)$/i.test(line))
+    .join("\n");
+  const description = rawDescription
+    ? `About the job\n${rawDescription}`.slice(0, 30_000)
+    : "";
+  const criteriaText = htmlToText(html.match(/<ul class="description__job-criteria-list[^"]*"[^>]*>([\s\S]*?)<\/ul>/i)?.[1] ?? "");
+
+  return {
+    finalUrl,
+    title: firstHtmlText(/<h2[^>]*class="[^"]*\btopcard__title\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/i),
+    company: firstHtmlText(/<a[^>]*class="[^"]*\btopcard__org-name-link\b[^"]*"[^>]*>([\s\S]*?)<\/a>/i),
+    location: firstHtmlText(/<span[^>]*class="[^"]*\btopcard__flavor--bullet\b[^"]*"[^>]*>([\s\S]*?)<\/span>/i),
+    workModel: /\bremote\b/i.test(description) ? "Remote" : /\bhybrid\b/i.test(description) ? "Hybrid" : /\b(on-site|onsite)\b/i.test(description) ? "On-site" : null,
+    employmentType: /\bfull[-\s]?time\b/i.exec(criteriaText || description)?.[0] ?? null,
+    salaryRange: salaryFromText(description || htmlToText(html)),
+    description,
+    responsibilities: sectionItems(description, /^(primary responsibilities|responsibilities|what you will do|you will|about the role)$/i),
+    requiredQualifications: sectionItems(description, /^(requirements|qualifications|basic qualifications|required qualifications|preferred qualifications|what you bring)$/i),
+    skillTags: skillTagsFromText(description),
+  };
 }
 
 async function extractExternalAtsJobDetail(): Promise<ExternalAtsDetail> {
@@ -1662,6 +2187,26 @@ function printPromotedRows(rows: readonly ScoredRow[]): void {
   console.log("Top promoted rows:");
   for (const [index, row] of rows.slice(0, 10).entries()) {
     console.log(`${index + 1}. ${row.row.company} - ${row.row.title} (${row.score}/${row.maxScore}) ${row.row.detailUrl}`);
+  }
+}
+
+function printEnrichedValueScores(rows: readonly EnrichedRow[]): void {
+  if (rows.length === 0) return;
+
+  const config = loadNewGradScanConfig(repoRoot);
+  console.log("Enriched value scores:");
+  for (const row of rows.slice(0, 10)) {
+    const value = scoreEnrichedRowValue(row, config);
+    const reasons = value.reasons.length > 0 ? value.reasons.join(",") : "none";
+    const penalties = value.penalties.length > 0 ? value.penalties.join(",") : "none";
+    const breakdown = Object.entries(value.breakdown)
+      .map(([key, score]) => `${key}=${score}`)
+      .join(",");
+    const detailStats = `descChars=${row.detail.description.length},requirements=${row.detail.requiredQualifications.length},responsibilities=${row.detail.responsibilities.length},skills=${row.detail.skillTags.length}`;
+    console.log(
+      `- ${row.detail.company || row.row.row.company} - ${row.detail.title || row.row.row.title}: ` +
+      `${value.score}/${value.threshold} passed=${value.passed}; ${detailStats}; reasons=${reasons}; penalties=${penalties}; breakdown=${breakdown}`,
+    );
   }
 }
 

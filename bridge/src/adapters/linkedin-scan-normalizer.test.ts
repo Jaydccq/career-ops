@@ -7,6 +7,7 @@ import {
   extractLinkedInJobId,
   isLinkedInJobsUrl,
   normalizeLinkedInPostedAgo,
+  parseLinkedInVisibleJobCardText,
   parseLinkedInWorkModel,
 } from "./linkedin-scan-normalizer.js";
 
@@ -56,6 +57,62 @@ describe("linkedin-scan-normalizer", () => {
     expect(parseLinkedInWorkModel("San Francisco, CA (Hybrid)")).toBe("Hybrid");
     expect(parseLinkedInWorkModel("Austin, TX (On-site)")).toBe("On-site");
     expect(parseLinkedInWorkModel("New York, NY")).toBe("");
+  });
+
+  test("parses visible LinkedIn result button text", () => {
+    expect(parseLinkedInVisibleJobCardText(`AI Technical Internship
+
+Amida Technology Solutions
+
+Richmond, VA
+
+Be an early applicant
+
+\u00b7
+
+Posted 17 hours ago
+17 hours ago`)).toEqual({
+      title: "AI Technical Internship",
+      company: "Amida Technology Solutions",
+      location: "Richmond, VA",
+      postedAgo: "17 hours ago",
+      workModel: "",
+      text: [
+        "AI Technical Internship",
+        "Amida Technology Solutions",
+        "Richmond, VA",
+        "Be an early applicant",
+        "\u00b7",
+        "Posted 17 hours ago",
+        "17 hours ago",
+      ].join("\n"),
+    });
+
+    expect(parseLinkedInVisibleJobCardText(`Senior Data Engineer
+
+EAB
+
+Richmond, VA (Hybrid)
+
+Medical, Vision, 401(k), +1 benefit
+
+48 school alumni work here
+
+Be an early applicant
+
+Posted 16 hours ago`)).toMatchObject({
+      title: "Senior Data Engineer",
+      company: "EAB",
+      location: "Richmond, VA (Hybrid)",
+      postedAgo: "16 hours ago",
+      workModel: "Hybrid",
+    });
+  });
+
+  test("rejects non-job LinkedIn buttons", () => {
+    expect(parseLinkedInVisibleJobCardText("Past 24 hours")).toBeNull();
+    expect(parseLinkedInVisibleJobCardText("Remote")).toBeNull();
+    expect(parseLinkedInVisibleJobCardText("Try Premium for $0")).toBeNull();
   });
 
   test("detects LinkedIn login and checkpoint states", () => {

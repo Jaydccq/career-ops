@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -140,6 +140,50 @@ test("enrichNewGradRows writes LinkedIn rows with linkedin-scan source tag", asy
     const pipeline = readFileSync(join(repoRoot, "data/pipeline.md"), "utf-8");
     expect(pipeline).toContain("https://www.linkedin.com/jobs/view/4347121472/");
     expect(pipeline).toContain("(via linkedin-scan, score: 9/9");
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("enrichNewGradRows preserves list salary in local JD cache when detail salary is missing", async () => {
+  const repoRoot = makeRepoRoot();
+  try {
+    const adapter = createClaudePipelineAdapter({
+      repoRoot,
+      claudeBin: "claude",
+      codexBin: "codex",
+      nodeBin: process.execPath,
+      realExecutor: "codex",
+      evaluationTimeoutSec: 60,
+      livenessTimeoutSec: 20,
+      allowDangerousClaudeFlags: true,
+    });
+
+    const result = await adapter.enrichNewGradRows([
+      makeEnrichedRow({
+        row: {
+          title: "Software Engineer I",
+          company: "Salary Fallback Co",
+          applyUrl: "https://jobs.example.com/salary-fallback",
+          detailUrl: "https://jobs.example.com/salary-fallback",
+          salary: "$150,000 - $190,000",
+        },
+        detail: {
+          title: "Software Engineer I",
+          company: "Salary Fallback Co",
+          salaryRange: null,
+          description: "Build production software with TypeScript, Python, React, Node, and AWS. ".repeat(8),
+          originalPostUrl: "https://jobs.example.com/salary-fallback",
+          applyNowUrl: "https://jobs.example.com/salary-fallback",
+        },
+      }),
+    ]);
+
+    expect(result.added).toBe(1);
+    const jdFiles = readdirSync(join(repoRoot, "jds"));
+    expect(jdFiles).toHaveLength(1);
+    const content = readFileSync(join(repoRoot, "jds", jdFiles[0]!), "utf-8");
+    expect(content).toContain('"salary": "$150,000 - $190,000"');
   } finally {
     rmSync(repoRoot, { recursive: true, force: true });
   }

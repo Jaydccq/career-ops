@@ -331,6 +331,13 @@
     background: var(--paper-2);
     color: var(--ink);
   }
+  .action-btn:disabled {
+    cursor: default;
+    opacity: 0.68;
+  }
+  .action-btn:disabled:hover {
+    background: transparent;
+  }
   .action-btn.primary {
     background: var(--ink);
     color: var(--paper);
@@ -950,7 +957,7 @@
       <div class="apply-overview-copy">
         <div class="kicker">Priority Queue</div>
         <h2>Start with the strongest fits.</h2>
-        <p>Apply now shows `Evaluated` roles at `4.0/5` and above. Selective apply keeps the next layer visible without mixing it with the rest of the tracker. Local marks stay in this browser.</p>
+        <p>Apply now shows `Evaluated` roles at `4.0/5` and above. Selective apply keeps the next layer visible without mixing it with the rest of the tracker. Server marks update the tracker; static exports keep local browser marks.</p>
       </div>
       <div class="apply-stats">
         <div class="apply-stat"><strong id="apply-priority-n">0</strong><span>Apply now</span></div>
@@ -1367,6 +1374,7 @@ const reportByPath = new Map(D.reports.map(r => [`reports/${r.filename}`, r]));
 const APPLY_DONE_KEY = 'career_ops_apply_done_v1';
 const generatedApplyDocs = {};
 const applyDocStatus = {};
+const applyMarkStatus = {};
 const PDF_API_BASE = location.protocol === 'http:' || location.protocol === 'https:'
   ? ''
   : 'http://127.0.0.1:47329';
@@ -1555,7 +1563,12 @@ function setApplyDocStatus(rowKey, type, message) {
   applyDocStatus[applyDocKey(rowKey, type)] = message;
 }
 
-async function postPdfApi(path, payload) {
+function setApplyMarkStatus(rowKey, message) {
+  if (message) applyMarkStatus[rowKey] = message;
+  else delete applyMarkStatus[rowKey];
+}
+
+async function postDashboardApi(path, payload) {
   const response = await fetch(`${PDF_API_BASE}${path}`, {
     method: 'POST',
     headers: {
@@ -1603,10 +1616,12 @@ function renderApplyCard(row, mode) {
     mode === 'priority' ? 'Apply now' :
     mode === 'selective' ? 'Selective apply' :
     row.canonicalDone ? row.status : 'Marked applied';
-  const toggleLabel = row.localDone ? 'Undo local mark' : 'Mark applied';
+  const visibleDone = row.localDone || row.canonicalDone;
+  const toggleLabel = row.canonicalDone ? `${row.status} in tracker` : row.localDone ? 'Undo local mark' : 'Mark applied';
+  const markStatus = applyMarkStatus[row.key];
   const note = row.notes || 'Open the dossier before tailoring.';
   return `
-    <article class="apply-card ${row.localDone ? 'is-local-done' : ''}">
+    <article class="apply-card ${visibleDone ? 'is-local-done' : ''}">
       <div class="apply-card-head">
         <div>
           <div class="eyebrow">${escapeHtml(eyebrow)}</div>
@@ -1619,14 +1634,15 @@ function renderApplyCard(row, mode) {
         <span>${escapeHtml(row.date)}</span>
         <span>${escapeHtml(row.status)}</span>
         ${row.reportPath ? `<span>Dossier ${escapeHtml(row.num)}</span>` : ''}
-        ${row.localDone ? '<span>Local mark saved</span>' : ''}
+        ${row.canonicalDone ? '<span>Tracker status saved</span>' : row.localDone ? '<span>Local mark saved</span>' : ''}
       </div>
       <div class="apply-note">${escapeHtml(note)}</div>
       <div class="apply-actions">
         ${row.jobUrl ? `<a class="action-link" href="${escapeHtml(row.jobUrl)}" target="_blank" rel="noreferrer">Open job</a>` : ''}
         ${row.reportPath ? `<a class="action-link" href="../${escapeHtml(row.reportPath)}" target="_blank" rel="noreferrer">Open dossier</a>` : ''}
         ${renderDocumentActions(row)}
-        <button class="action-btn ${row.localDone ? 'done' : 'primary'} js-apply-toggle" data-key="${escapeHtml(row.key)}">${escapeHtml(toggleLabel)}</button>
+        <button class="action-btn ${visibleDone ? 'done' : 'primary'} js-apply-toggle" data-key="${escapeHtml(row.key)}" ${row.canonicalDone ? 'disabled' : ''}>${escapeHtml(toggleLabel)}</button>
+        ${markStatus ? `<span class="doc-status" role="status" aria-live="polite">${escapeHtml(markStatus)}</span>` : ''}
       </div>
     </article>
   `;
@@ -1636,8 +1652,8 @@ function renderApplyNext() {
   const rows = buildApplyNextRows();
   lastApplyRowsByKey = new Map(rows.map((row) => [row.key, row]));
   const recommended = rows.filter((row) => row.status === 'Evaluated' && row.scoreValue != null);
-  const priority = recommended.filter((row) => row.scoreValue >= 4 && !row.localDone).sort(compareApplyRows);
-  const selective = recommended.filter((row) => row.scoreValue >= 3.5 && row.scoreValue < 4 && !row.localDone).sort(compareApplyRows);
+  const priority = recommended.filter((row) => row.scoreValue >= 4 && !row.localDone && !row.canonicalDone).sort(compareApplyRows);
+  const selective = recommended.filter((row) => row.scoreValue >= 3.5 && row.scoreValue < 4 && !row.localDone && !row.canonicalDone).sort(compareApplyRows);
   const completed = rows
     .filter((row) => row.localDone || row.canonicalDone)
     .sort(compareApplyRows);
@@ -1664,15 +1680,36 @@ function renderApplyNext() {
     $('apply-completed-list'),
     completed.length
       ? completed.map((row) => renderApplyCard(row, 'completed')).join('')
-      : '<div class="apply-empty">Nothing marked yet in this browser.</div>'
+      : '<div class="apply-empty">Nothing marked applied yet.</div>'
   );
 
   document.querySelectorAll('.js-apply-toggle').forEach((button) => {
-    button.onclick = () => {
-      const key = button.dataset.key;
-      if (applyDoneState[key]) delete applyDoneState[key];
-      else applyDoneState[key] = { markedAt: new Date().toISOString() };
-      saveApplyDone();
+    button.onclick = async () => {
+      const row = lastApplyRowsByKey.get(button.dataset.key);
+      if (!row || row.canonicalDone) return;
+      const nextApplied = !row.localDone;
+      setApplyMarkStatus(row.key, nextApplied ? 'Saving to tracker...' : 'Removing local mark...');
+      renderApplyNext();
+      if (window.PDF_API_TOKEN) {
+        try {
+          const result = await postDashboardApi('/api/apply-status', { num: row.num, applied: nextApplied });
+          const trackerRow = D.applications.find((item) => item.num === row.num);
+          if (trackerRow) trackerRow.status = result.status;
+          delete applyDoneState[row.key];
+          saveApplyDone();
+          setApplyMarkStatus(row.key, nextApplied ? 'Saved to tracker' : 'Tracker status restored');
+        } catch (error) {
+          if (nextApplied) applyDoneState[row.key] = { markedAt: new Date().toISOString() };
+          else delete applyDoneState[row.key];
+          saveApplyDone();
+          setApplyMarkStatus(row.key, `Tracker save failed; saved in this browser. ${error.message}`);
+        }
+      } else {
+        if (nextApplied) applyDoneState[row.key] = { markedAt: new Date().toISOString() };
+        else delete applyDoneState[row.key];
+        saveApplyDone();
+        setApplyMarkStatus(row.key, nextApplied ? 'Saved in this browser' : 'Local mark removed');
+      }
       renderApplyNext();
     };
   });
@@ -1686,7 +1723,7 @@ function renderApplyNext() {
       setApplyDocStatus(row.key, type, `Generating ${label}...`);
       renderApplyNext();
       try {
-        const result = await postPdfApi('/api/apply-docs/generate', buildPdfPayload(row, type));
+        const result = await postDashboardApi('/api/apply-docs/generate', buildPdfPayload(row, type));
         generatedApplyDocs[applyDocKey(row.key, type)] = result.doc;
         setApplyDocStatus(row.key, type, `${label} generated: ${result.doc.filename}`);
       } catch (error) {
@@ -1705,7 +1742,7 @@ function renderApplyNext() {
       setApplyDocStatus(row.key, button.dataset.docType, `Saving ${label} to Downloads...`);
       renderApplyNext();
       try {
-        const result = await postPdfApi('/api/apply-docs/download', { id: doc.id });
+        const result = await postDashboardApi('/api/apply-docs/download', { id: doc.id });
         generatedApplyDocs[applyDocKey(row.key, button.dataset.docType)] = result.doc;
         setApplyDocStatus(row.key, button.dataset.docType, `Saved ${label} to ${result.doc.savedPath}`);
       } catch (error) {

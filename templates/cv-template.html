@@ -128,13 +128,6 @@
     line-height: 1.2;
   }
 
-  /* === PROFESSIONAL SUMMARY === */
-  .summary-text {
-    font-size: 11px;
-    line-height: 1.7;
-    color: #2f2f2f;
-  }
-
   /* Links must never break across lines */
   a {
     white-space: nowrap;
@@ -393,34 +386,13 @@
   <div class="header avoid-break">
     <h1>{{NAME}}</h1>
     <div class="header-gradient"></div>
-    <div class="contact-row">
-      <span>{{PHONE}}</span>
-      <span class="separator">|</span>
-      <span>{{EMAIL}}</span>
-      <span class="separator">|</span>
-      <a href="{{LINKEDIN_URL}}">{{LINKEDIN_DISPLAY}}</a>
-      <span class="separator">|</span>
-      <a href="{{PORTFOLIO_URL}}">{{PORTFOLIO_DISPLAY}}</a>
-      <span class="separator">|</span>
-      <span>{{LOCATION}}</span>
-    </div>
+    <div class="contact-row">{{CONTACT_ROW}}</div>
   </div>
 
-  <!-- PROFESSIONAL SUMMARY -->
+  <!-- EDUCATION -->
   <div class="section avoid-break">
-    <div class="section-title">{{SECTION_SUMMARY}}</div>
-    <div class="summary-text">{{SUMMARY_TEXT}}</div>
-  </div>
-
-  <!-- TECHNICAL SKILLS -->
-  <div class="section">
-    <div class="section-title">{{SECTION_COMPETENCIES}}</div>
-    <div class="competencies-grid">
-      {{COMPETENCIES}}
-    </div>
-    <div class="skills-grid">
-      {{SKILLS}}
-    </div>
+    <div class="section-title">{{SECTION_EDUCATION}}</div>
+    {{EDUCATION}}
   </div>
 
   <!-- WORK EXPERIENCE -->
@@ -430,15 +402,20 @@
   </div>
 
   <!-- PROJECTS -->
-  <div class="section avoid-break">
+  <div class="section">
     <div class="section-title">{{SECTION_PROJECTS}}</div>
     {{PROJECTS}}
   </div>
 
-  <!-- EDUCATION -->
+  <!-- TECHNICAL SKILLS -->
   <div class="section avoid-break">
-    <div class="section-title">{{SECTION_EDUCATION}}</div>
-    {{EDUCATION}}
+    <div class="section-title">{{SECTION_COMPETENCIES}}</div>
+    <div class="competencies-grid">
+      {{COMPETENCIES}}
+    </div>
+    <div class="skills-grid">
+      {{SKILLS}}
+    </div>
   </div>
 
   {{CERTIFICATIONS_SECTION}}

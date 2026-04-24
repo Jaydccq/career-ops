@@ -29,6 +29,9 @@ Users should be able to click Apply Next buttons for each recommended role:
 3. Download each generated document.
    Verify: the server copies the generated PDF to `~/Downloads` with a
    deterministic filename.
+4. Mark a role as applied from the dynamic dashboard.
+   Verify: the local server updates the existing `data/applications.md` row so
+   the role no longer appears in Apply Now after a refresh.
 
 ## Scope
 
@@ -37,7 +40,8 @@ Users should be able to click Apply Next buttons for each recommended role:
 - Make `npm run dashboard` start the local dynamic dashboard.
 - Keep static export available as `npm run dashboard:build`.
 - Regenerate `web/index.html` with `npm run dashboard`.
-- Do not change application tracker rows.
+- Let the dynamic local dashboard update existing application tracker status
+  rows when the user explicitly marks a role as applied.
 - Do not replace existing PDF generation scripts; call them.
 
 ## Assumptions
@@ -65,6 +69,10 @@ Users should be able to click Apply Next buttons for each recommended role:
 - `npm run dashboard:build` completes and updates `web/index.html`.
 - Browser verification confirms the buttons render, PDF generation succeeds,
   and the download action reports the saved Downloads path.
+- Clicking `Mark applied` on the dynamic dashboard persists the existing tracker
+  row status as `Applied` and removes it from Apply Now after reload.
+- Opening the standalone static export still falls back to browser-local marks,
+  because it cannot write repository files.
 
 ## Implementation Steps
 
@@ -109,12 +117,21 @@ Users should be able to click Apply Next buttons for each recommended role:
     snapshot generation to `npm run dashboard:build`.
   - Verify: served dashboard renders fresh data and PDF actions still work.
 
+- [x] **Step 8: Persist Mark Applied through the dynamic server**
+  - Add an authenticated local dashboard API that updates only existing
+    `data/applications.md` status cells.
+  - Update the Apply Next button to call that API when served from
+    `npm run dashboard`, with localStorage retained as the static fallback.
+  - Verify: a mark/unmark smoke test leaves the tracker restored and Apply Now
+    filtering respects persisted `Applied` status.
+
 ## Verification Approach
 
 - `npm run dashboard`
 - `npm run dashboard:build`
 - Direct local API smoke test for PDF generation and download copy.
 - Node/Playwright smoke test against the local PDF dashboard server.
+- Direct local API smoke test for marking and restoring a tracker row.
 - `git diff --check -- web/dashboard-server.mjs web/build-dashboard.mjs web/template.html web/index.html web/README.md package.json docs/exec-plans/active/2026-04-23-apply-next-document-downloads.md`
 
 ## Progress Log
@@ -163,6 +180,19 @@ Users should be able to click Apply Next buttons for each recommended role:
   returned the Downloads directory, `/reports/301-gumloop-2026-04-22.md`
   served the dossier, the dashboard rendered from `http://127.0.0.1:47329/`,
   and Apply Next generated/saved both PDFs to Downloads.
+- 2026-04-24: User reported that roles previously clicked with `Mark applied`
+  still appear in Apply Now. Confirmed the existing button only writes
+  `career_ops_apply_done_v1` to browser localStorage, so the state is not a
+  repository-backed tracker update.
+- 2026-04-24: Added authenticated `/api/apply-status` to the dynamic dashboard
+  server and updated Apply Next so `Mark applied` writes the existing tracker
+  row status to `Applied` when served from `npm run dashboard`; static
+  `web/index.html` still falls back to localStorage.
+- 2026-04-24: Verified the markdown rewrite helper, regenerated
+  `web/index.html` with `npm run dashboard:build`, API-smoked mark/restore on
+  tracker row 317 with exact file restoration, and browser-smoked the Figma
+  card disappearing from Apply Now after refresh. `npm run verify` passed with
+  0 errors and the existing 2 duplicate warnings.
 
 ## Key Decisions
 
@@ -174,13 +204,15 @@ Users should be able to click Apply Next buttons for each recommended role:
   renderer.
 - Require a per-process local token for mutating PDF API calls, because the
   companion server can write files to `~/Downloads`.
+- Reuse that local token for tracker status mutations; only existing tracker
+  rows may be changed, and static HTML remains browser-local.
 - Change the template and builder, then regenerate `web/index.html`, instead of
   editing the generated dashboard only.
 
 ## Risks and Blockers
 
 - Opening `web/index.html` directly from `file://` remains a static snapshot and
-  cannot run Node PDF generation.
+  cannot run Node PDF generation or persist tracker status changes.
 - Generated PDFs are deterministic dashboard PDFs, not a replacement for the
   richer agent-driven `/career-ops pdf` and `/career-ops cover-letter`
   workflows when deep manual tailoring is required.
@@ -191,4 +223,7 @@ The dashboard primary interface is now non-static. `npm run dashboard` starts a
 local dynamic server at `http://127.0.0.1:47329/`; `npm run dashboard:build`
 remains available only for standalone static snapshots. Apply Next generates
 real PDFs through the dynamic server, writes them under `output/`, and copies
-them into `~/Downloads`. Targeted API and browser smoke verification passed.
+them into `~/Downloads`. Apply Next also persists `Mark applied` to
+`data/applications.md` through the dynamic server, so applied tracker rows stay
+out of Apply Now after refresh. Targeted API and browser smoke verification
+passed.

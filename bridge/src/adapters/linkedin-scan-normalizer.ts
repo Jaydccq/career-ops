@@ -6,6 +6,15 @@ export interface LinkedInAuthStateInput {
   text?: string | null;
 }
 
+export interface LinkedInVisibleJobCard {
+  title: string;
+  company: string;
+  location: string;
+  postedAgo: string;
+  workModel: string;
+  text: string;
+}
+
 const LINKEDIN_HOST_RE = /(^|\.)linkedin\.com$/i;
 
 export function isLinkedInHost(hostname: string | null | undefined): boolean {
@@ -122,6 +131,41 @@ export function parseLinkedInWorkModel(value: string | null | undefined): string
   return "";
 }
 
+export function parseLinkedInVisibleJobCardText(value: string | null | undefined): LinkedInVisibleJobCard | null {
+  const text = compactLines(value ?? "");
+  if (!text) return null;
+
+  const sourceLines = lines(value ?? "");
+  const postedAgo = normalizeLinkedInPostedAgo(text);
+  if (postedAgo === "unknown") return null;
+
+  const linesBeforePosted = sourceLines.filter((line) => {
+    if (/^posted\s+/i.test(line)) return false;
+    if (normalizeLinkedInPostedAgo(line) !== "unknown") return false;
+    if (line === "\u00b7" || line === "-") return false;
+    return true;
+  });
+  const usefulLines = linesBeforePosted.filter((line) => !isLinkedInVisibleRowNoise(line));
+  if (usefulLines.length < 3) return null;
+
+  const title = usefulLines[0] ?? "";
+  const company = usefulLines.find((line, index) => index > 0 && isLikelyLinkedInCompanyLine(line)) ?? "";
+  const companyIndex = company ? usefulLines.indexOf(company) : -1;
+  const location = usefulLines.find((line, index) => index > companyIndex && isLikelyLinkedInLocationLine(line)) ?? "";
+
+  if (!title || !company || !location) return null;
+  if (!isLikelyLinkedInJobTitle(title)) return null;
+
+  return {
+    title,
+    company,
+    location,
+    postedAgo,
+    workModel: parseLinkedInWorkModel(location || text),
+    text,
+  };
+}
+
 export function detectLinkedInAuthBlock(input: LinkedInAuthStateInput): LinkedInAuthBlock | null {
   const url = (input.url ?? "").toLowerCase();
   const title = compact(input.title ?? "").toLowerCase();
@@ -151,4 +195,50 @@ export function detectLinkedInAuthBlock(input: LinkedInAuthStateInput): LinkedIn
 
 function compact(value: string): string {
   return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function compactLines(value: string): string {
+  return lines(value).join("\n");
+}
+
+function lines(value: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of value.split(/\r?\n/)) {
+    const line = compact(raw);
+    if (!line) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(line);
+  }
+  return result;
+}
+
+function isLinkedInVisibleRowNoise(line: string): boolean {
+  return /^(viewed|promoted|easy apply|apply|save|be an early applicant|actively recruiting)$/i.test(line) ||
+    /\b(school alumni work here|benefit|benefits?|clicked apply|applicants?|connections?)\b/i.test(line);
+}
+
+function isLikelyLinkedInJobTitle(line: string): boolean {
+  if (line.length < 3 || line.length > 180) return false;
+  if (/^(past 24 hours|remote|computer vision|llm|gen ai|data|experience level|employment type|company)$/i.test(line)) {
+    return false;
+  }
+  return !isLikelyLinkedInLocationLine(line);
+}
+
+function isLikelyLinkedInCompanyLine(line: string): boolean {
+  if (line.length < 2 || line.length > 120) return false;
+  if (isLinkedInVisibleRowNoise(line)) return false;
+  if (isLikelyLinkedInLocationLine(line)) return false;
+  return normalizeLinkedInPostedAgo(line) === "unknown";
+}
+
+function isLikelyLinkedInLocationLine(line: string): boolean {
+  if (line.length < 2 || line.length > 160) return false;
+  if (/\b(remote|hybrid|on-site|onsite)\b/i.test(line)) return true;
+  if (/\bUnited States\b/i.test(line)) return true;
+  if (/\b\d+\s+locations?\b/i.test(line)) return true;
+  return /\b[A-Z][A-Za-z .'-]+,\s*[A-Z]{2}\b/.test(line);
 }

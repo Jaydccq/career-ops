@@ -993,6 +993,7 @@ export function createClaudePipelineAdapter(
             ? enrichedRow.detail.confirmedSponsorshipSupport
             : "unknown";
 
+        const salaryRange = enrichedRow.detail.salaryRange || enrichedRow.row.row.salary || undefined;
         const jdFile = writeJdFile({
           jdsDir,
           company: enrichedRow.detail.company || enrichedRow.row.row.company,
@@ -1000,7 +1001,7 @@ export function createClaudePipelineAdapter(
           url: entryUrl,
           description: enrichedRow.detail.description,
           ...(enrichedRow.detail.location ? { location: enrichedRow.detail.location } : {}),
-          ...(enrichedRow.detail.salaryRange ? { salary: enrichedRow.detail.salaryRange } : {}),
+          ...(salaryRange ? { salary: salaryRange } : {}),
           h1b: h1bValue,
           ...(enrichedRow.detail.confirmedRequiresActiveSecurityClearance
             ? { clearance: "active-secret-required" }
@@ -1773,6 +1774,7 @@ function buildExecutionPlan(
     const commandArgs = [
       ...(args.allowSearch ? ["--search"] : []),
       "exec",
+      ...(config.codexModel ? ["-m", config.codexModel] : []),
       "--full-auto",
       "-C",
       config.repoRoot,
@@ -1841,6 +1843,7 @@ function buildQuickExecutionPlan(
       command: config.codexBin,
       args: [
         "exec",
+        ...(config.codexModel ? ["-m", config.codexModel] : []),
         "-C",
         config.repoRoot,
         "--output-schema",

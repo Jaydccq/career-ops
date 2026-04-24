@@ -229,6 +229,131 @@ Make `/career-ops newgrad-scan` actionable without requiring the user to manuall
   `npm run verify`. Full verify completed with 0 errors and the same 2 existing
   duplicate warnings for RemoteHunter Software Engineer and Anduril Industries
   Software Engineer tracker rows.
+- 2026-04-23: User asked to run the full `/career-ops newgrad-scan` flow again
+  and carefully inspect whether text extraction or enrich has issues. Goal:
+  execute the repo-native full scan/enrich/direct-evaluation path, then inspect
+  the generated JD cache, pipeline/evaluation candidates, and reports for
+  low-value description excerpts, fake salary text, list/shell text being
+  treated as JD content, URL mis-selection, and missing structured
+  requirements/responsibilities. Success criteria: update/setup checks pass,
+  bridge health is available in real Codex mode, `npm run newgrad-scan`
+  completes or reports a concrete blocker, new artifacts are identified and
+  sampled, targeted verification runs, and this plan records the outcome.
+  Assumptions: full direct evaluation is intended, the persistent scanner
+  browser profile should be reused, no application should be submitted, and
+  unrelated worktree changes must be preserved. Uncertainties: JobRight may
+  change its live API/page shape, login state may be stale, and direct
+  evaluation jobs may exceed the scanner wait window. Simplest viable path:
+  use existing `npm run newgrad-scan`, start the bridge only if needed, compare
+  before/after repo artifacts, inspect representative JD/report text, then run
+  focused verification.
+- 2026-04-23: Update check returned `up-to-date`; required setup files are
+  present. Bridge was not initially listening on `127.0.0.1:47319`, so started
+  `npm run ext:bridge` in `real-codex` mode. Health then passed with tracker,
+  CV/profile, Codex CLI, Node, and Playwright Chromium OK.
+- 2026-04-23: Baseline before the run: 283 markdown files under `reports/`, 79
+  files under `jds/`, 518 lines in `data/pipeline.md`, 211 lines in
+  `data/applications.md`, and 1012 lines in `data/scan-history.tsv`.
+- 2026-04-23: `npm run newgrad-scan` completed the full flow. JobRight API list
+  source returned 197 rows within 24 hours, scoring promoted 63 and filtered
+  134, detail enrichment succeeded for all 63 with 0 failures, bridge enrich
+  added 2 candidates and skipped 61. Skip breakdown:
+  33 `site_match_below_bar`, 12 `site_signal_mixed`,
+  2 `already_evaluated_report`, 1 `experience_too_high`, 6 `no_sponsorship`,
+  1 `detail_value_threshold`, 2 `seniority_too_high`,
+  1 `active_clearance_required`, and 3 `pipeline_threshold`.
+- 2026-04-23: Direct evaluations queued and completed for Association of
+  Universities for Research in Astronomy and Autodesk. AURA generated report
+  316 with `3.4/5` and `SKIP`; Autodesk generated report 315 with `4.45/5` and
+  `Evaluated`. Tracker merges returned true for both.
+- 2026-04-23: Inspection of new JD caches found no current-run
+  `Represents the skills you have`, `Turbo for Students`, or verification-shell
+  description pollution in `jds/autodesk-fd1232d2.txt` or
+  `jds/association-of-universities-for-research-in-astronomy-36595670.txt`.
+  Both caches include structured Requirements and Responsibilities, and the
+  reports use the expected salary signals: Autodesk `$96000-$172425/yr`, AURA
+  `$80000-$95000/yr`.
+- 2026-04-23: Found one current enrich persistence bug: direct evaluation kept
+  list salary via `detail.salaryRange || row.salary`, but local JD cache writes
+  only persisted `detail.salaryRange`, so current cache frontmatter initially
+  omitted salary when the detail page lacked a salary field. Implemented a
+  scoped fix in `bridge/src/adapters/claude-pipeline.ts` so JD cache writes use
+  the same salary fallback, added a regression test in
+  `bridge/src/adapters/claude-pipeline.test.ts`, and patched the two current
+  run JD cache files to include salary frontmatter.
+- 2026-04-23: Separate historical-cache audit with `rg -u` showed many older
+  ignored `jds/*.txt` files still contain stale JobRight shell text and fake
+  Turbo salary frontmatter. This is not produced by the current run, but it can
+  affect old unchecked pipeline rows if reused. Recorded the cleanup as open
+  debt in `docs/exec-plans/tech-debt-tracker.md`; did not bulk rewrite old
+  caches in this focused task.
+- 2026-04-23: Verification passed: `npm --prefix bridge run test --
+  src/adapters/claude-pipeline.test.ts` passed with 20 tests, `npm --prefix
+  bridge run typecheck` passed, `npm run newgrad-scan -- --help` passed,
+  `npm run dashboard:build` rebuilt `web/index.html`, `git diff --check`
+  passed, and `npm run verify` completed with 0 errors and 2 existing duplicate
+  warnings for RemoteHunter Software Engineer and Anduril Industries Software
+  Engineer tracker rows.
+- 2026-04-23: User invoked `/career-ops newgrad-scan`. Goal: execute the
+  repo-native autonomous JobRight/newgrad scan for the current window and let
+  qualifying enrich survivors queue direct `newgrad_quick` evaluations.
+  Success criteria: update/setup checks pass, bridge health is available in
+  real Codex mode, `npm run newgrad-scan` completes or reports a concrete
+  blocker, generated artifacts are inspected, targeted verification runs, and
+  this plan records the outcome. Assumptions: default direct evaluation is
+  intended, the persistent scanner profile should be reused, no application
+  should be submitted, and unrelated dirty worktree changes must be preserved.
+  Uncertainties: JobRight login/API state may change, evaluation jobs may
+  outlive the scanner wait window, and full verification may still report known
+  duplicate tracker warnings. Simplest viable path: use the existing scanner
+  without code changes, start the bridge only if needed, inspect before/after
+  artifacts, rebuild dashboard after completed evaluations, and run focused
+  verification.
+- 2026-04-23: Update check returned `offline` with local version `1.3.0`;
+  required setup files `cv.md`, `config/profile.yml`, `modes/_profile.md`,
+  `portals.yml`, and `data/applications.md` are present. Initial bridge health
+  check found no listener on `127.0.0.1:8765`.
+- 2026-04-23: `npm` was not on the default Codex shell PATH. Started the
+  bridge with `PATH=/opt/homebrew/bin:/usr/local/bin:$PATH npm run ext:bridge`
+  outside the sandbox because `tsx` needs to create a local IPC socket. Bridge
+  health then passed on `127.0.0.1:47319` with `execution.mode=real`,
+  `execution.realExecutor=codex`, Codex CLI OK, Node OK, and Playwright
+  Chromium OK.
+- 2026-04-23: Baseline before the run: 285 markdown report files, 81 JD cache
+  files, 522 lines in `data/pipeline.md`, 213 lines in `data/applications.md`,
+  and 1034 lines in `data/scan-history.tsv`.
+- 2026-04-23: `npm run newgrad-scan` completed the full scan/enrich/direct
+  evaluation flow. JobRight API list source returned 95 rows within 24 hours;
+  scanner promoted 40, filtered 55, enriched all 40 details with 0 failures,
+  added 8 pipeline candidates, and skipped 32. Skip breakdown:
+  19 `site_match_below_bar`, 8 `site_signal_mixed`, 1 `experience_too_high`,
+  2 `already_evaluated_report`, 1 `no_sponsorship`, and
+  1 `active_clearance_required`.
+- 2026-04-23: Added and queued direct evaluations for R1 RCM, Akamai
+  Technologies job 2312, KeyBank, Figma, Salesforce Slack AI Platform, Akamai
+  Technologies job 2528, FanDuel, and Tesla. All 8 evaluations completed with
+  no queue failures or timeouts, and all 8 tracker merges returned true.
+- 2026-04-23: Generated reports 317-324: R1 RCM `3/5`, Akamai Technologies
+  job 2312 `3.65/5`, KeyBank `2.7/5`, Figma `4.1/5`, Salesforce Slack AI
+  Platform `4.55/5`, Akamai Technologies job 2528 `3.7/5`, FanDuel `3.85/5`,
+  and Tesla `3.65/5`.
+- 2026-04-23: Artifact inspection found no current-run occurrences of the
+  previously fixed JobRight shell-description phrases `Represents the skills
+  you have`, `Turbo for Students`, or `Get Hired Faster` in the new JD caches
+  or reports. Current JD caches include real descriptions, requirements,
+  responsibilities, salaries, and concrete apply URLs. Residual lower-risk
+  metadata noise remains in JobRight `Skill tags` for some rows, such as
+  applicant counts, stage labels, sponsorship badges, and a promotional
+  `94% OFF` fragment; recorded this in `docs/exec-plans/tech-debt-tracker.md`.
+- 2026-04-23: Rebuilt the dashboard with `npm run dashboard:build`; generated
+  `web/index.html` now reports 292 reports, 210 applications, 404 pipeline
+  rows, and 1070 scan-history rows.
+- 2026-04-23: Verification passed: `npm run newgrad-scan -- --help` passed
+  when rerun outside the sandbox for the same `tsx` IPC reason, `git diff
+  --check` passed, the current-run bad-shell-text grep returned no matches, and
+  `npm run verify` completed with 0 errors and 2 existing duplicate warnings
+  for RemoteHunter Software Engineer and Anduril Industries Software Engineer
+  tracker rows.
 
 ## Key Decisions
 
@@ -353,3 +478,166 @@ Login cookie import retest:
   202 applications, 394 pipeline rows, and 1010 scan-history rows.
 - `npm run newgrad-scan -- --help` and `npm run verify` passed. Verification
   has 0 errors and 2 pre-existing duplicate tracker warnings.
+
+2026-04-23 extraction/enrich inspection run:
+
+- `npm run newgrad-scan` completed the full flow: 197 rows extracted, 63
+  promoted, 63 enriched, 2 pipeline candidates added, 61 skipped, and 2 direct
+  evaluations completed.
+- Generated reports 315-316 and tracker rows for Autodesk Machine Learning
+  Engineer (`4.45/5`, Evaluated) and Association of Universities for Research
+  in Astronomy Software Engineer I (`3.4/5`, SKIP).
+- Current-run JD caches contain structured Requirements and Responsibilities
+  and no low-value JobRight shell description. Fixed the JD-cache salary
+  persistence fallback so future enrich writes preserve row salary when detail
+  salary is absent.
+- Historical ignored `jds/*.txt` cache pollution remains as tracked debt in
+  `docs/exec-plans/tech-debt-tracker.md`.
+- `npm --prefix bridge run test -- src/adapters/claude-pipeline.test.ts`,
+  `npm --prefix bridge run typecheck`, `npm run newgrad-scan -- --help`,
+  `npm run dashboard:build`, `git diff --check`, and `npm run verify` passed.
+  Full verify has 0 errors and 2 existing duplicate tracker warnings.
+
+2026-04-23 current live run:
+
+- User invoked `/career-ops newgrad-scan`.
+- Goal: run the repo-native autonomous newgrad scan for the current 24-hour
+  JobRight/newgrad window, enrich qualifying rows, queue direct
+  `newgrad_quick` evaluations, and record the resulting artifacts.
+- Success criteria: update/setup checks pass, bridge health is available in
+  real Codex mode, the scanner completes or reports an actionable blocker,
+  generated data/report/dashboard changes are inspected, focused verification
+  runs, and this plan records the outcome.
+- Assumptions: the existing persistent scanner profile should be reused, default
+  direct evaluation is intended, no application should be submitted, and
+  unrelated dirty worktree changes must be preserved.
+- Uncertainties: this shell has no `npm` binary even though `node` is available,
+  JobRight may change live API/page shape, login state may be stale, and
+  direct evaluation jobs may outlive the scanner wait window.
+- Simplest viable path: run the same underlying entrypoints that `npm` would
+  invoke, start the bridge only if needed, run the scanner, rebuild the
+  dashboard if evaluations complete, then run focused verification.
+- Update/setup checks passed: update check returned `offline` with local
+  version `1.3.0`, and `cv.md`, `config/profile.yml`, `modes/_profile.md`,
+  and `portals.yml` are present. `node` is available from the Codex app, but
+  `npm`/`npx`/`pnpm` are absent from this shell PATH.
+- Baseline before the run: 293 report markdown files, 89 JD cache files, 535
+  lines in `data/pipeline.md`, 219 lines in `data/applications.md`, and 1071
+  lines in `data/scan-history.tsv`.
+- The default full scan/evaluation run was blocked by the approval reviewer
+  because direct `newgrad_quick` evaluations would send scraped job data plus
+  repo-resident CV/profile context through Codex execution. Switched to the
+  safer `--no-evaluate` scanner mode, which scans, scores, enriches, and writes
+  local pipeline/JD artifacts without queueing direct evaluations.
+- First `--no-evaluate` attempt used an already-running bridge, extracted 96
+  rows, promoted 33, enriched 33 with 0 failures, closed the scan browser, then
+  failed with `fetch failed` while handing enrich results to the bridge. The
+  bridge was no longer listening afterward. No reports, JD cache files,
+  pipeline rows, or tracker rows were written; `data/scan-history.tsv` grew by
+  five filtered rows only.
+- Started a fresh attached bridge process in real Codex mode and reran
+  `node bridge/node_modules/tsx/dist/cli.mjs scripts/newgrad-scan-autonomous.ts
+  --no-evaluate`. The rerun completed: JobRight API source returned 96 rows
+  within 24 hours, promoted 33, filtered 63, enriched 33 with 0 failures,
+  bridge enrich added 1 pipeline candidate and skipped 32. Skip breakdown:
+  17 `site_match_below_bar`, 8 `site_signal_mixed`, 1 `experience_too_high`,
+  2 `already_evaluated_report`, 2 `no_sponsorship`,
+  1 `active_clearance_required`, and 1 `pipeline_threshold`.
+- Added pipeline/JD cache candidate: LetsGetChecked — Graduate Software
+  Engineer, score `9/9`, value `8.1/10`, apply URL
+  `https://job-boards.eu.greenhouse.io/letsgetchecked/jobs/4833407101?gh_src=07eabf22teu`,
+  local cache `jds/letsgetchecked-30666b06.txt`.
+- Inspected `jds/letsgetchecked-30666b06.txt`; it contains real role content,
+  salary `$76240-$95300/yr`, concrete Greenhouse apply URL, requirements,
+  responsibilities, skill tags, and no obvious JobRight shell-description or
+  fake Turbo salary pollution.
+- Rebuilt dashboard with `node web/build-dashboard.mjs`; generated
+  `web/index.html` reports 292 parsed reports, 210 applications, 405 pipeline
+  items, and 1075 scan-history rows.
+- Verification: `node verify-pipeline.mjs` passed tracker/status/report checks
+  but failed its bridge/extension command section because it shells out to
+  missing `npm`. Direct equivalents passed: `node
+  bridge/node_modules/typescript/bin/tsc --noEmit -p bridge/tsconfig.json`,
+  `node extension/node_modules/typescript/bin/tsc --noEmit -p
+  extension/tsconfig.json`, `node extension/build.mjs`, `node
+  node_modules/vitest/vitest.mjs run` from `bridge/` (24 files, 207 tests), and
+  `git diff --check`.
+- Final outcome for this run: local scan/enrich/pipeline update completed in
+  no-evaluate mode; no direct evaluations were queued, no reports were
+  generated, and `data/applications.md` was unchanged.
+- 2026-04-24: User invoked `/career-ops newgrad-scan`. Goal: execute the
+  repo-native autonomous JobRight/newgrad scan for the current 24-hour window,
+  enrich qualifying rows, queue direct `newgrad_quick` evaluations when the
+  bridge supports it, and record resulting artifacts. Success criteria:
+  update/setup checks pass, bridge health is available in real Codex mode,
+  scanner completes or reports an actionable blocker, generated artifacts are
+  inspected, dashboard is rebuilt when data changes, focused verification runs,
+  and this plan records the outcome. Assumptions: default direct evaluation is
+  intended, the persistent scanner profile should be reused, no application
+  should be submitted, and unrelated dirty worktree changes must be preserved.
+  Uncertainties: JobRight API/login state may change, bridge jobs may outlive
+  the scanner wait window, and full verification may still report known
+  duplicate tracker warnings. Simplest viable path: use existing
+  `npm run newgrad-scan`, start the bridge only if needed, inspect before/after
+  artifacts, rebuild dashboard after completed evaluations, then run focused
+  verification.
+- 2026-04-24: Update/setup checks passed for this run. `node
+  update-system.mjs check` returned `offline` with local version `1.3.0`, and
+  `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml`, and
+  `data/applications.md` are present. Initial bridge health check found no
+  listener on `127.0.0.1:47319`.
+- 2026-04-24: Baseline before the run: 293 markdown report files, 89 JD cache
+  files, 539 lines in `data/pipeline.md`, 219 lines in
+  `data/applications.md`, and 1080 lines in `data/scan-history.tsv`.
+- 2026-04-24: Started `npm run ext:bridge` in real Codex mode on
+  `127.0.0.1:47319`. Authenticated `/v1/health` passed with
+  `execution.mode=real`, `execution.realExecutor=codex`, tracker/CV/profile OK,
+  Codex CLI OK, Node OK, and Playwright Chromium OK.
+- 2026-04-24: First `npm run newgrad-scan` attempt exposed a broken package
+  script from the scan Bun migration: `bun --cwd bridge run tsx ...` printed
+  Bun help and exited 0 instead of running the scanner. Fixed scan package
+  scripts to call `./bridge/node_modules/.bin/tsx` directly; verified both
+  `bun run newgrad-scan -- --help` and `npm run newgrad-scan -- --help`.
+- 2026-04-24: Full `bun run newgrad-scan` completed the scan/enrich phase.
+  JobRight API source returned 96 rows within 24 hours; scanner promoted 34,
+  filtered 62, enriched 34 with 0 failures, bridge enrich added 3 candidates
+  and skipped 31. Skip breakdown: 18 `site_match_below_bar`, 8
+  `site_signal_mixed`, 1 `already_evaluated_report`, 2 `no_sponsorship`, 1
+  `active_clearance_required`, and 1 `pipeline_threshold`.
+- 2026-04-24: Added pipeline/JD cache candidates for Wonderschool Early Career
+  Software Engineer - Applied AI, Peloton Interactive Software Engineer I, and
+  Aviatrix MTS SDET, Test Infrastructure. The scanner queued direct evaluations
+  for all three. Aviatrix completed as report 327 with `2.7/5`, `SKIP`, and
+  tracker merge true. Wonderschool and Peloton initially failed before report
+  creation because the bridge inherited user-level Codex model `gpt-5.5`, and
+  the Codex CLI returned `The model gpt-5.5 does not exist or you do not have
+  access to it`.
+- 2026-04-24: Added a bridge-level Codex model override. `CAREER_OPS_CODEX_MODEL`
+  can override it, and the default is `gpt-5.4`, which was verified with a
+  minimal `codex exec -m gpt-5.4` probe. Restarted the bridge; health/logs now
+  show `codexModel=gpt-5.4`.
+- 2026-04-24: Requeued only the two failed candidates from local JD cache files.
+  Peloton Interactive completed as report 328 with `2.3/5`, `SKIP`, and tracker
+  merge true. Wonderschool completed as report 329 with `2.6/5`, `SKIP`, and
+  tracker merge true.
+- 2026-04-24: Artifact inspection found no current-run occurrences of
+  `Represents the skills you have`, `Turbo for Students`, `Get Hired Faster`,
+  `Enable JavaScript`, `__NEXT_DATA__`, or `jobright.ai/jobs/recommend` in the
+  three new JD caches or reports. The JD caches contain concrete Greenhouse
+  URLs, salary frontmatter, and real role descriptions. The two retried reports
+  are quick-screen SKIPs and note missing structured signals because they were
+  requeued from the local JD cache after the original in-memory bridge jobs were
+  lost during restart.
+- 2026-04-24: Rebuilt the dashboard with `npm run dashboard:build`; generated
+  `web/index.html` reports 295 parsed reports, 213 applications, 409 pipeline
+  rows, and 1091 scan-history rows. Raw file counts after the run are 296
+  markdown files under `reports/` including `reports/CLAUDE.md`, 92 JD cache
+  files, 544 lines in `data/pipeline.md`, 222 lines in `data/applications.md`,
+  and 1092 lines in `data/scan-history.tsv`.
+- 2026-04-24: Verification passed: `bun run newgrad-scan -- --help`,
+  `npm run newgrad-scan -- --help`, `npm --prefix bridge run typecheck`,
+  `npm --prefix bridge run test -- src/adapters/claude-pipeline.test.ts
+  src/server.test.ts` with 22 tests, `git diff --check`, and `npm run verify`.
+  Full verify completed with 0 errors and the same 2 known duplicate warnings
+  for RemoteHunter Software Engineer and Anduril Industries Software Engineer
+  tracker rows.

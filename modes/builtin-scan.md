@@ -14,10 +14,10 @@ company source.
 
 ## What Already Exists
 
-- `npm run builtin-scan` calls `scripts/job-board-scan-bb-browser.ts --source builtin`.
+- `bun run builtin-scan` calls `scripts/job-board-scan-bb-browser.ts --source builtin`.
 - `bb-browser site builtin/jobs` reads Built In search pages without clicking
   Apply, Save, alerts, login, or resume upload controls.
-- `npm run builtin-scan:legacy` preserves the old `scan.mjs --builtin-only`
+- `bun run builtin-scan:legacy` preserves the old `scan.mjs --builtin-only`
   configured-keyword scanner.
 - `templates/portals.example.yml -> builtin_searches` defines versioned default
   keywords for the legacy scanner.
@@ -38,8 +38,8 @@ enrich, pipeline, history, and evaluation flow.
 Run:
 
 ```bash
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only --limit 20
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --dry-run --pages 2 --limit 50
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only --limit 20
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --dry-run --pages 2 --limit 50
 ```
 
 Expected behavior:
@@ -55,8 +55,8 @@ Expected behavior:
 Run:
 
 ```bash
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --no-evaluate --enrich-limit 5
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --no-evaluate
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --no-evaluate --enrich-limit 5
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --pages 2 --no-evaluate
 ```
 
 Expected behavior:
@@ -73,10 +73,10 @@ rows directly:
 
 ```bash
 /career-ops pipeline
-npm run builtin-scan -- --evaluate-only --evaluate-limit 5
+bun run builtin-scan -- --evaluate-only --evaluate-limit 5
 ```
 
-`--evaluate-only` delegates to `npm run builtin-scan:legacy` behavior: it reads
+`--evaluate-only` delegates to `bun run builtin-scan:legacy` behavior: it reads
 `/v1/builtin-scan/pending`, captures Built In detail page text, queues
 `/v1/evaluate` using `newgrad_quick`, and waits for tracker merge by default.
 Completed rows enter Apply Next only when the tracker status is `Evaluated` and
@@ -85,7 +85,7 @@ the score is at least `3.5/5`.
 To scan and evaluate in one command, use:
 
 ```bash
-npm run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --evaluate-limit 5
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --evaluate-limit 5
 ```
 
 `--score-only`, `--dry-run`, and `--dry-run --evaluate` never queue jobs; they only report the scan
@@ -110,7 +110,7 @@ filters to be the source of truth.
 2. Start the local bridge if needed:
 
 ```bash
-npm run ext:bridge
+bun run ext:bridge
 ```
 
 3. Open the Career-Ops extension panel.
@@ -188,8 +188,8 @@ In live tests on 2026-04-21, the first page behaved as follows:
 | Denver, CO | 25 | 25 | Included Denver, Broomfield, and multi-location rows |
 | New York, NY | 25 | 25 | Included New York, Brooklyn, and multi-location rows |
 
-The CLI `npm run builtin-scan` now treats the supplied `--url` or `--path` as
-the source of truth. Use `npm run builtin-scan:legacy` when you need the older
+The CLI `bun run builtin-scan` now treats the supplied `--url` or `--path` as
+the source of truth. Use `bun run builtin-scan:legacy` when you need the older
 configured `portals.yml -> builtin_searches` keyword sweep.
 
 ## Customizing Built In Searches
