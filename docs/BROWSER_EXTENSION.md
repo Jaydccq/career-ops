@@ -101,6 +101,7 @@ Bridge notes:
 - Rejects requests without `x-career-ops-token`
 - Refuses to boot `sdk` mode unless `ANTHROPIC_API_KEY` is present
 - `real` mode defaults to `codex`; set `CAREER_OPS_REAL_EXECUTOR=claude` to run the same bridge flow through `claude -p`
+- Codex bridge evaluations default to `CAREER_OPS_CODEX_MODEL=gpt-5.4` and `CAREER_OPS_CODEX_REASONING_EFFORT=medium`, overriding user-level Codex defaults for stable cost/latency.
 
 Quick health check:
 

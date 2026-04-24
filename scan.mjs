@@ -23,11 +23,14 @@
 import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
 import yaml from 'js-yaml';
+import { pathToFileURL } from 'url';
 const parseYaml = yaml.load;
 
 // ── Config ──────────────────────────────────────────────────────────
 
 const PORTALS_PATH = 'portals.yml';
+const PROFILE_PATH = 'config/profile.yml';
+const COMPANY_MEMORY_PATH = 'data/newgrad-company-memory.yml';
 const SCAN_HISTORY_PATH = 'data/scan-history.tsv';
 const PIPELINE_PATH = 'data/pipeline.md';
 const APPLICATIONS_PATH = 'data/applications.md';
@@ -347,6 +350,41 @@ function buildTitleFilter(titleFilter) {
   };
 }
 
+// ── Company hard filters ────────────────────────────────────────────
+
+export function loadActiveClearanceCompanySkips() {
+  const profile = readYamlFile(PROFILE_PATH);
+  const hardFilters = profile?.newgrad_scan?.hard_filters || {};
+  if (hardFilters.exclude_active_security_clearance !== true) return new Set();
+
+  const memory = readYamlFile(COMPANY_MEMORY_PATH);
+  return new Set([
+    ...yamlStringArray(hardFilters.active_security_clearance_companies),
+    ...yamlStringArray(memory?.active_security_clearance_companies),
+  ].map(normalizeCompanyName).filter(Boolean));
+}
+
+export function shouldSkipActiveClearanceCompany(company, activeClearanceCompanySkips) {
+  return activeClearanceCompanySkips.has(normalizeCompanyName(company));
+}
+
+function readYamlFile(path) {
+  if (!existsSync(path)) return {};
+  try {
+    return parseYaml(readFileSync(path, 'utf-8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function yamlStringArray(value) {
+  return Array.isArray(value) ? value.filter(item => typeof item === 'string') : [];
+}
+
+function normalizeCompanyName(value) {
+  return String(value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 // ── Dedup ───────────────────────────────────────────────────────────
 
 function loadSeenUrls() {
@@ -555,21 +593,30 @@ async function main() {
   const config = parseYaml(readFileSync(PORTALS_PATH, 'utf-8'));
   const companies = config.tracked_companies || [];
   const titleFilter = buildTitleFilter(config.title_filter);
+  const activeClearanceCompanySkips = loadActiveClearanceCompanySkips();
   const builtInSearches = (!noBuiltIn && (!filterCompany || 'builtin'.includes(filterCompany)))
     ? loadBuiltInSearches(config)
     : [];
 
   // 2. Filter to enabled companies with detectable APIs
-  const targets = companies
+  const selectedCompanies = companies
     .filter(c => c.enabled !== false)
-    .filter(c => !filterCompany || c.name.toLowerCase().includes(filterCompany))
+    .filter(c => !filterCompany || c.name.toLowerCase().includes(filterCompany));
+  const activeClearanceSkippedCompanies = builtInOnly
+    ? 0
+    : selectedCompanies.filter(c => shouldSkipActiveClearanceCompany(c.name, activeClearanceCompanySkips)).length;
+  const targets = selectedCompanies
+    .filter(c => !shouldSkipActiveClearanceCompany(c.name, activeClearanceCompanySkips))
     .map(c => ({ ...c, _api: detectApi(c) }))
     .filter(c => c._api !== null);
   const apiTargets = builtInOnly ? [] : targets;
 
-  const skippedCount = builtInOnly ? 0 : companies.filter(c => c.enabled !== false).length - targets.length;
+  const skippedCount = builtInOnly ? 0 : selectedCompanies.length - activeClearanceSkippedCompanies - targets.length;
 
   console.log(`Scanning ${apiTargets.length} companies via API (${skippedCount} skipped — no API detected)`);
+  if (activeClearanceSkippedCompanies > 0) {
+    console.log(`Company targets skipped by active-clearance blacklist: ${activeClearanceSkippedCompanies}`);
+  }
   console.log(`Scanning ${builtInSearches.length} Built In keyword searches`);
   if (builtInSearches.length > 0) console.log(`Built In pages per search: ${builtInPages}`);
   if (dryRun) console.log('(dry run — no files will be written)\n');
@@ -584,6 +631,7 @@ async function main() {
   let builtInRawFound = 0;
   let totalFiltered = 0;
   let totalDupes = 0;
+  let totalActiveClearanceSkipped = 0;
   const newOffers = [];
   const errors = [];
 
@@ -630,6 +678,10 @@ async function main() {
           builtInRawFound += jobs.length;
 
           for (const job of jobs) {
+            if (shouldSkipActiveClearanceCompany(job.company, activeClearanceCompanySkips)) {
+              totalActiveClearanceSkipped++;
+              continue;
+            }
             if (!titleFilter(job.title)) {
               totalFiltered++;
               continue;
@@ -680,6 +732,7 @@ async function main() {
   }
   console.log(`Total jobs found:      ${totalFound}`);
   console.log(`Filtered by title:     ${totalFiltered} removed`);
+  console.log(`Active-clearance skip: ${totalActiveClearanceSkipped} removed`);
   console.log(`Duplicates:            ${totalDupes} skipped`);
   console.log(`New offers added:      ${newOffers.length}`);
 
@@ -949,7 +1002,9 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-main().catch(err => {
-  console.error('Fatal:', err.message);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  main().catch(err => {
+    console.error('Fatal:', err.message);
+    process.exit(1);
+  });
+}

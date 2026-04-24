@@ -123,6 +123,10 @@ const NEGATIVE_LOCAL_REASON_TOKENS = new Set([
   "restricted_work_authorization_requirement",
   "salary_below_minimum",
   "seniority_too_high",
+  "sponsorship_unknown",
+  "unknown_sponsorship",
+  "visa_sponsorship_not_explicitly_confirmed",
+  "visa_sponsorship_unknown",
 ]);
 
 interface ClaudeTerminalJson {
@@ -197,7 +201,10 @@ interface TrackerMergeAttempt {
 export const __internal = {
   buildJdText,
   buildCodexTerminalSchema,
+  buildExecutionPlan,
+  buildQuickExecutionPlan,
   buildLocalQuickScreen,
+  prepareQuickEvaluationInput,
   buildQuickEvaluationSchema,
   buildQuickEvaluationPrompt,
   buildQuickEvaluationArtifacts,
@@ -321,14 +328,15 @@ export function createClaudePipelineAdapter(
       mkdirSync(reportDir, { recursive: true });
 
       if (shouldRunQuickEvaluation(input)) {
+        const quickInput = prepareQuickEvaluationInput(input);
         const quickLogPath = join(logsDir, `quick-${jobId}.log`);
         const quickConfig = loadNewGradScanConfig(config.repoRoot);
         writeFileSync(quickLogPath, "", "utf-8");
         appendJobLog(quickLogPath, "bridge", `job=${jobId} executor=${realExecutor} quick-eval`);
-        appendJobLog(quickLogPath, "bridge", `url=${input.url}`);
+        appendJobLog(quickLogPath, "bridge", `url=${quickInput.url}`);
 
         const localQuickScreen = buildLocalQuickScreen({
-          input,
+          input: quickInput,
           quickConfig,
           evaluatedReportUrls: loadEvaluatedReportUrls(config.repoRoot),
           jobId,
@@ -352,9 +360,9 @@ export function createClaudePipelineAdapter(
             repoRoot: config.repoRoot,
             reportNumber,
             date: today,
-            url: input.url,
+            url: quickInput.url,
             screen: localQuickScreen,
-            signals: input.structuredSignals,
+            signals: quickInput.structuredSignals,
           });
 
           onProgress({
@@ -396,7 +404,7 @@ export function createClaudePipelineAdapter(
         const quickEvaluation = await runQuickEvaluation({
           config,
           quickConfig,
-          input,
+          input: quickInput,
           jobId,
           logsDir,
           logPath: quickLogPath,
@@ -416,9 +424,9 @@ export function createClaudePipelineAdapter(
             repoRoot: config.repoRoot,
             reportNumber,
             date: today,
-            url: input.url,
+            url: quickInput.url,
             screen: quickEvaluation,
-            signals: input.structuredSignals,
+            signals: quickInput.structuredSignals,
           });
 
           onProgress({
@@ -1101,6 +1109,349 @@ function shouldRunQuickEvaluation(input: EvaluationInput): boolean {
   return input.evaluationMode === "newgrad_quick" && Boolean(input.structuredSignals);
 }
 
+function prepareQuickEvaluationInput(input: EvaluationInput): EvaluationInput {
+  const recovered = recoverQuickStructuredSignalsFromPageText(input.pageText);
+  if (!recovered) return input;
+
+  return {
+    ...input,
+    structuredSignals: mergeQuickStructuredSignals(input.structuredSignals, recovered),
+  };
+}
+
+function mergeQuickStructuredSignals(
+  existing: StructuredJobSignals | undefined,
+  recovered: StructuredJobSignals,
+): StructuredJobSignals {
+  if (!existing) return recovered;
+
+  const merged: StructuredJobSignals = { ...existing };
+
+  setStringSignal(merged, "source", recovered.source);
+  setStringSignal(merged, "company", recovered.company);
+  setStringSignal(merged, "role", recovered.role);
+  setStringSignal(merged, "location", recovered.location);
+  setStringSignal(merged, "workModel", recovered.workModel);
+  setStringSignal(merged, "employmentType", recovered.employmentType);
+  setStringSignal(merged, "seniority", recovered.seniority);
+  setStringSignal(merged, "postedAgo", recovered.postedAgo);
+  setStringSignal(merged, "salaryRange", recovered.salaryRange);
+
+  if (
+    (!merged.sponsorshipSupport || merged.sponsorshipSupport === "unknown") &&
+    recovered.sponsorshipSupport
+  ) {
+    merged.sponsorshipSupport = recovered.sponsorshipSupport;
+  }
+  if (recovered.requiresActiveSecurityClearance) {
+    merged.requiresActiveSecurityClearance = true;
+  }
+  if (
+    merged.yearsExperienceRequired == null &&
+    recovered.yearsExperienceRequired != null
+  ) {
+    merged.yearsExperienceRequired = recovered.yearsExperienceRequired;
+  }
+  if (merged.companySize == null && recovered.companySize != null) {
+    merged.companySize = recovered.companySize;
+  }
+  mergeArraySignal(merged, "taxonomy", existing.taxonomy, recovered.taxonomy);
+  mergeArraySignal(
+    merged,
+    "recommendationTags",
+    existing.recommendationTags,
+    recovered.recommendationTags,
+  );
+  mergeArraySignal(merged, "skillTags", existing.skillTags, recovered.skillTags);
+  mergeArraySignal(
+    merged,
+    "requiredQualifications",
+    existing.requiredQualifications,
+    recovered.requiredQualifications,
+  );
+  mergeArraySignal(
+    merged,
+    "responsibilities",
+    existing.responsibilities,
+    recovered.responsibilities,
+  );
+  if (merged.localValueScore == null && recovered.localValueScore != null) {
+    merged.localValueScore = recovered.localValueScore;
+  }
+  mergeArraySignal(
+    merged,
+    "localValueReasons",
+    existing.localValueReasons,
+    recovered.localValueReasons,
+  );
+
+  return merged;
+}
+
+type QuickStringSignalKey =
+  | "source"
+  | "company"
+  | "role"
+  | "location"
+  | "workModel"
+  | "employmentType"
+  | "seniority"
+  | "postedAgo"
+  | "salaryRange";
+
+function setStringSignal(
+  signals: StructuredJobSignals,
+  key: QuickStringSignalKey,
+  value: string | undefined,
+): void {
+  const trimmed = nonEmptyString(value);
+  if (trimmed && !signals[key]) {
+    signals[key] = trimmed;
+  }
+}
+
+type QuickArraySignalKey =
+  | "taxonomy"
+  | "recommendationTags"
+  | "skillTags"
+  | "requiredQualifications"
+  | "responsibilities"
+  | "localValueReasons";
+
+function mergeArraySignal(
+  signals: StructuredJobSignals,
+  key: QuickArraySignalKey,
+  primary: readonly string[] | undefined,
+  secondary: readonly string[] | undefined,
+): void {
+  const values = mergeSignalArrays(primary, secondary);
+  if (values) {
+    signals[key] = values;
+  }
+}
+
+function mergeSignalArrays(
+  primary: readonly string[] | undefined,
+  secondary: readonly string[] | undefined,
+): string[] | undefined {
+  const values = [...(primary ?? []), ...(secondary ?? [])]
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (values.length === 0) return undefined;
+
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(value);
+  }
+  return merged;
+}
+
+function recoverQuickStructuredSignalsFromPageText(
+  pageText: string | null | undefined,
+): StructuredJobSignals | null {
+  const text = pageText?.trim();
+  if (!text) return null;
+
+  const frontmatter = parseQuickFrontmatter(text);
+  const skillTags = splitQuickSignalValues(extractQuickLabelBlock(text, "Skill tags"));
+  const recommendationTags = splitQuickSignalValues(
+    extractQuickLabelBlock(text, "Recommendation tags"),
+  );
+  const taxonomy = splitQuickSignalValues(extractQuickLabelBlock(text, "Taxonomy"));
+  const requiredQualifications = extractQuickBullets(text, "Requirements", [
+    "Responsibilities",
+    "Skill tags",
+    "Recommendation tags",
+    "Taxonomy",
+  ]);
+  const responsibilities = extractQuickBullets(text, "Responsibilities", [
+    "Skill tags",
+    "Recommendation tags",
+    "Taxonomy",
+  ]);
+  const localValueReasons = splitQuickSignalValues(
+    extractQuickLineValue(text, "Local enrich reasons"),
+  );
+  const localValueScore = extractQuickNumber(text, /Local enrich value score:\s*([0-9.]+)\/10/i);
+  const salaryRange =
+    frontmatter.salary ||
+    extractQuickLineValue(text, "Salary") ||
+    extractQuickLineValue(text, "Compensation") ||
+    undefined;
+  const sponsorshipSupport = inferQuickSponsorshipSupport(
+    text,
+    frontmatter.h1b,
+    [...skillTags, ...recommendationTags],
+  );
+
+  const recovered: StructuredJobSignals = {
+    source: frontmatter.source || "newgrad-scan",
+    ...(frontmatter.company ? { company: frontmatter.company } : {}),
+    ...(frontmatter.role ? { role: frontmatter.role } : {}),
+    ...(salaryRange ? { salaryRange } : {}),
+    ...(sponsorshipSupport ? { sponsorshipSupport } : {}),
+    ...(skillTags.length > 0 ? { skillTags: skillTags.slice(0, 14) } : {}),
+    ...(recommendationTags.length > 0
+      ? { recommendationTags: recommendationTags.slice(0, 10) }
+      : {}),
+    ...(taxonomy.length > 0 ? { taxonomy: taxonomy.slice(0, 10) } : {}),
+    ...(requiredQualifications.length > 0
+      ? { requiredQualifications: requiredQualifications.slice(0, 10) }
+      : {}),
+    ...(responsibilities.length > 0
+      ? { responsibilities: responsibilities.slice(0, 8) }
+      : {}),
+    ...(localValueScore !== null ? { localValueScore } : {}),
+    ...(localValueReasons.length > 0
+      ? { localValueReasons: localValueReasons.slice(0, 16) }
+      : {}),
+  };
+
+  const titleForSeniority = `${recovered.role ?? ""}\n${text}`;
+  if (!recovered.seniority && /\b(new grad|new graduate|early career|junior|engineer i)\b/i.test(titleForSeniority)) {
+    recovered.seniority = "Early Career";
+  }
+
+  return hasRecoveredQuickSignal(recovered) ? recovered : null;
+}
+
+function hasRecoveredQuickSignal(signals: StructuredJobSignals): boolean {
+  return Boolean(
+    signals.salaryRange ||
+    signals.sponsorshipSupport ||
+    (signals.skillTags?.length ?? 0) > 0 ||
+    (signals.requiredQualifications?.length ?? 0) > 0 ||
+    (signals.responsibilities?.length ?? 0) > 0 ||
+    (signals.recommendationTags?.length ?? 0) > 0 ||
+    (signals.taxonomy?.length ?? 0) > 0,
+  );
+}
+
+function parseQuickFrontmatter(text: string): Record<string, string> {
+  const match = /^---\s*\n([\s\S]*?)\n---/.exec(text);
+  if (!match) return {};
+
+  const values: Record<string, string> = {};
+  for (const line of match[1]!.split(/\r?\n/)) {
+    const parsed = /^"?([A-Za-z0-9_-]+)"?:\s*"?([^"]*?)"?\s*$/.exec(line.trim());
+    if (!parsed) continue;
+    const key = parsed[1]!.trim();
+    const value = parsed[2]!.trim();
+    if (key && value) values[key] = value;
+  }
+  return values;
+}
+
+function extractQuickLabelBlock(text: string, label: string): string {
+  const pattern = new RegExp(`(?:^|\\n)${escapeRegExp(label)}:\\s*`, "i");
+  const match = pattern.exec(text);
+  if (!match) return "";
+
+  const start = match.index + match[0]!.length;
+  const rest = text.slice(start);
+  const next =
+    /\n(?:Company summary|Requirements|Responsibilities|Skill tags|Recommendation tags|Taxonomy):/i.exec(
+      rest,
+    );
+  return (next ? rest.slice(0, next.index) : rest).trim();
+}
+
+function extractQuickLineValue(text: string, label: string): string {
+  const pattern = new RegExp(`(?:^|\\n)${escapeRegExp(label)}:\\s*([^\\n]+)`, "i");
+  return pattern.exec(text)?.[1]?.trim() ?? "";
+}
+
+function extractQuickBullets(
+  text: string,
+  label: string,
+  stopLabels: readonly string[],
+): string[] {
+  const pattern = new RegExp(`(?:^|\\n)${escapeRegExp(label)}\\s*\\n`, "i");
+  const match = pattern.exec(text);
+  if (!match) return [];
+
+  const start = match.index + match[0]!.length;
+  const rest = text.slice(start);
+  const stopPattern = new RegExp(
+    `\\n(?:${stopLabels.map(escapeRegExp).join("|")}):?\\s*(?:\\n|$)`,
+    "i",
+  );
+  const stop = stopPattern.exec(rest);
+  const section = stop ? rest.slice(0, stop.index) : rest;
+  return section
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function splitQuickSignalValues(value: string | null | undefined): string[] {
+  const raw = value?.trim();
+  if (!raw) return [];
+
+  const lowValue = new Set([
+    "be an early applicant",
+    "less than 25 applicants",
+    "current stage",
+    "growth stage",
+    "public company",
+    "comp. & benefits",
+    "h1b sponsor likely",
+  ]);
+  const values = raw
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item && item.length <= 120)
+    .filter((item) => !lowValue.has(item.toLowerCase()));
+
+  return mergeSignalArrays(values, []) ?? [];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractQuickNumber(text: string, pattern: RegExp): number | null {
+  const value = Number(pattern.exec(text)?.[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function inferQuickSponsorshipSupport(
+  text: string,
+  frontmatterH1b: string | undefined,
+  tags: readonly string[],
+): "yes" | "no" | undefined {
+  const normalized = normalizeQuickScreenText(text);
+  const h1b = normalizeQuickScreenText(frontmatterH1b ?? "");
+  if (h1b === "yes" || h1b === "true") return "yes";
+  if (h1b === "no" || h1b === "false") return "no";
+
+  if (
+    tags.some((tag) => normalizeQuickScreenText(tag) === "h1b sponsor likely") ||
+    normalized.includes("h1b sponsor likely") ||
+    normalized.includes("company h1b sponsorship") ||
+    normalized.includes("track record of offering h1b sponsorship")
+  ) {
+    return "yes";
+  }
+
+  if (
+    containsAnyPhrase(
+      normalized,
+      EXTRA_NO_SPONSORSHIP_PHRASES,
+      RESTRICTED_WORK_AUTHORIZATION_PHRASES,
+    )
+  ) {
+    return "no";
+  }
+
+  return undefined;
+}
+
 function buildLocalQuickScreen(args: {
   input: EvaluationInput;
   quickConfig: ReturnType<typeof loadNewGradScanConfig>;
@@ -1118,7 +1469,11 @@ function buildLocalQuickScreen(args: {
   const salaryRange = parseQuickSalaryRangeUsd(signals.salaryRange);
   const localValueScore = signals.localValueScore;
 
-  if (canonicalUrl && args.evaluatedReportUrls.has(canonicalUrl)) {
+  if (
+    canonicalUrl &&
+    args.evaluatedReportUrls.has(canonicalUrl) &&
+    !shouldBypassEvaluatedReportDuplicate(args.input)
+  ) {
     blockers.push("already_evaluated_report_url");
   }
 
@@ -1218,6 +1573,16 @@ function buildQuickCandidateProfile(config: ReturnType<typeof loadNewGradScanCon
     excludeActiveSecurityClearance: config.hard_filters.exclude_active_security_clearance,
     maxYearsExperience: config.hard_filters.max_years_experience,
   };
+}
+
+function shouldBypassEvaluatedReportDuplicate(input: EvaluationInput): boolean {
+  return Boolean(
+    input.detection?.signals.some((signal) =>
+      ["manual_rerun", "policy_rerun", "newgrad_policy_rerun"].includes(
+        normalizeMachineReason(signal),
+      ),
+    ),
+  );
 }
 
 function collectLocalQuickReasons(
@@ -1336,12 +1701,16 @@ function parseQuickSalaryRangeUsd(
   raw: string | null | undefined,
 ): { low: number; high: number } | null {
   if (!raw) return null;
+  const hourly = /\b(?:\/\s*h(?:ou)?r|per\s+hour|hourly)\b/i.test(raw);
   const values = [...raw.matchAll(/\$?\s*(\d{2,3}(?:,\d{3})?(?:\.\d+)?)/g)]
     .map((match) => Number.parseFloat((match[1] ?? "").replace(/,/g, "")))
     .filter((value) => Number.isFinite(value));
   if (values.length < 2) return null;
 
-  const scaled = values.map((value) => (value < 1000 ? value * 1000 : value));
+  const scaled = values.map((value) => {
+    if (hourly && value < 1000) return Math.round(value * 2080);
+    return value < 1000 ? value * 1000 : value;
+  });
   return {
     low: Math.min(...scaled),
     high: Math.max(...scaled),
@@ -1775,6 +2144,7 @@ function buildExecutionPlan(
       ...(args.allowSearch ? ["--search"] : []),
       "exec",
       ...(config.codexModel ? ["-m", config.codexModel] : []),
+      ...buildCodexReasoningArgs(config.codexReasoningEffort),
       "--full-auto",
       "-C",
       config.repoRoot,
@@ -1844,6 +2214,7 @@ function buildQuickExecutionPlan(
       args: [
         "exec",
         ...(config.codexModel ? ["-m", config.codexModel] : []),
+        ...buildCodexReasoningArgs(config.codexReasoningEffort),
         "-C",
         config.repoRoot,
         "--output-schema",
@@ -1869,6 +2240,11 @@ function buildQuickExecutionPlan(
     args: ["-p", args.prompt],
     cleanupPaths: [],
   };
+}
+
+function buildCodexReasoningArgs(effort: string | null | undefined): string[] {
+  const normalized = effort?.trim();
+  return normalized ? ["-c", `model_reasoning_effort="${normalized}"`] : [];
 }
 
 function buildCodexPrompt(promptPath: string, task: string): string {
@@ -1914,7 +2290,9 @@ function buildQuickEvaluationPrompt(args: {
     "- Choose `deep_eval` only when the role looks genuinely strong for this candidate.",
     "- Hard blockers should heavily push toward `skip`: no sponsorship support when visa sponsorship is required, active security clearance requirement, or explicit experience beyond the candidate max years.",
     "- Treat active security clearance as a hard blocker only for active/current Secret, Top Secret, or TS/SCI requirements. Ignore preferred, public-trust-only, or ability-to-obtain language.",
-    "- Unknown sponsorship support and missing compensation are uncertainty signals, not standalone hard blockers.",
+    "- Unknown sponsorship support, not-explicitly-confirmed sponsorship, and missing compensation are uncertainty signals, not standalone hard blockers.",
+    "- Do not put `sponsorship_unknown`, `visa_sponsorship_unknown`, `visa_sponsorship_not_explicitly_confirmed`, or equivalent unknown/not-confirmed sponsorship wording in `blockers`; only explicit no-sponsorship or restricted-work-authorization language is a sponsorship blocker.",
+    "- Do not put `missing_compensation`, `salary_unknown`, `compensation_missing`, or equivalent missing-salary wording in `blockers`; only an explicit salary high end below `compensationMinUsd` is a salary blocker.",
     "- If title-level signals say new grad / junior / engineer I, do not let noisy employment-type or seniority metadata override that by itself.",
     "- Prefer `skip` for vague, low-signal, clearly senior, or low-value roles.",
     "- `score` is a 0-5 screening score, not the final deep-eval score.",

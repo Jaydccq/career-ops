@@ -641,3 +641,59 @@ Login cookie import retest:
   Full verify completed with 0 errors and the same 2 known duplicate warnings
   for RemoteHunter Software Engineer and Anduril Industries Software Engineer
   tracker rows.
+- 2026-04-24: User challenged the Wonderschool report 329 quick-screen score
+  of `2.6/5` as likely too low. Audit found the scanner pipeline entry had
+  `score: 9/9, value: 10/10` with reasons including `strong_skill_match`,
+  `early_career_level`, and `sponsorship_supported`, while the quick-screen
+  report showed `no structured signals available`. The quick log confirms the
+  retried evaluation received only `source/company/role` in `structuredSignals`
+  and the richer salary, H1B likely, skill tags, and JD content only as
+  `pageText` from `jds/wonderschool-1c578e39.txt`. This makes report 329 a
+  cache-requeue artifact rather than a clean evaluation from the original
+  enriched row. Treat the `2.6/5` score as suspect until the role is requeued
+  with structured signals or the quick evaluator is taught to recover
+  frontmatter/JD-cache structure during retry.
+- 2026-04-24: User clarified screening policy changes. Goal: set the
+  compensation walk-away floor to `$90K`, make sponsorship unknown/not
+  explicitly confirmed a non-blocker, keep only explicit no-sponsorship language
+  as a sponsorship blocker, then rerun candidates skipped because of the old
+  floor or unknown-sponsorship handling. Success criteria: config and
+  quick-screen rules are updated mechanically, focused tests verify the new
+  policy and JD-cache structured-signal recovery, affected candidates are
+  requeued through `/v1/evaluate`, generated reports/tracker rows are inspected,
+  and final results are recorded here. Assumptions: explicit no-sponsorship,
+  restricted work-authorization, active clearance, experience-above-limit, and
+  salary below `$90K` remain blockers; unrelated low-signal or role-mismatch
+  skips are not automatically rerun. Uncertainties: some older skip reports lack
+  local JD cache text, so reruns may be limited to candidates with enough cached
+  context to evaluate without live browsing.
+- 2026-04-24: Implemented the policy correction in quick-screen code and full
+  batch prompt. `config/profile.yml` already had `compensation.minimum: "$90K"`;
+  quick screening now annualizes hourly salary before comparing to the floor,
+  recovers structured signals from local JD-cache frontmatter/body during
+  retries, blocks only explicit no-sponsorship/restricted work-authorization
+  language, and allows explicit `policy_rerun` duplicate bypasses. Updated
+  `batch/batch-prompt.md` so deep evaluations treat `h1b: "unknown"` as an
+  unresolved risk rather than a blocker.
+- 2026-04-24: Reran the affected cached candidates through the bridge with
+  policy-rerun signals. New reports: Wonderschool `330` (`4.05/5`,
+  `Evaluated`), Peloton `331` (`2.7/5`, `Evaluated`), KeyBank `332`
+  (`3.15/5`, `Evaluated`), R1 RCM `333` (`3.1/5`, `Evaluated`), AURA `334`
+  (`3.25/5`, `Evaluated`), ECC `335` (`2.1/5`, `SKIP`), Vizient `336`
+  (`2.8/5`, `SKIP`), Intuit `337` (`4.05/5`, `Evaluated`), Businessolver
+  `338` (`3.05/5`, `Evaluated`), and L&T Technology Services `339`
+  (`2.8/5`, `SKIP`).
+- 2026-04-24: Fixed `merge-tracker.mjs` after discovering that duplicate-row
+  updates preserved stale `SKIP` status from older quick screens. New behavior
+  uses the rerun status for non-advanced existing rows, preserves advanced
+  workflow states and existing PDFs, and lets a newer `Evaluated` report replace
+  an older quick-screen `SKIP` even if the final full-eval score is lower.
+  Updated existing tracker rows for the policy rerun results and rebuilt
+  `web/index.html`.
+- 2026-04-24: Verification passed: `npm --prefix bridge test --
+  src/adapters/claude-pipeline.test.ts src/adapters/newgrad-value-scorer.test.ts
+  src/batch/merge-tracker.test.ts` (31 tests), `npm --prefix bridge run
+  typecheck`, `npm run verify` (0 errors, 2 known duplicate warnings), stale
+  prompt grep for `h1b unknown` hard-blocker wording returned no matches, and
+  `npm run dashboard:build` rebuilt the dashboard with 305 reports, 213
+  applications, 409 pipeline rows, and 1091 scan-history rows.

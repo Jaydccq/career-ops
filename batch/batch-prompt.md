@@ -47,8 +47,13 @@ Eres un worker de evaluación de ofertas de empleo for the candidate (read name 
    - Si el archivo tiene frontmatter YAML (delimitado por `---`), parsea los campos
      como metadata del rol: `company`, `role`, `location`, `salary`, `h1b`, `clearance`, `applyUrl`.
    - El texto después del segundo `---` es la descripción del JD. Úsalo como JD completo.
-   - Si `h1b` es `"no"` o `"unknown"` y el candidato requiere visa sponsorship,
-     marca como posible hard blocker para Bloque B.
+   - Si `h1b` es `"no"`, o el JD dice explícitamente que no ofrece sponsorship,
+     que requiere autorización de trabajo sin sponsorship, o que limita el rol a
+     U.S. citizens / green-card holders, marca sponsorship como hard blocker
+     para Bloque B.
+   - Si `h1b` es `"unknown"` o sponsorship no está confirmado explícitamente,
+     trátalo como riesgo de aclaración, no como blocker. No marques `NO APLICAR`
+     únicamente por sponsorship desconocido.
    - Si `clearance` indica `active-secret-required`, o el JD exige `active secret security clearance`,
      trátalo como hard blocker para este candidato salvo que el usuario diga lo contrario explícitamente.
    - **Ventaja:** Este archivo ya contiene el JD pre-extraído. NO necesitas WebFetch ni WebSearch.

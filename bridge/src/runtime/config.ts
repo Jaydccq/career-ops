@@ -42,6 +42,8 @@ export interface BridgeConfig {
   codexBin: string | null;
   /** Codex model used for bridge evaluations. */
   codexModel: string | null;
+  /** Codex reasoning effort / intelligence used for bridge evaluations. */
+  codexReasoningEffort: string | null;
   /** Absolute path to the node CLI. */
   nodeBin: string;
   /** Which pipeline adapter to use. */
@@ -69,6 +71,7 @@ const DEFAULT_EVAL_CONCURRENCY = 2;
 const DEFAULT_EVAL_RPM = 30;
 const DEFAULT_LIVENESS_TIMEOUT_SEC = 20;
 const DEFAULT_CODEX_MODEL = "gpt-5.4";
+const DEFAULT_CODEX_REASONING_EFFORT = "medium";
 
 function here(): string {
   return dirname(fileURLToPath(import.meta.url));
@@ -237,6 +240,9 @@ export function loadConfig(): BridgeConfig {
   const claudeBin = resolveBin("claude");
   const codexBin = resolveBin("codex");
   const codexModel = parseOptionalString(process.env.CAREER_OPS_CODEX_MODEL) ?? DEFAULT_CODEX_MODEL;
+  const codexReasoningEffort =
+    parseOptionalString(process.env.CAREER_OPS_CODEX_REASONING_EFFORT) ??
+    DEFAULT_CODEX_REASONING_EFFORT;
   const nodeBin = resolveBin("node") ?? process.execPath;
   const mode = parseMode(process.env.CAREER_OPS_BRIDGE_MODE);
   const realExecutor = parseRealExecutor(process.env.CAREER_OPS_REAL_EXECUTOR);
@@ -274,6 +280,7 @@ export function loadConfig(): BridgeConfig {
     claudeBin,
     codexBin,
     codexModel,
+    codexReasoningEffort,
     nodeBin,
     mode,
     realExecutor,

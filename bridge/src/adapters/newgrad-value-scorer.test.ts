@@ -62,6 +62,24 @@ describe("newgrad value scorer", () => {
     expect(value.penalties).toContain("salary_below_minimum");
   });
 
+  test("annualizes hourly compensation before applying the salary floor", () => {
+    const config = makeConfig();
+    config.compensation_min_usd = 90_000;
+
+    const value = scoreEnrichedRowValue(
+      makeEnrichedRow({
+        detail: {
+          salaryRange: "$57.50-$78/hr",
+          confirmedSponsorshipSupport: "yes",
+        },
+      }),
+      config,
+    );
+
+    expect(value.reasons).toContain("salary_meets_minimum");
+    expect(value.penalties).not.toContain("salary_below_minimum");
+  });
+
   test("can pass without site match percentages when element tags are strong", () => {
     const value = scoreEnrichedRowValue(
       makeEnrichedRow({

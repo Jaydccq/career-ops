@@ -88,6 +88,15 @@ function parseScore(s) {
   return m ? parseFloat(m[1]) : 0;
 }
 
+function chooseMergedStatus(existingStatus, additionStatus) {
+  const advancedStatuses = ['Applied', 'Responded', 'Interview', 'Offer', 'Rejected', 'Discarded'];
+  return advancedStatuses.includes(existingStatus) ? existingStatus : additionStatus;
+}
+
+function chooseMergedPdf(existingPdf, additionPdf) {
+  return existingPdf === '✅' && additionPdf !== '✅' ? existingPdf : additionPdf;
+}
+
 function parseAppLine(line) {
   const parts = line.split('|').map(s => s.trim());
   if (parts.length < 9) return null;
@@ -269,12 +278,22 @@ for (const file of tsvFiles) {
   if (duplicate) {
     const newScore = parseScore(addition.score);
     const oldScore = parseScore(duplicate.score);
+    const existingReportNum = extractReportNum(duplicate.report);
+    const newerReport =
+      reportNum !== null &&
+      (existingReportNum === null || reportNum > existingReportNum);
+    const replacesQuickSkip =
+      duplicate.status === 'SKIP' &&
+      addition.status === 'Evaluated' &&
+      newerReport;
 
-    if (newScore > oldScore) {
+    if (newScore > oldScore || replacesQuickSkip) {
       console.log(`🔄 Update: #${duplicate.num} ${addition.company} — ${addition.role} (${oldScore}→${newScore})`);
       const lineIdx = appLines.indexOf(duplicate.raw);
       if (lineIdx >= 0) {
-        const updatedLine = `| ${duplicate.num} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${duplicate.status} | ${duplicate.pdf} | ${addition.report} | Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes} |`;
+        const status = chooseMergedStatus(duplicate.status, addition.status);
+        const pdf = chooseMergedPdf(duplicate.pdf, addition.pdf);
+        const updatedLine = `| ${duplicate.num} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${status} | ${pdf} | ${addition.report} | Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes} |`;
         appLines[lineIdx] = updatedLine;
         updated++;
       }

@@ -296,6 +296,7 @@ function baseSiteAlignmentScore(weightedAverage: number): number {
 function parseSalaryRangeUsd(value: string | null): SalaryRangeUsd | null {
   if (!value) return null;
 
+  const hourly = /\b(?:\/\s*h(?:ou)?r|per\s+hour|hourly)\b/i.test(value);
   const matches = [
     ...value.matchAll(
       /\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?/g,
@@ -305,7 +306,12 @@ function parseSalaryRangeUsd(value: string | null): SalaryRangeUsd | null {
     .map((match) => {
       const numeric = Number(match[1]!.replace(/,/g, ""));
       if (!Number.isFinite(numeric)) return null;
-      const multiplier = match[2] !== undefined || numeric < 1_000 ? 1_000 : 1;
+      const multiplier =
+        hourly && numeric < 1_000
+          ? 2_080
+          : match[2] !== undefined || numeric < 1_000
+            ? 1_000
+            : 1;
       return Math.round(numeric * multiplier);
     })
     .filter((amount): amount is number => amount !== null && amount > 0);

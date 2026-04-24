@@ -51,6 +51,50 @@ test("buildCodexTerminalSchema keeps legitimacy in the required schema", () => {
   });
 });
 
+test("codex evaluation plans pin reasoning effort to medium", () => {
+  const repoRoot = `${tmpdir()}/career-ops-codex-effort-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const logsDir = join(repoRoot, "batch", "logs");
+  const promptPath = join(repoRoot, "batch", "batch-prompt.md");
+  mkdirSync(logsDir, { recursive: true });
+  writeFileSync(promptPath, "Batch prompt", "utf-8");
+
+  try {
+    const config = {
+      repoRoot,
+      claudeBin: "claude",
+      codexBin: "codex",
+      codexModel: "gpt-5.4",
+      codexReasoningEffort: "medium",
+      nodeBin: process.execPath,
+      realExecutor: "codex" as const,
+      evaluationTimeoutSec: 60,
+      livenessTimeoutSec: 20,
+      allowDangerousClaudeFlags: true,
+    };
+
+    const fullPlan = __internal.buildExecutionPlan(config, {
+      jobId: "job-1",
+      promptPath,
+      task: "Evaluate this job.",
+      logsDir,
+      reportNumberText: "001",
+      allowSearch: false,
+    });
+    const quickPlan = __internal.buildQuickExecutionPlan(config, {
+      jobId: "job-1",
+      logsDir,
+      prompt: "Quick screen this job.",
+    });
+
+    expect(fullPlan.args).toContain("-c");
+    expect(fullPlan.args).toContain('model_reasoning_effort="medium"');
+    expect(quickPlan.args).toContain("-c");
+    expect(quickPlan.args).toContain('model_reasoning_effort="medium"');
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
 test("scoreNewGradRows does not mark promoted rows as already scanned before enrich", async () => {
   const repoRoot = makeRepoRoot();
   try {
@@ -280,7 +324,74 @@ test("buildQuickEvaluationPrompt stays compact and embeds structured signals", (
   expect(prompt).toContain('"salaryRange": "$140,000 - $180,000"');
   expect(prompt).toContain('"localValueScore": 8.6');
   expect(prompt).toContain('"targetSkills": [');
+  expect(prompt).toContain("Unknown sponsorship support, not-explicitly-confirmed sponsorship");
+  expect(prompt).toContain("visa_sponsorship_not_explicitly_confirmed");
+  expect(prompt).toContain("missing_compensation");
   expect(prompt).not.toContain("Evaluación Completa A-G");
+});
+
+test("prepareQuickEvaluationInput recovers structured signals from local JD cache text", () => {
+  const prepared = __internal.prepareQuickEvaluationInput({
+    url: "https://boards.greenhouse.io/embed/job_app?token=6359139003&utm_source=jobright",
+    title: "Early Career Software Engineer – Applied AI",
+    evaluationMode: "newgrad_quick",
+    structuredSignals: {
+      source: "jobright.ai",
+      company: "Wonderschool",
+      role: "Early Career Software Engineer – Applied AI",
+      sponsorshipSupport: "unknown",
+    },
+    pageText: [
+      "---",
+      '"company": "Wonderschool"',
+      '"role": "Early Career Software Engineer – Applied AI"',
+      '"salary": "$100000-$120000/yr"',
+      '"h1b": "unknown"',
+      '"source": "newgrad-scan"',
+      "---",
+      "",
+      "Company H1B Sponsorship",
+      "Wonderschool has a track record of offering H1B sponsorships, with 1 in 2025.",
+      "",
+      "Requirements",
+      "- Strong foundation in programming languages (e.g., Python, JavaScript, or TypeScript)",
+      "- Basic understanding of cloud platforms like Google Cloud Platform and AWS",
+      "",
+      "Responsibilities",
+      "- Design, develop, and maintain robust software solutions with a focus on integrating AI capabilities",
+      "- Collaborate with product managers, designers, and engineers to define requirements",
+      "",
+      "Skill tags: Python, JavaScript, TypeScript, AWS, H1B Sponsor Likely",
+      "",
+      "Recommendation tags: Comp. & Benefits, H1B Sponsor Likely",
+      "",
+      "Taxonomy: Engineering and Development, Machine Learning, Artificial Intelligence Engineer",
+    ].join("\n"),
+  });
+
+  expect(prepared.structuredSignals).toMatchObject({
+    company: "Wonderschool",
+    role: "Early Career Software Engineer – Applied AI",
+    salaryRange: "$100000-$120000/yr",
+    sponsorshipSupport: "yes",
+    seniority: "Early Career",
+  });
+  expect(prepared.structuredSignals?.skillTags).toEqual(
+    expect.arrayContaining(["Python", "JavaScript", "TypeScript", "AWS"]),
+  );
+  expect(prepared.structuredSignals?.requiredQualifications).toEqual(
+    expect.arrayContaining([
+      "Strong foundation in programming languages (e.g., Python, JavaScript, or TypeScript)",
+    ]),
+  );
+  expect(prepared.structuredSignals?.responsibilities).toEqual(
+    expect.arrayContaining([
+      "Design, develop, and maintain robust software solutions with a focus on integrating AI capabilities",
+    ]),
+  );
+  expect(prepared.structuredSignals?.taxonomy).toEqual(
+    expect.arrayContaining(["Machine Learning", "Artificial Intelligence Engineer"]),
+  );
 });
 
 test("quick evaluation pageText strips LinkedIn chrome-only detail excerpts", () => {
@@ -433,6 +544,110 @@ test("buildLocalQuickScreen skips obvious hard blockers without invoking codex",
   );
 });
 
+test("buildLocalQuickScreen does not block unknown sponsorship when salary meets 90k floor", () => {
+  const screen = __internal.buildLocalQuickScreen({
+    jobId: "job-local-sponsorship-unknown",
+    evaluatedReportUrls: new Set<string>(),
+    quickConfig: {
+      role_keywords: { positive: ["software engineer"], weight: 3 },
+      skill_keywords: {
+        terms: ["typescript", "python", "aws"],
+        weight: 1,
+        max_score: 4,
+      },
+      freshness: { within_24h: 2, within_3d: 1, older: 0 },
+      list_threshold: 3,
+      pipeline_threshold: 7,
+      detail_value_threshold: 7,
+      compensation_min_usd: 90000,
+      hard_filters: {
+        blocked_companies: [],
+        exclude_no_sponsorship: true,
+        exclude_active_security_clearance: true,
+        max_years_experience: 2,
+        no_sponsorship_keywords: ["no sponsorship", "not eligible for immigration sponsorship"],
+        no_sponsorship_companies: [],
+        clearance_keywords: ["active secret clearance"],
+        active_security_clearance_companies: [],
+      },
+      detail_concurrent_tabs: 3,
+      detail_delay_min_ms: 1000,
+      detail_delay_max_ms: 2000,
+    },
+    input: {
+      url: "https://careers.example.com/job/unknown-sponsorship",
+      title: "Software Engineer I",
+      evaluationMode: "newgrad_quick",
+      pageText: [
+        "Visa sponsorship is not explicitly confirmed in the posting.",
+        "Compensation: $90k - $100k.",
+      ].join("\n"),
+      structuredSignals: {
+        company: "Example",
+        role: "Software Engineer I",
+        sponsorshipSupport: "unknown",
+        salaryRange: "$90k - $100k",
+        localValueScore: 8.2,
+        localValueReasons: [
+          "strong_skill_match",
+          "visa_sponsorship_not_explicitly_confirmed",
+        ],
+        skillTags: ["TypeScript", "Python"],
+      },
+    },
+  });
+
+  expect(screen).toBeNull();
+});
+
+test("buildLocalQuickScreen annualizes hourly salaries before applying the 90k floor", () => {
+  const screen = __internal.buildLocalQuickScreen({
+    jobId: "job-local-hourly-salary",
+    evaluatedReportUrls: new Set<string>(),
+    quickConfig: {
+      role_keywords: { positive: ["software engineer"], weight: 3 },
+      skill_keywords: {
+        terms: ["javascript", "react", "typescript"],
+        weight: 1,
+        max_score: 4,
+      },
+      freshness: { within_24h: 2, within_3d: 1, older: 0 },
+      list_threshold: 3,
+      pipeline_threshold: 7,
+      detail_value_threshold: 7,
+      compensation_min_usd: 90000,
+      hard_filters: {
+        blocked_companies: [],
+        exclude_no_sponsorship: true,
+        exclude_active_security_clearance: true,
+        max_years_experience: 2,
+        no_sponsorship_keywords: ["no sponsorship"],
+        no_sponsorship_companies: [],
+        clearance_keywords: ["active secret clearance"],
+        active_security_clearance_companies: [],
+      },
+      detail_concurrent_tabs: 3,
+      detail_delay_min_ms: 1000,
+      detail_delay_max_ms: 2000,
+    },
+    input: {
+      url: "https://careers.example.com/job/hourly-salary",
+      title: "Software Engineer I",
+      evaluationMode: "newgrad_quick",
+      structuredSignals: {
+        company: "Example",
+        role: "Software Engineer I",
+        sponsorshipSupport: "yes",
+        salaryRange: "$57.50-$78/hr",
+        localValueScore: 8,
+        skillTags: ["JavaScript", "React"],
+      },
+    },
+  });
+
+  expect(screen).toBeNull();
+});
+
 test("buildLocalQuickScreen ignores penalty tokens when collecting positive reasons", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-skip-penalties",
@@ -538,6 +753,60 @@ test("buildLocalQuickScreen skips canonical duplicates before model screening", 
 
   expect(screen?.decision).toBe("skip");
   expect(screen?.blockers).toContain("already_evaluated_report_url");
+});
+
+test("buildLocalQuickScreen allows explicit policy reruns of evaluated URLs", () => {
+  const screen = __internal.buildLocalQuickScreen({
+    jobId: "job-local-rerun-duplicate",
+    evaluatedReportUrls: new Set([
+      "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/job/12218",
+    ]),
+    quickConfig: {
+      role_keywords: { positive: ["software engineer"], weight: 3 },
+      skill_keywords: {
+        terms: ["typescript", "python", "aws"],
+        weight: 1,
+        max_score: 4,
+      },
+      freshness: { within_24h: 2, within_3d: 1, older: 0 },
+      list_threshold: 3,
+      pipeline_threshold: 7,
+      detail_value_threshold: 7,
+      compensation_min_usd: 90000,
+      hard_filters: {
+        blocked_companies: [],
+        exclude_no_sponsorship: true,
+        exclude_active_security_clearance: true,
+        max_years_experience: 2,
+        no_sponsorship_keywords: ["no sponsorship"],
+        no_sponsorship_companies: [],
+        clearance_keywords: ["active secret clearance"],
+        active_security_clearance_companies: [],
+      },
+      detail_concurrent_tabs: 3,
+      detail_delay_min_ms: 1000,
+      detail_delay_max_ms: 2000,
+    },
+    input: {
+      url: "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/12218?utm_medium=jobshare",
+      title: "Software Engineer I",
+      evaluationMode: "newgrad_quick",
+      detection: {
+        label: "job_posting",
+        confidence: 1,
+        signals: ["policy_rerun"],
+      },
+      structuredSignals: {
+        company: "BDO",
+        role: "Software Engineer I",
+        salaryRange: "$90,000 - $100,000",
+        sponsorshipSupport: "unknown",
+        localValueScore: 8.1,
+      },
+    },
+  });
+
+  expect(screen).toBeNull();
 });
 
 test("buildLocalQuickScreen does not treat obtain-or-preferred clearance language as a hard blocker", () => {

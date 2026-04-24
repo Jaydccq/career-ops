@@ -23,6 +23,7 @@ function toPipelineConfig(
     claudeBin: cfg.claudeBin ?? "claude",
     codexBin: cfg.codexBin,
     codexModel: cfg.codexModel,
+    codexReasoningEffort: cfg.codexReasoningEffort,
     nodeBin: cfg.nodeBin,
     realExecutor: cfg.realExecutor,
     evaluationTimeoutSec: cfg.evaluationTimeoutSec,
@@ -62,6 +63,8 @@ async function main(): Promise<void> {
       bridgeVersion: config.bridgeVersion,
       careerOpsVersion: config.careerOpsVersion,
       codexModel: config.realExecutor === "codex" ? config.codexModel : undefined,
+      codexReasoningEffort:
+        config.realExecutor === "codex" ? config.codexReasoningEffort : undefined,
       tokenPreview,
     },
     "career-ops bridge booting"

@@ -108,6 +108,9 @@ Los niveles son aditivos — se ejecutan todos, los resultados se mezclan y dedu
    - Al menos 1 keyword de `positive` debe aparecer en el título (case-insensitive)
    - 0 keywords de `negative` deben aparecer
    - `seniority_boost` keywords dan prioridad pero no son obligatorios
+   - Saltar compañías en
+     `config/profile.yml → newgrad_scan.hard_filters.active_security_clearance_companies`
+     cuando `exclude_active_security_clearance: true`
 
 7. **Deduplicar** contra 3 fuentes:
    - `scan-history.tsv` → URL exacta ya vista

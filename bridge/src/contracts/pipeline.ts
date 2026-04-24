@@ -47,6 +47,8 @@ export interface PipelineConfig {
   codexBin?: string | null;
   /** Codex model passed with `codex exec -m`, avoiding drift in user-level defaults. */
   codexModel?: string | null;
+  /** Codex `model_reasoning_effort` passed with `codex exec -c`, avoiding drift in user-level defaults. */
+  codexReasoningEffort?: string | null;
   /** Absolute path to the `node` CLI binary. */
   nodeBin: string;
   /** Which CLI powers real mode. */
