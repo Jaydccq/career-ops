@@ -26,7 +26,7 @@ export function parseReports() {
       const num = filename.slice(0, 3);
       const title = (raw.match(/^#\s+(.+)$/m) || [, filename])[1];
       const meta = {};
-      for (const key of ['Fecha', 'Date', 'Arquetipo', 'Score', 'Legitimacy', 'URL']) {
+      for (const key of ['Fecha', 'Date', 'Arquetipo', 'Score', 'Legitimacy', 'URL', 'Decision']) {
         const m = raw.match(new RegExp(`\\*\\*${key}:\\*\\*\\s*(.+)`));
         if (m) meta[key.toLowerCase()] = m[1].trim();
       }

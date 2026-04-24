@@ -1,0 +1,253 @@
+{
+  "queueRunId": "linkedin-eval-20260424T201318Z-b58e592b",
+  "sourceLog": "data/scan-runs/linkedin-20260424T182344Z-2e3630e3.jsonl",
+  "queueLog": "data/scan-runs/linkedin-eval-20260424T201318Z-b58e592b.jsonl",
+  "queued": 13,
+  "queueFailed": 0,
+  "completed": 13,
+  "failed": 0,
+  "timedOut": 0,
+  "jobs": {
+    "queued": [
+      {
+        "jobId": "8mThZyMUT2jQ-RBadcTYQ",
+        "company": "Handshake",
+        "role": "Associate Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4395704038/"
+      },
+      {
+        "jobId": "tz3FaHdcfYM3TrNuae4Ic",
+        "company": "Jobright.ai",
+        "role": "Machine Learning Engineer - Early Career",
+        "url": "https://www.linkedin.com/jobs/view/4405332859/"
+      },
+      {
+        "jobId": "cqxoms1Ov_rfmOAFY9GE_",
+        "company": "NVIDIA",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4405060365/"
+      },
+      {
+        "jobId": "ytmDHMHpXPt6TqpafIyT0",
+        "company": "Webologix Ltd/ INC",
+        "role": "Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4405864555/"
+      },
+      {
+        "jobId": "I5yq9ibi6GrHdjlktL_T0",
+        "company": "Astrana Health",
+        "role": "Forward Deployed Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4388878436/"
+      },
+      {
+        "jobId": "ZLajQI8BdplaEdlaoaukd",
+        "company": "Handshake",
+        "role": "Associate Software Engineer, RLE",
+        "url": "https://www.linkedin.com/jobs/view/4406112904/"
+      },
+      {
+        "jobId": "VwpFaYzVlmYkxKRrqfbA-",
+        "company": "hackajob",
+        "role": "Software Engineer - Agentic AI - R434812",
+        "url": "https://www.linkedin.com/jobs/view/4405352308/"
+      },
+      {
+        "jobId": "g719MA5YwS3dlVv8fWgX9",
+        "company": "Verkada",
+        "role": "Software Engineer - Computer Vision",
+        "url": "https://www.linkedin.com/jobs/view/3765974062/"
+      },
+      {
+        "jobId": "oMigLz16PXwvXU83r8RIJ",
+        "company": "Jobs via Dice",
+        "role": "Application Software Engineer, Data",
+        "url": "https://www.linkedin.com/jobs/view/4405046915/"
+      },
+      {
+        "jobId": "NcpiOjr7R-9xPAtfJ4vQm",
+        "company": "Flexport",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405051625/"
+      },
+      {
+        "jobId": "oMfB6p2xnWFSQvHEHpB-x",
+        "company": "Axon",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405898510/"
+      },
+      {
+        "jobId": "g-o_uXpOahN3Lq3jyrnKN",
+        "company": "NVIDIA AI",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4403783359/"
+      },
+      {
+        "jobId": "g7V0A9MPzjzQpUxizuO_w",
+        "company": "Meltwater",
+        "role": "Software Engineer - Machine Learning",
+        "url": "https://www.linkedin.com/jobs/view/4406641632/"
+      }
+    ],
+    "completed": [
+      {
+        "jobId": "8mThZyMUT2jQ-RBadcTYQ",
+        "company": "Handshake",
+        "role": "Associate Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4395704038/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:13:31.332Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/349-handshake-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "tz3FaHdcfYM3TrNuae4Ic",
+        "company": "Jobright.ai",
+        "role": "Machine Learning Engineer - Early Career",
+        "url": "https://www.linkedin.com/jobs/view/4405332859/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:13:35.811Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/350-jobright-ai-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "cqxoms1Ov_rfmOAFY9GE_",
+        "company": "NVIDIA",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4405060365/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:13:42.548Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/351-nvidia-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "ytmDHMHpXPt6TqpafIyT0",
+        "company": "Webologix Ltd/ INC",
+        "role": "Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4405864555/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:13:46.996Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/352-webologix-ltd-inc-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "I5yq9ibi6GrHdjlktL_T0",
+        "company": "Astrana Health",
+        "role": "Forward Deployed Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4388878436/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:13:54.434Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/353-astrana-health-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "ZLajQI8BdplaEdlaoaukd",
+        "company": "Handshake",
+        "role": "Associate Software Engineer, RLE",
+        "url": "https://www.linkedin.com/jobs/view/4406112904/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:00.925Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/354-handshake-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "VwpFaYzVlmYkxKRrqfbA-",
+        "company": "hackajob",
+        "role": "Software Engineer - Agentic AI - R434812",
+        "url": "https://www.linkedin.com/jobs/view/4405352308/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:06.452Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/355-hackajob-for-comcast-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "g719MA5YwS3dlVv8fWgX9",
+        "company": "Verkada",
+        "role": "Software Engineer - Computer Vision",
+        "url": "https://www.linkedin.com/jobs/view/3765974062/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:13.624Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/356-verkada-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "oMigLz16PXwvXU83r8RIJ",
+        "company": "Jobs via Dice",
+        "role": "Application Software Engineer, Data",
+        "url": "https://www.linkedin.com/jobs/view/4405046915/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:20.101Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/357-jobs-via-dice-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "NcpiOjr7R-9xPAtfJ4vQm",
+        "company": "Flexport",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405051625/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:29.893Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/358-flexport-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "oMfB6p2xnWFSQvHEHpB-x",
+        "company": "Axon",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405898510/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:30.848Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/359-axon-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "g-o_uXpOahN3Lq3jyrnKN",
+        "company": "NVIDIA AI",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4403783359/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:41.548Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/361-nvidia-ai-2026-04-24.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "g7V0A9MPzjzQpUxizuO_w",
+        "company": "Meltwater",
+        "role": "Software Engineer - Machine Learning",
+        "url": "https://www.linkedin.com/jobs/view/4406641632/",
+        "phase": "completed",
+        "updatedAt": "2026-04-24T20:14:41.328Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/360-meltwater-2026-04-24.md",
+        "trackerMerged": true
+      }
+    ],
+    "failed": [],
+    "timedOut": [],
+    "failedQueue": []
+  }
+}

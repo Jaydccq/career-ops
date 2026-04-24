@@ -18,6 +18,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BATCH_RUNNER = join(REPO_ROOT, "batch", "batch-runner.sh");
 const BATCH_PROMPT = join(REPO_ROOT, "batch", "batch-prompt.md");
 const WORKER_RESULT = join(REPO_ROOT, "batch", "worker-result.mjs");
+const BATCH_E2E_TIMEOUT_MS = 20_000;
 
 const tempRoots: string[] = [];
 
@@ -157,7 +158,7 @@ test("batch runner records cache-hit metrics for pre-extracted JD inputs", () =>
   expect(metrics.metrics.used_frontmatter).toBe(true);
   expect(metrics.metrics.webfetch_count).toBe(0);
   expect(metrics.metrics.websearch_count).toBe(0);
-});
+}, BATCH_E2E_TIMEOUT_MS);
 
 test("batch runner records fallback and external lookup metrics when cached JD is absent", () => {
   const repoRoot = makeTempRepo();
@@ -189,4 +190,4 @@ test("batch runner records fallback and external lookup metrics when cached JD i
   expect(metrics.metrics.used_cached_jd).toBe(false);
   expect(metrics.metrics.webfetch_count).toBe(1);
   expect(metrics.metrics.websearch_count).toBe(0);
-});
+}, BATCH_E2E_TIMEOUT_MS);

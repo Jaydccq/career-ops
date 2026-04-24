@@ -1,0 +1,24 @@
+{
+  "scanRunId": "newgrad-20260424T090224Z-87268713",
+  "source": "newgrad-scan",
+  "startedAt": "2026-04-24T09:02:24.686Z",
+  "updatedAt": "2026-04-24T09:04:56.341Z",
+  "status": "completed",
+  "counts": {
+    "discovered": 76,
+    "listPromoted": 18,
+    "listFiltered": 58,
+    "enriched": 18,
+    "enrichmentFailed": 0,
+    "detailAdded": 0,
+    "detailSkipped": 18,
+    "queued": 0,
+    "queueFailed": 0,
+    "queueSkipped": 0,
+    "completed": 0,
+    "failed": 0,
+    "timedOut": 0
+  },
+  "eventLogPath": "/Users/hongxichen/Desktop/career-ops/data/scan-runs/newgrad-20260424T090224Z-87268713.jsonl",
+  "summaryPath": "/Users/hongxichen/Desktop/career-ops/data/scan-runs/newgrad-20260424T090224Z-87268713-summary.json"
+}

@@ -107,12 +107,39 @@ Posted 16 hours ago`)).toMatchObject({
       postedAgo: "16 hours ago",
       workModel: "Hybrid",
     });
+
+    expect(parseLinkedInVisibleJobCardText(`Software Engineer
+
+Software Engineer with verification
+
+Folia Health: The Home-Reported Outcomes Company
+
+Boston, MA (On-site)
+
+Viewed
+
+Promoted
+
+27 minutes ago`)).toMatchObject({
+      title: "Software Engineer",
+      company: "Folia Health: The Home-Reported Outcomes Company",
+      location: "Boston, MA (On-site)",
+      postedAgo: "27 minutes ago",
+      workModel: "On-site",
+    });
   });
 
   test("rejects non-job LinkedIn buttons", () => {
     expect(parseLinkedInVisibleJobCardText("Past 24 hours")).toBeNull();
     expect(parseLinkedInVisibleJobCardText("Remote")).toBeNull();
     expect(parseLinkedInVisibleJobCardText("Try Premium for $0")).toBeNull();
+    expect(parseLinkedInVisibleJobCardText(`Skip to main content
+
+0 notifications
+
+United States
+
+Posted 9 hours ago`)).toBeNull();
   });
 
   test("detects LinkedIn login and checkpoint states", () => {

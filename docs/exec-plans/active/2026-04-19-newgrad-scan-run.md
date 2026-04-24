@@ -697,3 +697,140 @@ Login cookie import retest:
   prompt grep for `h1b unknown` hard-blocker wording returned no matches, and
   `npm run dashboard:build` rebuilt the dashboard with 305 reports, 213
   applications, 409 pipeline rows, and 1091 scan-history rows.
+- 2026-04-24: User invoked `/newgrad-scan`. Goal: execute the repo-native
+  autonomous JobRight/newgrad scan for the current 24-hour window, enrich
+  qualifying rows, queue the default `newgrad_quick` evaluations, rebuild
+  derived artifacts if data changes, and record the outcome. Success criteria:
+  update/setup checks pass, bridge health is available in real Codex mode,
+  scanner completes or reports an actionable blocker, generated artifacts are
+  inspected, focused verification runs, and this plan records the result.
+  Assumptions: `/newgrad-scan` maps to the existing `/career-ops newgrad-scan`
+  workflow, direct evaluation is intended, the persistent scanner browser
+  profile should be reused, no application should be submitted, and unrelated
+  dirty worktree changes must be preserved. Uncertainties: JobRight API/login
+  state may change, direct evaluation jobs may outlive the scanner wait window,
+  and live scan output may include only previously seen rows. Simplest viable
+  path: start the existing real-Codex bridge if needed, run `npm run
+  newgrad-scan`, inspect before/after artifacts, rebuild the dashboard when
+  needed, then run focused verification.
+- 2026-04-24: Update/setup checks passed for this run. `node
+  update-system.mjs check` returned `offline` with local version `1.3.0`, and
+  `cv.md`, `config/profile.yml`, `modes/_profile.md`, and `portals.yml` are
+  present. Baseline before the run: 307 markdown report files under `reports/`,
+  94 JD cache files, 546 lines in `data/pipeline.md`, 223 lines in
+  `data/applications.md`, and 1103 lines in `data/scan-history.tsv`.
+- 2026-04-24: Started `npm run ext:bridge` in real Codex mode on
+  `127.0.0.1:47319`; authenticated health passed. `npm run newgrad-scan`
+  completed successfully. JobRight API source returned 76 rows within 24
+  hours, promoted 18, filtered 58, enriched 18 with 0 failures, then bridge
+  enrich added 0 candidates and skipped 18. Skip breakdown: 13
+  `site_match_below_bar`, 3 `site_signal_mixed`, 1 `no_sponsorship`, and 1
+  `pipeline_threshold`. No direct `newgrad_quick` evaluations were queued.
+- 2026-04-24: Run artifacts written to
+  `data/scan-runs/newgrad-20260424T090224Z-87268713.jsonl` and
+  `data/scan-runs/newgrad-20260424T090224Z-87268713-summary.json`. Reports, JD
+  cache files, pipeline rows, and tracker rows did not change; ignored
+  `data/scan-history.tsv` advanced from 1103 to 1108 lines. Rebuilt
+  `web/index.html` with `npm run dashboard:build`; dashboard output reported
+  306 reports, 214 applications, 410 pipeline rows, and 1107 scan-history rows.
+- 2026-04-24: Verification passed: `npm run newgrad-scan -- --help`,
+  `npm run verify` (0 errors, same 2 known duplicate warnings for RemoteHunter
+  Software Engineer and Anduril Industries Software Engineer), and
+  `git diff --check`.
+- 2026-04-24: User invoked `/career-ops newgrad-scan`. Goal: execute the
+  repo-native autonomous JobRight/newgrad scan for the current window, enrich
+  qualifying rows, queue default `newgrad_quick` evaluations when candidates
+  survive enrichment, and record resulting artifacts. Success criteria:
+  setup/update checks pass, bridge health is available in real Codex mode,
+  `npm run newgrad-scan` completes or returns a concrete blocker, generated
+  artifacts are inspected, focused verification runs, and this plan records the
+  result. Assumptions: this maps to the existing autonomous scanner, direct
+  evaluation is intended, the persistent scanner browser profile should be
+  reused, no application should be submitted, and unrelated dirty worktree
+  changes must be preserved. Uncertainties: JobRight API/login state may have
+  changed since the last run, direct evaluation jobs may take longer than the
+  scanner wait window, and the live window may contain only previously seen
+  rows. Simplest viable path: use the existing `npm run newgrad-scan`, start
+  the bridge only if needed, inspect before/after artifacts, rebuild the
+  dashboard if data changed, then run focused verification.
+- 2026-04-24: Setup checks passed for this run. `node update-system.mjs check`
+  returned `offline` with local version `1.3.0`; `cv.md`,
+  `config/profile.yml`, `modes/_profile.md`, `portals.yml`, and
+  `data/applications.md` are present. Baseline before the run: 307 markdown
+  report files under `reports/`, 95 JD cache files, 548 lines in
+  `data/pipeline.md`, 223 lines in `data/applications.md`, and 1116 lines in
+  `data/scan-history.tsv`.
+- 2026-04-24: Started `npm run ext:bridge` in real Codex mode on
+  `127.0.0.1:47319`; authenticated bridge health passed. `npm run
+  newgrad-scan` completed successfully. JobRight API source returned 83 rows
+  within 24 hours, promoted 36, filtered 47, enriched 36 with 0 failures, then
+  bridge enrich added 8 candidates and skipped 28. Skip breakdown: 10
+  `site_signal_mixed`, 13 `site_match_below_bar`, and 5 `no_sponsorship`.
+  Direct evaluation queued 8 candidates, completed 8, failed 0, and timed out
+  0.
+- 2026-04-24: Run artifacts written to
+  `data/scan-runs/newgrad-20260424T180551Z-93ecc8d2.jsonl` and
+  `data/scan-runs/newgrad-20260424T180551Z-93ecc8d2-summary.json`. Generated
+  reports/tracker rows: Procore Technologies `341` (`4.05/5`, `Evaluated`),
+  Notion `342` (`4.3/5`, `Evaluated`), Fortune `343` (`3.8/5`,
+  `Evaluated`), Sterne Kessler `344` (`2/5`, `SKIP`), AMETEK `345`
+  (`2.1/5`, `SKIP`), The Tatitlek Corporation `346` (`2/5`, `SKIP`), Meta
+  `347` (`1.5/5`, `SKIP`), and The Walt Disney Company `348` (`3.4/5`,
+  `Evaluated`). Counts after the run: 315 markdown report files under
+  `reports/`, 103 JD cache files, 561 lines in `data/pipeline.md`, 231 lines
+  in `data/applications.md`, and 1149 lines in `data/scan-history.tsv`.
+- 2026-04-24: Rebuilt `web/index.html` with `npm run dashboard:build`;
+  dashboard output reported 314 parsed reports, 222 applications, 419 pipeline
+  rows, and 1148 scan-history rows. Verification passed: `npm run
+  newgrad-scan -- --help`, `npm run verify` (0 errors, same 2 warnings for
+  duplicate RemoteHunter Software Engineer and Anduril Industries Software
+  Engineer rows), and `git diff --check`.
+- 2026-04-24: User invoked `/career-ops newgrad-scan`. Goal: execute the
+  repo-native autonomous JobRight/newgrad scan for the current live window,
+  enrich qualifying rows, queue default `newgrad_quick` evaluations for any
+  enrich survivors, rebuild derived artifacts if data changes, and record the
+  outcome. Success criteria: setup/update checks pass, bridge health is
+  available in real Codex mode, `npm run newgrad-scan` completes or reports an
+  actionable blocker, generated artifacts are inspected, focused verification
+  runs, and this plan records the result. Assumptions: the slash command maps
+  to the existing autonomous scanner, direct evaluation is intended, no
+  application should be submitted, the persistent scanner browser profile should
+  be reused, and unrelated dirty worktree changes must be preserved.
+  Uncertainties: JobRight API/login state may have changed, direct evaluations
+  may outlive the scanner wait window, and the live window may contain only
+  previously seen rows. Simplest viable path: start or reuse the existing
+  real-Codex bridge, run `npm run newgrad-scan`, inspect before/after artifacts,
+  rebuild the dashboard when needed, then run focused verification.
+- 2026-04-24: Setup/update checks passed for this run. `node
+  update-system.mjs check` returned `offline` with local version `1.3.0`;
+  required files `cv.md`, `config/profile.yml`, `modes/_profile.md`,
+  `portals.yml`, and `data/applications.md` are present. Baseline before the
+  run: 328 markdown report files under `reports/`, 116 JD cache files, 581
+  lines in `data/pipeline.md`, 243 lines in `data/applications.md`, and 1171
+  lines in `data/scan-history.tsv`. Initial unauthenticated bridge health found
+  no listener on `127.0.0.1:47319`.
+- 2026-04-24: Started `npm run ext:bridge` in real Codex mode on
+  `127.0.0.1:47319`; authenticated bridge health passed with tracker,
+  CV/profile, Codex CLI, and Playwright Chromium OK. `npm run newgrad-scan`
+  completed successfully. JobRight API source returned 114 rows within 24
+  hours, promoted 42, filtered 72, enriched 42 with 0 failures, then bridge
+  enrich added 4 candidates and skipped 38. Skip breakdown: 18
+  `site_match_below_bar`, 9 `site_signal_mixed`, 6 `no_sponsorship`, 3
+  `experience_too_high`, 1 `already_evaluated_report`, and 1
+  `pipeline_threshold`.
+- 2026-04-24: Direct evaluation queued 4 candidates and completed all 4 with no
+  queue failures or timeouts. Generated reports/tracker rows: Remitly `362`
+  (`4.05/5`, `Evaluated`), MSCI Inc. `363` (`3.8/5`, `Evaluated`/manual
+  review), AgileGrid Solutions `364` (`2/5`, `SKIP`), and Sezzle `365`
+  (`3.6/5`, `Evaluated`/manual review). Run artifacts were written to
+  `data/scan-runs/newgrad-20260424T212849Z-5c7612d7.jsonl` and
+  `data/scan-runs/newgrad-20260424T212849Z-5c7612d7-summary.json`.
+- 2026-04-24: Counts after the run: 332 markdown report files under `reports/`,
+  120 JD cache files, 589 lines in `data/pipeline.md`, 247 lines in
+  `data/applications.md`, and 1191 lines in `data/scan-history.tsv`. Rebuilt
+  `web/index.html` with `npm run dashboard:build`; dashboard output reported
+  331 parsed reports, 238 applications, 436 pipeline rows, and 1190
+  scan-history rows. Verification passed: `npm run newgrad-scan -- --help`,
+  `npm run verify` (0 errors, same 2 duplicate warnings for RemoteHunter
+  Software Engineer and Anduril Industries Software Engineer), and
+  `git diff --check`.

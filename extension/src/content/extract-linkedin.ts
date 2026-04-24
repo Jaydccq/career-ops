@@ -205,17 +205,22 @@ export async function extractLinkedInList(): Promise<LinkedInRow[]> {
 
     const anchors = Array.from(card.querySelectorAll<HTMLAnchorElement>("a[href*='/jobs/view/'], a[href*='/jobs/search-results/']"));
     const anchorTitle = anchors
-      .map((anchor) => compact(text(anchor)))
+      .flatMap((anchor) => lines(text(anchor)))
+      .map(normalizeTitleLine)
       .find((label) => label.length > 1 && label.length <= 180 && !/\b(view|apply|company)\b/i.test(label));
     if (anchorTitle) return anchorTitle;
 
-    return cardLines.find((line) => line.length > 1 && line.length <= 180) ?? "";
+    return normalizeTitleLine(cardLines.find((line) => line.length > 1 && line.length <= 180) ?? "");
+  }
+
+  function normalizeTitleLine(line: string): string {
+    return compact(line.replace(/\s+with verification$/i, ""));
   }
 
   function companyFromLines(cardLines: string[], title: string, location: string, postedAgo: string): string {
     const titleKey = title.toLowerCase();
     for (const line of cardLines) {
-      const normalized = line.toLowerCase();
+      const normalized = normalizeTitleLine(line).toLowerCase();
       if (normalized === titleKey) continue;
       if (normalized === `${titleKey} with verification` || /\swith verification$/i.test(line)) continue;
       if (line === location || line === postedAgo) continue;

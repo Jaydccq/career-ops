@@ -26,6 +26,8 @@ const HOST = process.env.CAREER_OPS_PDF_HOST || '127.0.0.1';
 const PORT = Number.parseInt(process.env.CAREER_OPS_PDF_PORT || '47329', 10);
 const AUTH_HEADER = 'x-career-ops-pdf-token';
 const API_TOKEN = process.env.CAREER_OPS_PDF_TOKEN || randomUUID();
+const BRIDGE_BASE = (process.env.CAREER_OPS_BRIDGE_BASE || 'http://127.0.0.1:47319').replace(/\/+$/, '');
+const BRIDGE_TOKEN_PATH = join(ROOT, 'bridge', '.bridge-token');
 const OUTPUT_DIR = join(ROOT, 'output');
 const WORK_DIR = join(OUTPUT_DIR, '.apply-docs');
 const DOWNLOADS_DIR = join(os.homedir(), 'Downloads');
@@ -1583,6 +1585,152 @@ async function setApplicationStatus(body) {
   return result;
 }
 
+async function readBridgeToken() {
+  if (!existsSync(BRIDGE_TOKEN_PATH)) {
+    throw new ClientError('bridge token not found; start with npm run ext:bridge', 503);
+  }
+  return (await readFile(BRIDGE_TOKEN_PATH, 'utf8')).trim();
+}
+
+function bridgeEnvelope(payload) {
+  return {
+    protocol: '1.0.0',
+    requestId: `dashboard-${randomUUID()}`,
+    clientTimestamp: new Date().toISOString(),
+    payload,
+  };
+}
+
+async function postBridge(path, payload) {
+  const token = await readBridgeToken();
+  let response;
+  try {
+    response = await fetch(`${BRIDGE_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-career-ops-token': token,
+      },
+      body: JSON.stringify(bridgeEnvelope(payload)),
+    });
+  } catch (error) {
+    throw new ClientError(`bridge request failed; start npm run ext:bridge. ${error.message}`, 503);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.ok === false) {
+    throw new ClientError(body.error?.message || `bridge returned ${response.status}`, response.status || 502);
+  }
+  return body.result;
+}
+
+async function getBridge(path) {
+  const token = await readBridgeToken();
+  let response;
+  try {
+    response = await fetch(`${BRIDGE_BASE}${path}`, {
+      headers: { 'x-career-ops-token': token },
+    });
+  } catch (error) {
+    throw new ClientError(`bridge request failed; start npm run ext:bridge. ${error.message}`, 503);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.ok === false) {
+    throw new ClientError(body.error?.message || `bridge returned ${response.status}`, response.status || 502);
+  }
+  return body.result;
+}
+
+function extractReportUrl(reportContent) {
+  const match = reportContent.match(/^\*\*URL:\*\*\s*(\S+)/mi);
+  return match?.[1]?.trim() || '';
+}
+
+function parsePipelineLocalJdPath(markdown, url) {
+  if (!url) return null;
+  const normalized = normalizeUrl(url);
+  for (const line of markdown.split(/\r?\n/)) {
+    if (!line.includes('[local:')) continue;
+    const lineUrl = line.match(/https?:\/\/\S+/)?.[0] || '';
+    if (normalizeUrl(lineUrl) !== normalized) continue;
+    const local = line.match(/\[local:([^\]]+)\]/)?.[1]?.trim();
+    return local || null;
+  }
+  return null;
+}
+
+async function readCachedJdForUrl(url) {
+  const pipeline = await readText('data/pipeline.md', '');
+  const localPath = parsePipelineLocalJdPath(pipeline, url);
+  if (!localPath || !/^jds\/[^/]+\.txt$/.test(localPath)) return '';
+  return readText(localPath, '');
+}
+
+function buildFullEvaluationPageText({ row, url, reportContent, jdContent }) {
+  return [
+    'Dashboard full evaluation requested after manual_review quick-screen decision.',
+    `Tracker row: ${row.company} — ${row.role}`,
+    `Tracker score: ${row.score || 'unknown'}`,
+    `Tracker status: ${row.status || 'unknown'}`,
+    row.notes ? `Tracker notes: ${row.notes}` : null,
+    jdContent ? `Cached JD:\n${jdContent}` : null,
+    reportContent ? `Prior quick-screen report:\n${reportContent}` : null,
+    `URL: ${url}`,
+  ].filter(Boolean).join('\n\n').slice(0, 50_000);
+}
+
+async function queueFullEvaluation(body) {
+  if (!body.reportPath) throw new ClientError('reportPath is required');
+  if (!body.company || !body.role) throw new ClientError('company and role are required');
+  const reportAbs = resolveReportPath(String(body.reportPath));
+  const reportContent = await readFile(reportAbs, 'utf8');
+  const url = extractReportUrl(reportContent) || normalizeUrl(body.jobUrl || '');
+  if (!url) throw new ClientError('job URL is required');
+  const jdContent = await readCachedJdForUrl(url);
+  const input = {
+    url,
+    title: String(body.role),
+    structuredSignals: {
+      source: 'dashboard',
+      company: String(body.company),
+      role: String(body.role),
+    },
+    detection: {
+      label: 'job_posting',
+      confidence: 1,
+      signals: ['dashboard_full_evaluation', 'manual_rerun'],
+    },
+    pageText: buildFullEvaluationPageText({
+      row: body,
+      url,
+      reportContent,
+      jdContent,
+    }),
+  };
+  const created = await postBridge('/v1/evaluate', { input });
+  return {
+    jobId: created.jobId,
+    bridgeBase: BRIDGE_BASE,
+  };
+}
+
+async function readFullEvaluationStatus(body) {
+  if (!body.jobId) throw new ClientError('jobId is required');
+  const snapshot = await getBridge(`/v1/jobs/${encodeURIComponent(String(body.jobId))}`);
+  return {
+    jobId: snapshot.id,
+    phase: snapshot.phase,
+    updatedAt: snapshot.updatedAt,
+    error: snapshot.error?.message || null,
+    result: snapshot.result ? {
+      reportPath: snapshot.result.reportPath || null,
+      pdfPath: snapshot.result.pdfPath || null,
+      trackerMerged: snapshot.result.trackerMerged ?? null,
+      score: snapshot.result.summary?.score ?? null,
+      recommendation: snapshot.result.summary?.recommendation ?? null,
+    } : null,
+  };
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
   if (req.method === 'OPTIONS') {
@@ -1647,6 +1795,22 @@ async function handleRequest(req, res) {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/full-evaluation') {
+      assertApiToken(req);
+      const body = await readJsonBody(req);
+      const result = await queueFullEvaluation(body);
+      sendJson(res, 202, { ok: true, ...result });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/full-evaluation/status') {
+      assertApiToken(req);
+      const body = await readJsonBody(req);
+      const result = await readFullEvaluationStatus(body);
+      sendJson(res, 200, { ok: true, job: result });
+      return;
+    }
+
     sendJson(res, 404, { ok: false, error: 'not found' });
   } catch (error) {
     const status = error instanceof ClientError ? error.status : 500;
@@ -1663,6 +1827,7 @@ export {
   buildCoverLetterContent,
   loadProfile,
   readText,
+  queueFullEvaluation,
   updateApplicationsMarkdownStatus,
 };
 

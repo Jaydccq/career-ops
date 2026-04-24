@@ -50,6 +50,12 @@ import {
 import { scoreAndFilter } from "../bridge/src/adapters/newgrad-scorer.ts";
 import { scoreEnrichedRowValue } from "../bridge/src/adapters/newgrad-value-scorer.ts";
 import { pickPipelineEntryUrl } from "../bridge/src/adapters/newgrad-links.ts";
+import { parseLinkedInGuestJobPostingHtml } from "../bridge/src/adapters/linkedin-guest-detail.ts";
+import {
+  createScanRunId,
+  createScanRunRecorder,
+  type ScanRunRecorder,
+} from "../bridge/src/adapters/newgrad-scan-run-log.ts";
 
 const PROTOCOL_VERSION = "1.0.0";
 const DEFAULT_HOST = "127.0.0.1";
@@ -57,6 +63,7 @@ const DEFAULT_PORT = 47319;
 const DEFAULT_LIMIT = 100;
 const DEFAULT_PAGES = 6;
 const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_OPEN_EXTERNAL_APPLY = true;
 const SCORE_CHUNK_SIZE = 50;
 const ENRICH_CHUNK_SIZE = 3;
 const DEFAULT_EVALUATION_QUEUE_DELAY_MS = 2100;
@@ -206,7 +213,8 @@ Options:
   --page-size <n>                LinkedIn start offset increment for --pages. Default: ${DEFAULT_PAGE_SIZE}.
   --scroll-steps <n>             Per-page result-list scroll probes. Default: 2.
   --enrich-limit <n>             Limit promoted rows before opening detail pages.
-  --open-external-apply          Click non-Easy-Apply Apply controls, open the external ATS URL, and read its JD text. Never submits forms.
+  --open-external-apply          Click non-Easy-Apply Apply controls, open the external ATS URL, and read its JD text. Default: enabled.
+  --no-open-external-apply       Disable external Apply probing and keep LinkedIn job-view URLs when no other external URL is available.
   --evaluate-limit <n>           Limit enrich survivors sent to /v1/evaluate.
   --evaluation-mode <mode>       Evaluation mode: newgrad_quick or default. Default: newgrad_quick.
   --no-wait-evaluations          Queue evaluation jobs and exit without waiting for tracker merge.
@@ -225,7 +233,7 @@ Login recovery:
 
 Safety:
   This scanner never clicks Easy Apply, Save, Dismiss, or message controls.
-  With --open-external-apply, it may click a non-Easy-Apply Apply control, open the external ATS page to read JD text, then stops before any form action.
+  During enrichment, it may click a non-Easy-Apply Apply control, open the external ATS page to read JD text, then stops before any form action.
 `;
 }
 
@@ -239,7 +247,7 @@ function parseArgs(argv: string[]): Options {
     pageSize: DEFAULT_PAGE_SIZE,
     scrollSteps: 2,
     enrichLimit: null,
-    openExternalApply: false,
+    openExternalApply: DEFAULT_OPEN_EXTERNAL_APPLY,
     scoreOnly: false,
     evaluate: true,
     evaluateLimit: null,
@@ -288,6 +296,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--open-external-apply":
         options.openExternalApply = true;
+        break;
+      case "--no-open-external-apply":
+        options.openExternalApply = false;
         break;
       case "--evaluate-limit":
         options.evaluateLimit = positiveInt(next(), arg);
@@ -355,105 +366,215 @@ async function main(): Promise<void> {
     throw new Error("missing LinkedIn search URL; pass --url or set config/profile.yml -> linkedin_scan.search_url");
   }
 
-  await assertBbBrowserAvailable();
-  const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
+  const scanRun = createScanRunRecorder({
+    repoRoot,
+    scanRunId: createScanRunId("linkedin"),
+    source: "linkedin-scan",
+  });
   const bridgeBase = `http://${options.bridgeHost}:${options.bridgePort}`;
-  await assertBridgeHealthy(bridgeBase, token);
 
-  const collected = await collectLinkedInRows(url, options);
-  let rows = dedupeRows(collected.rows);
-  if (options.limit !== null) rows = rows.slice(0, options.limit);
-  console.log(`Extracted ${collected.rows.length} raw LinkedIn rows; ${rows.length} unique after dedupe`);
+  try {
+    scanRun.record("scan_configured", {
+      url,
+      limit: options.limit,
+      pages: options.pages,
+      pageSize: options.pageSize,
+      scrollSteps: options.scrollSteps,
+      scoreOnly: options.scoreOnly,
+      enrichLimit: options.enrichLimit,
+      openExternalApply: options.openExternalApply,
+      evaluate: options.evaluate,
+      evaluateLimit: options.evaluateLimit,
+      evaluationMode: options.evaluationMode,
+      waitEvaluations: options.waitEvaluations,
+      bridgeBase,
+    });
 
-  if (rows.length === 0) {
-    console.log("No rows extracted; check the LinkedIn page filters or login state.");
-    return;
-  }
+    await assertBbBrowserAvailable();
+    scanRun.record("bb_browser_available");
+    const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
+    scanRun.record("bridge_health_check_started", { bridgeBase });
+    await assertBridgeHealthy(bridgeBase, token);
 
-  const score = options.scoreOnly
-    ? scoreRowsLocally(rows)
-    : await scoreRows(bridgeBase, token, rows);
-  console.log(`Scored rows: promoted=${score.promoted.length}, filtered=${score.filtered.length}`);
-  printPromotedRows(score.promoted);
-
-  if (options.scoreOnly || score.promoted.length === 0) {
-    if (options.scoreOnly) {
-      console.log("--score-only used: no bridge write endpoints were called.");
+    const collected = await collectLinkedInRows(url, options, scanRun);
+    let rows = dedupeRows(collected.rows.filter(isUsableLinkedInRow));
+    if (options.limit !== null) rows = rows.slice(0, options.limit);
+    console.log(`Extracted ${collected.rows.length} raw LinkedIn rows; ${rows.length} unique after dedupe`);
+    scanRun.increment("discovered", rows.length);
+    scanRun.record("rows_extracted", {
+      raw: collected.rows.length,
+      unique: rows.length,
+    });
+    for (const row of rows) {
+      scanRun.record("list_row_extracted", summarizeRow(row));
     }
-    return;
-  }
 
-  const promoted = options.enrichLimit === null
-    ? [...score.promoted]
-    : [...score.promoted].slice(0, options.enrichLimit);
-  console.log(`Enriching ${promoted.length} promoted LinkedIn rows`);
-
-  const { enrichedRows, failed } = await enrichLinkedInDetails(promoted, options);
-  console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
-  if (enrichedRows.length === 0) return;
-  printEnrichedValueScores(enrichedRows);
-
-  const enrich = await writeEnrichedRows(bridgeBase, token, enrichedRows);
-  console.log(`Bridge enrich result: added=${enrich.added}, skipped=${enrich.skipped}, candidates=${enrich.candidates?.length ?? 0}`);
-  if (enrich.skipBreakdown && Object.keys(enrich.skipBreakdown).length > 0) {
-    console.log(`Skip breakdown: ${JSON.stringify(enrich.skipBreakdown)}`);
-  }
-  printPipelineEntries(enrich.entries);
-
-  if (!options.evaluate) {
-    console.log("Direct evaluation disabled by --no-evaluate.");
-    return;
-  }
-
-  const bridgeCandidates = [...(enrich.candidates ?? enrich.entries)];
-  const reviewCandidates = buildLinkedInReviewCandidates(enrichedRows, bridgeCandidates);
-  if (reviewCandidates.length > 0) {
-    console.log(`LinkedIn review fallback: ${reviewCandidates.length} value-threshold rows eligible for direct evaluation`);
-  }
-
-  const evaluationCandidates = dedupePipelineEntries([
-    ...bridgeCandidates,
-    ...reviewCandidates,
-  ]).slice(
-    0,
-    options.evaluateLimit ?? undefined,
-  );
-  if (evaluationCandidates.length === 0) {
-    console.log("No enrich survivors eligible for direct evaluation.");
-    return;
-  }
-
-  const queued = await queueDirectEvaluations(
-    bridgeBase,
-    token,
-    evaluationCandidates,
-    enrichedRows,
-    options,
-  );
-  console.log(`Direct evaluation queue: queued=${queued.jobs.length}, failed=${queued.failed.length}, skipped=${queued.skipped}`);
-  for (const failedJob of queued.failed) {
-    console.warn(`- failed to queue ${failedJob.company} - ${failedJob.role}: ${failedJob.error}`);
-  }
-
-  if (options.waitEvaluations && queued.jobs.length > 0) {
-    const result = await waitForEvaluations(bridgeBase, token, queued.jobs, options);
-    console.log(`Direct evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`);
-    for (const item of result.completed) {
-      console.log(`- ${item.result.company} - ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`);
+    if (rows.length === 0) {
+      console.log("No rows extracted; check the LinkedIn page filters or login state.");
+      const summary = scanRun.finalize("completed", { reason: "no_rows" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
+      return;
     }
-  } else if (queued.jobs.length > 0) {
-    console.log("Evaluation jobs queued; not waiting because --no-wait-evaluations was set.");
+
+    const score = options.scoreOnly
+      ? scoreRowsLocally(rows)
+      : await scoreRows(bridgeBase, token, rows);
+    console.log(`Scored rows: promoted=${score.promoted.length}, filtered=${score.filtered.length}`);
+    scanRun.increment("listPromoted", score.promoted.length);
+    scanRun.increment("listFiltered", score.filtered.length);
+    recordListDecisions(scanRun, score);
+    printPromotedRows(score.promoted);
+
+    if (options.scoreOnly || score.promoted.length === 0) {
+      if (options.scoreOnly) {
+        console.log("--score-only used: no bridge write endpoints were called.");
+      }
+      const summary = scanRun.finalize("completed", {
+        reason: options.scoreOnly ? "score_only" : "no_promoted_rows",
+      });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
+      return;
+    }
+
+    const promoted = options.enrichLimit === null
+      ? [...score.promoted]
+      : [...score.promoted].slice(0, options.enrichLimit);
+    console.log(`Enriching ${promoted.length} promoted LinkedIn rows`);
+
+    const { enrichedRows, failed } = await enrichLinkedInDetails(promoted, options);
+    console.log(`Detail enrichment: enriched=${enrichedRows.length}, failed=${failed}`);
+    scanRun.increment("enriched", enrichedRows.length);
+    scanRun.increment("enrichmentFailed", failed);
+    scanRun.record("detail_enrichment_completed", {
+      enriched: enrichedRows.length,
+      failed,
+    });
+    for (const row of enrichedRows) {
+      scanRun.record("detail_enriched", summarizeEnrichedRow(row));
+    }
+    if (enrichedRows.length === 0) {
+      const summary = scanRun.finalize("completed", { reason: "no_enriched_rows" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
+      return;
+    }
+    printEnrichedValueScores(enrichedRows);
+
+    const enrich = await writeEnrichedRows(bridgeBase, token, enrichedRows);
+    console.log(`Bridge enrich result: added=${enrich.added}, skipped=${enrich.skipped}, candidates=${enrich.candidates?.length ?? 0}`);
+    scanRun.increment("detailAdded", enrich.added);
+    scanRun.increment("detailSkipped", enrich.skipped);
+    scanRun.record("bridge_enrich_completed", {
+      added: enrich.added,
+      skipped: enrich.skipped,
+      candidates: enrich.candidates?.length ?? 0,
+      skipBreakdown: enrich.skipBreakdown,
+    });
+    recordDetailDecisions(scanRun, enrich);
+    if (enrich.skipBreakdown && Object.keys(enrich.skipBreakdown).length > 0) {
+      console.log(`Skip breakdown: ${JSON.stringify(enrich.skipBreakdown)}`);
+    }
+    printPipelineEntries(enrich.entries);
+
+    if (!options.evaluate) {
+      console.log("Direct evaluation disabled by --no-evaluate.");
+      const summary = scanRun.finalize("completed", { reason: "evaluation_disabled" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
+      return;
+    }
+
+    const bridgeCandidates = [...(enrich.candidates ?? enrich.entries)];
+    const reviewCandidates = buildLinkedInReviewCandidates(enrichedRows, bridgeCandidates);
+    if (reviewCandidates.length > 0) {
+      console.log(`LinkedIn review fallback: ${reviewCandidates.length} value-threshold rows eligible for direct evaluation`);
+      scanRun.record("linkedin_review_fallback_candidates", {
+        count: reviewCandidates.length,
+        candidates: reviewCandidates,
+      });
+    }
+
+    const evaluationCandidates = dedupePipelineEntries([
+      ...bridgeCandidates,
+      ...reviewCandidates,
+    ]).slice(
+      0,
+      options.evaluateLimit ?? undefined,
+    );
+    if (evaluationCandidates.length === 0) {
+      console.log("No enrich survivors eligible for direct evaluation.");
+      const summary = scanRun.finalize("completed", { reason: "no_evaluation_candidates" });
+      console.log(`Scan run summary: ${summary.summaryPath}`);
+      return;
+    }
+
+    const queued = await queueDirectEvaluations(
+      bridgeBase,
+      token,
+      evaluationCandidates,
+      enrichedRows,
+      options,
+    );
+    console.log(`Direct evaluation queue: queued=${queued.jobs.length}, failed=${queued.failed.length}, skipped=${queued.skipped}`);
+    scanRun.increment("queued", queued.jobs.length);
+    scanRun.increment("queueFailed", queued.failed.length);
+    scanRun.increment("queueSkipped", queued.skipped);
+    scanRun.record("direct_evaluation_queue_completed", {
+      queued: queued.jobs.length,
+      failed: queued.failed.length,
+      skipped: queued.skipped,
+    });
+    for (const failedJob of queued.failed) {
+      console.warn(`- failed to queue ${failedJob.company} - ${failedJob.role}: ${failedJob.error}`);
+    }
+
+    if (options.waitEvaluations && queued.jobs.length > 0) {
+      const result = await waitForEvaluations(bridgeBase, token, queued.jobs, options);
+      console.log(`Direct evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`);
+      scanRun.increment("completed", result.completed.length);
+      scanRun.increment("failed", result.failed.length);
+      scanRun.increment("timedOut", result.timedOut.length);
+      scanRun.record("direct_evaluation_wait_completed", {
+        completed: result.completed.length,
+        failed: result.failed.length,
+        timedOut: result.timedOut.length,
+      });
+      for (const item of result.completed) {
+        scanRun.record("evaluation_completed", {
+          company: item.result.company,
+          role: item.result.role,
+          score: item.result.score,
+          reportPath: item.result.reportPath,
+          trackerMerged: item.result.trackerMerged,
+        });
+        console.log(`- ${item.result.company} - ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`);
+      }
+    } else if (queued.jobs.length > 0) {
+      console.log("Evaluation jobs queued; not waiting because --no-wait-evaluations was set.");
+    }
+
+    const summary = scanRun.finalize("completed");
+    console.log(`Scan run summary: ${summary.summaryPath}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const summary = scanRun.finalize("failed", { error: message });
+    console.error(`Scan run failed. Summary: ${summary.summaryPath}`);
+    throw error;
   }
 }
 
 async function collectLinkedInRows(
   url: string,
   options: Options,
+  scanRun?: ScanRunRecorder,
 ): Promise<{ rows: NewGradRow[] }> {
   const pageUrls = buildLinkedInSearchPageUrls(url, options.pages, options.pageSize);
   const rows: NewGradRow[] = [];
 
   for (const [index, pageUrl] of pageUrls.entries()) {
+    scanRun?.record("source_page_open_started", {
+      page: index + 1,
+      pages: pageUrls.length,
+      url: pageUrl,
+    });
     const listTabId = await openBbTab(pageUrl);
     try {
       await assertLinkedInReady(listTabId);
@@ -467,6 +588,12 @@ async function collectLinkedInRows(
       rows.push(...pageRows);
       const uniqueSoFar = dedupeRows(rows).length;
       console.log(`Page ${index + 1}/${pageUrls.length}: extracted ${pageRows.length} raw rows (${uniqueSoFar} unique so far)`);
+      scanRun?.record("source_page_rows_extracted", {
+        page: index + 1,
+        raw: pageRows.length,
+        uniqueSoFar,
+        rows: pageRows.map(summarizeRow),
+      });
 
       if (options.limit !== null && uniqueSoFar >= options.limit) {
         break;
@@ -707,16 +834,13 @@ async function collectLinkedInPageRows(tabId: string, options: Options): Promise
   const rows: NewGradRow[] = [];
 
   for (let step = 0; step <= options.scrollSteps; step += 1) {
-    const staticRows = await evaluateBrowserJson<NewGradRow[]>(tabId, extractLinkedInList);
-    rows.push(...staticRows);
-
     const visibleButtons = await evaluateBrowserJson<LinkedInVisibleJobButton[]>(
       tabId,
       extractLinkedInVisibleJobButtons,
     );
-    if (visibleButtons.length > staticRows.length) {
-      rows.push(...await collectLinkedInVisibleButtonRows(tabId, visibleButtons));
-    }
+    const visibleRows = await collectLinkedInVisibleButtonRows(tabId, visibleButtons);
+    const staticRows = await evaluateBrowserJson<NewGradRow[]>(tabId, extractLinkedInList);
+    rows.push(...visibleRows, ...staticRows);
 
     if (step === options.scrollSteps) break;
 
@@ -738,11 +862,17 @@ async function collectLinkedInVisibleButtonRows(
     const parsed = parseLinkedInVisibleJobCardText(button.text);
     if (!parsed) continue;
 
-    const selected = await evaluateBrowserJson<LinkedInSelectedJobState>(
-      tabId,
-      selectLinkedInVisibleJobButton,
-      [button.index, parsed.title],
-    );
+    let selected: LinkedInSelectedJobState;
+    try {
+      selected = await evaluateBrowserJson<LinkedInSelectedJobState>(
+        tabId,
+        selectLinkedInVisibleJobButton,
+        [button.index, parsed.title],
+      );
+    } catch (error) {
+      console.warn(`Visible LinkedIn row selection failed for ${parsed.company} - ${parsed.title}: ${conciseErrorMessage(error)}`);
+      continue;
+    }
     const detailUrl = canonicalLinkedInJobViewUrl(selected.selectedLink) ??
       canonicalLinkedInJobViewUrl(selected.url) ??
       (
@@ -951,7 +1081,7 @@ async function evaluateBrowserJson<T>(
   args: readonly unknown[] = [],
 ): Promise<T> {
   const script = `(() => { const __name = (target) => target; const __args = ${JSON.stringify(args)}; return (async () => JSON.stringify(await (${func.toString()})(...__args)))(); })()`;
-  const data = await runBbJson<BbEvalData>(["eval", script, "--json", "--tab", tabId]);
+  const data = await runBbJson<BbEvalData>(["eval", script, "--json", "--tab", tabId], 45_000);
   const result = data.result;
   if (typeof result === "string") return JSON.parse(result) as T;
   return result as T;
@@ -975,11 +1105,14 @@ function pageStateForAuth(): LinkedInAuthStateInput {
   };
 }
 
-async function runBb(args: readonly string[]): Promise<{ stdout: string; stderr: string }> {
+async function runBb(
+  args: readonly string[],
+  timeoutMs = 120_000,
+): Promise<{ stdout: string; stderr: string }> {
   try {
     return await execFile("bb-browser", [...args], {
       maxBuffer: 25 * 1024 * 1024,
-      timeout: 120_000,
+      timeout: timeoutMs,
     });
   } catch (error) {
     const err = error as Error & { stdout?: string; stderr?: string };
@@ -988,8 +1121,8 @@ async function runBb(args: readonly string[]): Promise<{ stdout: string; stderr:
   }
 }
 
-async function runBbJson<T>(args: readonly string[]): Promise<T> {
-  const { stdout } = await runBb(args);
+async function runBbJson<T>(args: readonly string[], timeoutMs?: number): Promise<T> {
+  const { stdout } = await runBb(args, timeoutMs);
   const envelope = JSON.parse(stdout) as BbJsonEnvelope<T>;
   if (!envelope.success) {
     throw new Error(envelope.error ?? "bb-browser command failed");
@@ -1092,7 +1225,14 @@ async function enrichLinkedInDetails(
     const detailTabId = await openBbTab(scored.row.detailUrl);
     try {
       await assertLinkedInReady(detailTabId);
-      const rawDetail = await evaluateBrowserJson<NewGradDetail>(detailTabId, extractLinkedInDetail);
+      let rawDetail: NewGradDetail;
+      try {
+        rawDetail = await evaluateBrowserJson<NewGradDetail>(detailTabId, extractLinkedInDetail);
+      } catch (error) {
+        const message = conciseErrorMessage(error);
+        console.warn(`LinkedIn authenticated detail read failed for ${scored.row.company} - ${scored.row.title}; trying guest detail: ${message}`);
+        rawDetail = detailFromLinkedInRow(scored.row);
+      }
       const linkedInGuestDetail = rawDetail.description.trim().length >= 400
         ? null
         : await readLinkedInGuestJobDetail(scored.row.detailUrl);
@@ -1138,7 +1278,7 @@ async function enrichLinkedInDetails(
       enrichedRows.push({ row: scored, detail });
     } catch (error) {
       failed += 1;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = conciseErrorMessage(error);
       console.warn(`Detail enrichment failed for ${scored.row.company} - ${scored.row.title}: ${message}`);
     } finally {
       await closeBbTab(detailTabId);
@@ -1148,20 +1288,93 @@ async function enrichLinkedInDetails(
   return { enrichedRows, failed };
 }
 
+function conciseErrorMessage(error: unknown): string {
+  const lines = (error instanceof Error ? error.message : String(error))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return (lines[lines.length - 1] ?? "unknown error").slice(0, 240);
+}
+
+function detailFromLinkedInRow(row: NewGradRow): NewGradDetail {
+  const description = row.qualifications ?? "";
+  const sponsorshipSupport = row.sponsorshipSupport ?? "unknown";
+  const confirmedSponsorshipSupport = row.confirmedSponsorshipSupport ?? "unknown";
+
+  return {
+    position: row.position,
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    employmentType: null,
+    workModel: row.workModel || null,
+    seniorityLevel: null,
+    salaryRange: row.salary,
+    matchScore: null,
+    expLevelMatch: null,
+    skillMatch: null,
+    industryExpMatch: null,
+    description,
+    industries: row.industry ? [row.industry] : [],
+    recommendationTags: row.postedAgo ? [row.postedAgo] : [],
+    responsibilities: [],
+    requiredQualifications: [],
+    skillTags: [],
+    taxonomy: [],
+    companyWebsite: null,
+    companyDescription: null,
+    companySize: row.companySize,
+    companyLocation: null,
+    companyFoundedYear: null,
+    companyCategories: [],
+    h1bSponsorLikely: row.h1bSponsored ? true : null,
+    sponsorshipSupport,
+    confirmedSponsorshipSupport,
+    h1bSponsorshipHistory: [],
+    requiresActiveSecurityClearance: row.requiresActiveSecurityClearance,
+    confirmedRequiresActiveSecurityClearance: row.confirmedRequiresActiveSecurityClearance,
+    insiderConnections: null,
+    originalPostUrl: row.detailUrl,
+    applyNowUrl: row.applyUrl,
+    applyFlowUrls: [row.detailUrl],
+  };
+}
+
 async function readLinkedInGuestJobDetail(url: string): Promise<ExternalAtsDetail | null> {
   const jobId = linkedInJobIdFromUrl(url);
   if (!jobId) return null;
 
   const guestUrl = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
+  const attempts: string[] = [];
+
+  try {
+    const response = await fetch(guestUrl, {
+      headers: {
+        "accept": "text/html,application/xhtml+xml",
+        "user-agent": "Mozilla/5.0 career-ops-linkedin-scan",
+      },
+    });
+    const html = await response.text();
+    const detail = parseLinkedInGuestJobPostingHtml(html, guestUrl);
+    attempts.push(`node_fetch status=${response.status} chars=${detail.description.length}`);
+    if (response.ok && detail.description.trim().length >= 400) return detail;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    attempts.push(`node_fetch error=${message.split("\n")[0]}`);
+  }
+
   try {
     const { stdout } = await runBb(["fetch", guestUrl]);
     const detail = parseLinkedInGuestJobPostingHtml(stdout, guestUrl);
-    return detail.description.trim().length >= 400 ? detail : null;
+    attempts.push(`bb_fetch chars=${detail.description.length}`);
+    if (detail.description.trim().length >= 400) return detail;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`LinkedIn guest detail read failed for ${url}: ${message}`);
-    return null;
+    attempts.push(`bb_fetch error=${message.split("\n")[0]}`);
   }
+
+  console.warn(`LinkedIn guest detail read did not produce usable JD for ${url}: ${attempts.join("; ")}`);
+  return null;
 }
 
 async function readExternalAtsDetail(url: string): Promise<ExternalAtsDetail | null> {
@@ -1280,118 +1493,6 @@ function linkedInJobIdFromUrl(value: string): string {
   } catch {
     return value.match(/\/jobs\/view\/(?:[^/]+-)?(\d+)(?:[/?#]|$)/i)?.[1] ?? "";
   }
-}
-
-function parseLinkedInGuestJobPostingHtml(html: string, finalUrl: string): ExternalAtsDetail {
-  function decodeHtml(value: string): string {
-    const named: Record<string, string> = {
-      amp: "&",
-      gt: ">",
-      lt: "<",
-      nbsp: " ",
-      quot: '"',
-      apos: "'",
-    };
-    return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, code: string) => {
-      if (code[0] === "#") {
-        const raw = code[1]?.toLowerCase() === "x" ? code.slice(2) : code.slice(1);
-        const radix = code[1]?.toLowerCase() === "x" ? 16 : 10;
-        const point = Number.parseInt(raw, radix);
-        return Number.isFinite(point) ? String.fromCodePoint(point) : entity;
-      }
-      return named[code.toLowerCase()] ?? entity;
-    });
-  }
-
-  function htmlToText(value: string): string {
-    return decodeHtml(value)
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|h[1-6]|li|ul|ol|section)>/gi, "\n")
-      .replace(/<li\b[^>]*>/gi, "")
-      .replace(/<[^>]+>/g, "")
-      .split(/\r?\n/)
-      .map((line) => line.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim())
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  function firstHtmlText(pattern: RegExp): string {
-    const match = html.match(pattern);
-    return match?.[1] ? htmlToText(match[1]) : "";
-  }
-
-  function sectionItems(source: string, headingPattern: RegExp): string[] {
-    const sourceLines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const start = sourceLines.findIndex((line) => headingPattern.test(line));
-    if (start === -1) return [];
-
-    const items: string[] = [];
-    for (const line of sourceLines.slice(start + 1)) {
-      if (/^(benefits|preferred qualifications|qualifications|requirements|responsibilities|skills|about|what you|you will|who you are)$/i.test(line)) {
-        if (items.length > 0) break;
-        continue;
-      }
-      const cleaned = line.replace(/^[-•*]\s*/, "").trim();
-      if (cleaned.length < 20 || cleaned.length > 500) continue;
-      items.push(cleaned);
-      if (items.length >= 12) break;
-    }
-    return items;
-  }
-
-  function skillTagsFromText(value: string): string[] {
-    const skills = [
-      "TypeScript",
-      "JavaScript",
-      "Python",
-      "React",
-      "Node.js",
-      "Java",
-      "Go",
-      "C++",
-      "SQL",
-      "AWS",
-      "Azure",
-      "GCP",
-      "Kubernetes",
-      "Docker",
-      "LLM",
-      "AI",
-      "Machine Learning",
-      "Spark",
-      "Kafka",
-      "Flink",
-      "ClickHouse",
-    ];
-    const normalized = value.toLowerCase();
-    return skills.filter((skill) => normalized.includes(skill.toLowerCase())).slice(0, 22);
-  }
-
-  const descriptionHtml = html.match(/<div class="description__text[^"]*"[^>]*>([\s\S]*?)<ul class="description__job-criteria-list/i)?.[1] ??
-    html.match(/<section class="[^"]*\bdescription\b[^"]*"[\s\S]*?<div class="description__text[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<ul/i)?.[1] ??
-    "";
-  const rawDescription = htmlToText(descriptionHtml)
-    .split(/\r?\n/)
-    .filter((line) => !/^(show more|show less)$/i.test(line))
-    .join("\n");
-  const description = rawDescription
-    ? `About the job\n${rawDescription}`.slice(0, 30_000)
-    : "";
-  const criteriaText = htmlToText(html.match(/<ul class="description__job-criteria-list[^"]*"[^>]*>([\s\S]*?)<\/ul>/i)?.[1] ?? "");
-
-  return {
-    finalUrl,
-    title: firstHtmlText(/<h2[^>]*class="[^"]*\btopcard__title\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/i),
-    company: firstHtmlText(/<a[^>]*class="[^"]*\btopcard__org-name-link\b[^"]*"[^>]*>([\s\S]*?)<\/a>/i),
-    location: firstHtmlText(/<span[^>]*class="[^"]*\btopcard__flavor--bullet\b[^"]*"[^>]*>([\s\S]*?)<\/span>/i),
-    workModel: /\bremote\b/i.test(description) ? "Remote" : /\bhybrid\b/i.test(description) ? "Hybrid" : /\b(on-site|onsite)\b/i.test(description) ? "On-site" : null,
-    employmentType: /\bfull[-\s]?time\b/i.exec(criteriaText || description)?.[0] ?? null,
-    salaryRange: salaryFromText(description || htmlToText(html)),
-    description,
-    responsibilities: sectionItems(description, /^(primary responsibilities|responsibilities|what you will do|you will|about the role)$/i),
-    requiredQualifications: sectionItems(description, /^(requirements|qualifications|basic qualifications|required qualifications|preferred qualifications|what you bring)$/i),
-    skillTags: skillTagsFromText(description),
-  };
 }
 
 async function extractExternalAtsJobDetail(): Promise<ExternalAtsDetail> {
@@ -2155,6 +2256,19 @@ function dedupeRows(rows: readonly NewGradRow[]): NewGradRow[] {
   return unique;
 }
 
+function isUsableLinkedInRow(row: NewGradRow): boolean {
+  const company = normalizeText(row.company);
+  const title = normalizeText(row.title);
+  const combined = `${company} ${title}`;
+  if (!company || !title) return false;
+  if (company.includes("promoted by hirer")) return false;
+  if (company.includes("responses managed off linkedin")) return false;
+  if (combined.includes("skip to main content")) return false;
+  if (/\b\d+\s+notifications?\b/.test(combined)) return false;
+  if (title === "notifications" || title.endsWith(" notifications")) return false;
+  return true;
+}
+
 function dedupePipelineEntries(entries: readonly PipelineEntry[]): PipelineEntry[] {
   const seen = new Set<string>();
   const unique: PipelineEntry[] = [];
@@ -2180,6 +2294,86 @@ function pipelineEntryKeys(entry: PipelineEntry): string[] {
 
   if (keys.length === 0) keys.push(`raw:${entry.url}`);
   return keys;
+}
+
+function summarizeRow(row: NewGradRow): Record<string, unknown> {
+  return {
+    position: row.position,
+    company: row.company,
+    role: row.title,
+    location: row.location,
+    postedAgo: row.postedAgo,
+    workModel: row.workModel,
+    employmentType: row.employmentType,
+    salaryRange: row.salaryRange,
+    detailUrl: row.detailUrl,
+    applyUrl: row.applyUrl,
+    source: row.source,
+  };
+}
+
+function summarizeEnrichedRow(row: EnrichedRow): Record<string, unknown> {
+  const value = scoreEnrichedRowValue(row, loadNewGradScanConfig(repoRoot));
+  return {
+    company: row.detail.company || row.row.row.company,
+    role: row.detail.title || row.row.row.title,
+    url: pickPipelineEntryUrl(row.detail, row.row.row),
+    detailTextChars: row.detail.description.length,
+    requiredQualifications: row.detail.requiredQualifications.length,
+    responsibilities: row.detail.responsibilities.length,
+    skillTags: row.detail.skillTags,
+    sponsorshipSupport: row.detail.sponsorshipSupport,
+    requiresActiveSecurityClearance: row.detail.requiresActiveSecurityClearance,
+    valueScore: value.score,
+    valueThreshold: value.threshold,
+    valuePassed: value.passed,
+    valueReasons: value.reasons,
+    valuePenalties: value.penalties,
+    valueBreakdown: value.breakdown,
+  };
+}
+
+function recordListDecisions(
+  scanRun: ScanRunRecorder,
+  score: NewGradScoreResult,
+): void {
+  for (const item of score.promoted) {
+    scanRun.record("list_filter_passed", {
+      ...summarizeRow(item.row),
+      score: item.score,
+      maxScore: item.maxScore,
+      breakdown: item.breakdown,
+    });
+  }
+
+  for (const item of score.filtered) {
+    scanRun.record("list_filter_skipped", {
+      ...summarizeRow(item.row),
+      reason: item.reason,
+      detail: item.detail,
+    });
+  }
+}
+
+function recordDetailDecisions(
+  scanRun: ScanRunRecorder,
+  enrich: NewGradEnrichResult,
+): void {
+  for (const entry of enrich.entries) {
+    scanRun.record("detail_gate_passed", {
+      company: entry.company,
+      role: entry.role,
+      url: entry.url,
+      score: entry.score,
+      valueScore: entry.valueScore,
+      valueReasons: entry.valueReasons,
+      source: entry.source,
+    });
+  }
+
+  for (const skip of enrich.skips ?? []) {
+    scanRun.record("detail_gate_skipped", skip as unknown as Record<string, unknown>);
+  }
 }
 
 function printPromotedRows(rows: readonly ScoredRow[]): void {

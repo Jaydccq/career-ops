@@ -18,7 +18,7 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
 |---------------|------------------------------|--------------------------------------------|
 | Apply Next    | `data/applications.md` + `reports/*.md` | Priority shortlist, selective shortlist, local completion marks |
 | Reports       | `reports/*.md`               | Filter, select, render Markdown in panel   |
-| Tracker       | `data/applications.md`       | Filter, status dropdown, sortable columns  |
+| Tracker       | `data/applications.md` + `reports/*.md` | Filter, status dropdown, quick-screen decision column, full-evaluation queue button |
 | Pipeline      | `data/pipeline.md`           | Filter, done/pending toggle                |
 | Scan History  | `data/scan-history.tsv`      | Filter, portal dropdown, sortable columns  |
 | Keywords      | `data/newgrad-skill-stats.json` | Last-scan and profile matched/missed skill coverage |
@@ -32,6 +32,10 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
    `generate-pdf.mjs` and `generate-cover-letter.mjs`, creates PDFs under
    `output/`, and copies them into `~/Downloads` when the download button is
    clicked.
+4. Tracker rows read quick-screen decisions from report metadata such as
+   `**Decision:** manual_review`. `manual_review` rows show a **Full Eval**
+   button when the local dashboard server is running. The button queues a
+   default bridge evaluation, so `npm run ext:bridge` must also be running.
 
 The `Apply Next` tab also stores a local completion marker in browser
 `localStorage`. That marker is a dashboard convenience only; canonical tracker
@@ -55,4 +59,5 @@ Run it after:
 - scanner runs (scan-history.tsv updates)
 
 The static snapshot can still browse embedded data, but PDF generation requires
-the local dashboard server.
+the local dashboard server. Full-evaluation queueing also requires the local
+dashboard server plus the bridge.

@@ -55,9 +55,11 @@ Run:
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 20
 ```
 
-This opens promoted LinkedIn job-view pages, extracts detail text, writes
-qualifying rows to `data/pipeline.md` as `linkedin-scan`, and does not queue
-formal evaluations.
+This opens promoted LinkedIn job-view pages, extracts detail text, clicks
+non-Easy-Apply `Apply` controls to inspect the external ATS/job-board posting,
+writes qualifying rows to `data/pipeline.md` as `linkedin-scan`, and does not
+queue formal evaluations. When an external posting URL is found, that URL is
+used for pipeline/evaluation output instead of the LinkedIn job-view URL.
 
 Default behavior without `--no-evaluate` queues `newgrad_quick` evaluations for
 enrich survivors and waits for completion.
@@ -68,6 +70,7 @@ Useful options:
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --limit 5
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --score-only --pages 4 --limit 100
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --open-external-apply --enrich-limit 20
+bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-open-external-apply --enrich-limit 20
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --no-evaluate --enrich-limit 2
 bun run linkedin-scan -- --url "<LinkedIn Jobs URL>" --evaluate-limit 3
 bun run linkedin-scan -- --bridge-host 127.0.0.1 --bridge-port 47319
@@ -90,10 +93,11 @@ If no `--url` is passed, the script reads
 - Never submit applications.
 - Never click Easy Apply, Save, Dismiss, message, recruiter controls, or any
   external application form controls.
-- Only when explicitly requested or when `--open-external-apply` is present, the
-  scanner may click LinkedIn's non-Easy-Apply `Apply` control, open the external
-  ATS page, read job-description text, and close the page. It must not submit,
-  fill, or advance any application form.
+- During enrichment, the scanner clicks LinkedIn's non-Easy-Apply `Apply`
+  control by default, opens the external ATS/job-board page, reads
+  job-description text, and closes the page. It must not submit, fill, or
+  advance any application form. Use `--no-open-external-apply` only for
+  controlled fallback/debug runs.
 - Keep LinkedIn job-view URLs as pipeline URLs when the external ATS URL is not
   available or the visible control is Easy Apply.
 - Treat login, checkpoint, and account-verification pages as manual recovery

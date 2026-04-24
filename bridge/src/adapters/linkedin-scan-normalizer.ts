@@ -148,8 +148,13 @@ export function parseLinkedInVisibleJobCardText(value: string | null | undefined
   const usefulLines = linesBeforePosted.filter((line) => !isLinkedInVisibleRowNoise(line));
   if (usefulLines.length < 3) return null;
 
-  const title = usefulLines[0] ?? "";
-  const company = usefulLines.find((line, index) => index > 0 && isLikelyLinkedInCompanyLine(line)) ?? "";
+  const title = normalizeLinkedInTitleLine(usefulLines[0] ?? "");
+  const titleKey = title.toLowerCase();
+  const company = usefulLines.find((line, index) => {
+    if (index === 0) return false;
+    if (normalizeLinkedInTitleLine(line).toLowerCase() === titleKey) return false;
+    return isLikelyLinkedInCompanyLine(line);
+  }) ?? "";
   const companyIndex = company ? usefulLines.indexOf(company) : -1;
   const location = usefulLines.find((line, index) => index > companyIndex && isLikelyLinkedInLocationLine(line)) ?? "";
 
@@ -216,15 +221,22 @@ function lines(value: string): string[] {
 }
 
 function isLinkedInVisibleRowNoise(line: string): boolean {
-  return /^(viewed|promoted|easy apply|apply|save|be an early applicant|actively recruiting)$/i.test(line) ||
+  return /^(viewed|promoted|easy apply|apply|save|be an early applicant|actively recruiting|skip to main content|notifications?|messaging)$/i.test(line) ||
+    /^\d+\s+notifications?$/i.test(line) ||
+    /\s+with verification$/i.test(line) ||
     /\b(school alumni work here|benefit|benefits?|clicked apply|applicants?|connections?)\b/i.test(line);
+}
+
+function normalizeLinkedInTitleLine(line: string): string {
+  return line.replace(/\s+with verification$/i, "").trim();
 }
 
 function isLikelyLinkedInJobTitle(line: string): boolean {
   if (line.length < 3 || line.length > 180) return false;
-  if (/^(past 24 hours|remote|computer vision|llm|gen ai|data|experience level|employment type|company)$/i.test(line)) {
+  if (/^(past 24 hours|remote|computer vision|llm|gen ai|data|experience level|employment type|company|skip to main content)$/i.test(line)) {
     return false;
   }
+  if (/^\d+\s+notifications?$/i.test(line)) return false;
   return !isLikelyLinkedInLocationLine(line);
 }
 

@@ -1,0 +1,96 @@
+{
+  "queueRunId": "linkedin-eval-20260424T200749Z-26b16cf0",
+  "sourceLog": "data/scan-runs/linkedin-20260424T182344Z-2e3630e3.jsonl",
+  "queueLog": "data/scan-runs/linkedin-eval-20260424T200749Z-26b16cf0.jsonl",
+  "queued": 0,
+  "queueFailed": 13,
+  "completed": 0,
+  "failed": 0,
+  "timedOut": 0,
+  "jobs": {
+    "queued": [],
+    "completed": [],
+    "failed": [],
+    "timedOut": [],
+    "failedQueue": [
+      {
+        "company": "Handshake",
+        "role": "Associate Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4395704038/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Jobright.ai",
+        "role": "Machine Learning Engineer - Early Career",
+        "url": "https://www.linkedin.com/jobs/view/4405332859/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "NVIDIA",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4405060365/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Webologix Ltd/ INC",
+        "role": "Machine Learning Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4405864555/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Astrana Health",
+        "role": "Forward Deployed Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4388878436/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Handshake",
+        "role": "Associate Software Engineer, RLE",
+        "url": "https://www.linkedin.com/jobs/view/4406112904/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "hackajob",
+        "role": "Software Engineer - Agentic AI - R434812",
+        "url": "https://www.linkedin.com/jobs/view/4405352308/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Verkada",
+        "role": "Software Engineer - Computer Vision",
+        "url": "https://www.linkedin.com/jobs/view/3765974062/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Jobs via Dice",
+        "role": "Application Software Engineer, Data",
+        "url": "https://www.linkedin.com/jobs/view/4405046915/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Flexport",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405051625/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Axon",
+        "role": "Software Engineer I",
+        "url": "https://www.linkedin.com/jobs/view/4405898510/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "NVIDIA AI",
+        "role": "Applied AI Engineer, Silicon Co-Design Group, New College Grad 2026",
+        "url": "https://www.linkedin.com/jobs/view/4403783359/",
+        "error": "fetch failed"
+      },
+      {
+        "company": "Meltwater",
+        "role": "Software Engineer - Machine Learning",
+        "url": "https://www.linkedin.com/jobs/view/4406641632/",
+        "error": "fetch failed"
+      }
+    ]
+  }
+}

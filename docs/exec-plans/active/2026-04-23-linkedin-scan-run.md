@@ -24,6 +24,9 @@ are clickable buttons and only the selected row exposes a job-view URL.
 - Add a visible-result fallback that identifies all visible LinkedIn job rows,
   selects each row, obtains its canonical job-view URL, and reuses the existing
   score/enrich/pipeline flow.
+- Fix `/jobs/search/?currentJobId=...` extraction for Folia-style rows where
+  the visible title includes a duplicated `with verification` line and the
+  authenticated detail pane may time out before mounting `About the job`.
 
 ## Assumptions
 
@@ -218,6 +221,71 @@ are clickable buttons and only the selected row exposes a job-view URL.
   procedure states that the scanner defaults to `--pages 6 --limit 100`.
 - 2026-04-23: Verification passed: scanner help output shows `--limit` default
   100 and `--pages` default 6; `npm --prefix bridge run typecheck` passed.
+- 2026-04-24: User requested `/career-ops linkedin-scan` with an event log so
+  they can audit whether page information is extracted correctly. Goal: add
+  structured scan-run JSONL logging to the existing LinkedIn scanner, run a
+  bounded scan, and report the log path plus extracted row evidence. Success
+  criteria: the event log records per-row extracted title/company/location/URL
+  metadata, list scoring decisions, detail enrichment counts when run, and a
+  summary JSON under `data/scan-runs/`.
+- 2026-04-24: Implemented LinkedIn scan-run logging with
+  `createScanRunRecorder`. The scanner now writes `list_row_extracted`,
+  `list_filter_passed`, `list_filter_skipped`, `detail_enriched`,
+  `bridge_enrich_completed`, and terminal scan events to JSONL under
+  `data/scan-runs/`.
+- 2026-04-24: First full bounded run produced
+  `data/scan-runs/linkedin-20260424T090657Z-2ba1aa44.jsonl` and summary. It
+  extracted 121 raw / 100 unique LinkedIn rows, promoted 77, filtered 23,
+  enriched 3, skipped all 3 at detail gate, and queued no evaluations. The
+  event log exposed two issues: a few visible-list rows were navigation noise
+  such as `Skip to main content` / `0 notifications`, and the details event
+  used `descriptionChars`, which the existing scan-log sanitizer dropped.
+- 2026-04-24: Fixed the visible-row normalizer to reject navigation/
+  notification rows and renamed the detail audit field to `detailTextChars`.
+  Added normalizer coverage for the false-positive row shape.
+- 2026-04-24: Verification passed:
+  `npm --prefix bridge run test -- src/adapters/linkedin-scan-normalizer.test.ts`,
+  `npm --prefix bridge run typecheck`, and `npm run linkedin-scan -- --help`.
+- 2026-04-24: Follow-up live run produced
+  `data/scan-runs/linkedin-20260424T092019Z-e4941e7f.jsonl` and summary. It
+  scanned 2 pages / 30 unique rows, promoted 22, filtered 8, enriched 1, skipped
+  1 at detail gate, and queued no evaluations. Log audit found zero
+  `Skip to main content` / notification list rows. The enriched detail event
+  now includes `detailTextChars`, but its value was `0`, so LinkedIn detail-body
+  extraction remains a known blocker for this page state.
+- 2026-04-24: A stricter audit found the old static extractor could still emit
+  a malformed row with company `Promoted by hirer · Responses managed off
+  LinkedIn`. Added a source-agnostic LinkedIn row sanity filter before dedupe.
+- 2026-04-24: Final one-page score-only verification produced
+  `data/scan-runs/linkedin-20260424T093150Z-1b9a2c9e.jsonl` and summary. It
+  extracted 24 raw rows, kept 23 unique usable rows, promoted 18, filtered 5,
+  wrote 23 `list_row_extracted` events, and the audit count for navigation,
+  notification, and promoted-hirer false positives was `0`.
+- 2026-04-24: User requested fixing the remaining LinkedIn detail extraction
+  gap. Goal: make detail enrichment produce non-empty JD body text for canonical
+  LinkedIn job-view URLs. Success criteria: a live bounded LinkedIn run records
+  `detail_enriched.detailTextChars > 0` in the scan-run event log, and the
+  detail payload includes useful JD signals instead of only top-card/list text.
+  Scope: fix LinkedIn detail extraction/parsing only; do not adjust scoring
+  thresholds or direct evaluation behavior.
+- 2026-04-24: Inspected the live guest endpoint for DeepIntent
+  `4402818809`; the HTML contains a full
+  `description__text description__text--rich` block, so the failure was in the
+  parser/call path, not missing source data.
+- 2026-04-24: Moved LinkedIn guest jobPosting parsing into
+  `bridge/src/adapters/linkedin-guest-detail.ts`, added fixture coverage for the
+  current rich description markup, and changed scanner guest detail reads to try
+  Node `fetch` first before falling back to `bb-browser fetch`.
+- 2026-04-24: Verification passed:
+  `npm --prefix bridge run test -- src/adapters/linkedin-guest-detail.test.ts src/adapters/linkedin-scan-normalizer.test.ts`,
+  `npm --prefix bridge run typecheck`, and `npm run linkedin-scan -- --help`.
+- 2026-04-24: Live detail verification passed:
+  `npm run linkedin-scan -- --url "<documented LinkedIn URL>" --pages 1 --limit 30 --no-evaluate --enrich-limit 1`
+  produced `data/scan-runs/linkedin-20260424T100147Z-703785a3.jsonl`.
+  DeepIntent / Applied AI Engineer enriched with `detailTextChars=6379`,
+  `requiredQualifications=12`, `responsibilities=12`, `valueScore=7.6`, and no
+  value penalties. The safe write path added one pipeline entry and queued no
+  direct evaluations because `--no-evaluate` was set.
 - 2026-04-23: Live default read-only preview passed. With no explicit
   `--pages` or `--limit`, the scanner opened 5 of the 6 allowed pages, reached
   122 raw rows / 100 unique rows after dedupe, scored 81 promoted / 19 filtered,
@@ -344,6 +412,144 @@ are clickable buttons and only the selected row exposes a job-view URL.
   enriched in that scan because it is already in the local pipeline/seen set,
   so the focused DataVisor DOM and guest-endpoint smokes are the verification
   source for this specific bug.
+- 2026-04-24: User provided a concrete LinkedIn `/jobs/search/` URL with
+  `currentJobId=4405315389` and a screenshot showing Folia Health selected.
+  Goal: correctly extract the Folia list row and full `About the job` body.
+  Success criteria: event log shows company
+  `Folia Health: The Home-Reported Outcomes Company`, role
+  `Software Engineer`, URL `https://www.linkedin.com/jobs/view/4405315389/`,
+  and non-empty JD text from the detail-enrichment event.
+- 2026-04-24: Focused guest endpoint smoke for job `4405315389` passed. The
+  parser returned status 200, title `Software Engineer`, company
+  `Folia Health: The Home-Reported Outcomes Company`, location `Boston, MA`,
+  3,894 description characters, 12 requirements, and skill tags including
+  JavaScript, Java, Go, SQL, and AI.
+- 2026-04-24: Reproduced the list-row bug on the user URL. LinkedIn rendered
+  the selected card as `Software Engineer`, `Software Engineer with
+  verification`, then the company. The scanner treated the duplicated title
+  line as company text, which produced malformed rows such as company
+  `Software Engineer`.
+- 2026-04-24: Fixed visible row parsing in the bridge normalizer and browser
+  content extractor. Title lines now strip trailing `with verification`, and
+  company selection skips normalized title duplicates and verification-only
+  lines. The scanner now collects visible rows before static rows so the
+  selected authenticated row wins during dedupe.
+- 2026-04-24: Added normalizer coverage for the Folia-style card shape. The
+  test fixture asserts title `Software Engineer`, company
+  `Folia Health: The Home-Reported Outcomes Company`, location
+  `Boston, MA (On-site)`, posted age `27 minutes ago`, and work model
+  `On-site`.
+- 2026-04-24: Fixed detail fallback behavior for authenticated LinkedIn detail
+  timeouts. If `extractLinkedInDetail()` fails, the scanner now creates a
+  minimal detail from the list row and still attempts the LinkedIn guest
+  jobPosting endpoint instead of failing the entire enriched row.
+- 2026-04-24: Live read-only verification on the user URL passed. The scanner
+  extracted 7 unique rows and correctly listed
+  `Folia Health: The Home-Reported Outcomes Company - Software Engineer`.
+- 2026-04-24: Live enrich verification on the user URL passed with
+  `--no-evaluate --enrich-limit 3`. Scan run
+  `linkedin-20260424T101404Z-4e818b0f` extracted 7 unique rows, promoted 4,
+  enriched 3, failed 0, and wrote no evaluation jobs. The event log recorded
+  Folia with `detailTextChars=3894`, `requiredQualifications=12`,
+  `skillTags=["Go","AI","JavaScript","Java","SQL"]`, and
+  `valueScore=5.1/6.5`.
+- 2026-04-24: Verification passed:
+  `npm --prefix bridge run test --
+  src/adapters/linkedin-scan-normalizer.test.ts
+  src/adapters/linkedin-guest-detail.test.ts`,
+  `npm --prefix bridge run typecheck`, and
+  `npm run linkedin-scan -- --help`.
+- 2026-04-24: User requested another supervised `/career-ops linkedin-scan`
+  run. Goal: execute the repo-native LinkedIn scanner against the documented
+  24-hour URL, watch it through completion, inspect the resulting scan-run
+  event log, and record the outcome. Success criteria: bridge health is known,
+  the scanner completes or reports a concrete blocker, event-log path and key
+  counts are captured, and no applications are submitted.
+- 2026-04-24: Preflight passed: setup files exist, update check returned
+  `offline` at local version `1.3.0`, and bridge health was confirmed with
+  `execution.mode=real` / `execution.realExecutor=codex`.
+- 2026-04-24: The first default preview run hung silently while selecting a
+  visible LinkedIn result row. Process inspection showed a child
+  `bb-browser eval` selecting `Data Scientist, Early Career`; the scanner had
+  a global `bb-browser` timeout but no per-row recovery. Added per-eval
+  45-second timeout usage and made visible-row selection failures warn and skip
+  the affected row instead of failing or hanging the whole scan.
+- 2026-04-24: Supervised preview rerun passed:
+  `npm run linkedin-scan -- --url "<documented LinkedIn URL>" --score-only`.
+  It extracted 122 raw rows, deduped to 100 unique rows, promoted 63, filtered
+  37, called no bridge write endpoints, and wrote
+  `data/scan-runs/linkedin-20260424T181057Z-9053594c.jsonl`.
+- 2026-04-24: The first write-path attempt failed at bridge health with
+  `fetch failed` because the bridge was no longer listening. No LinkedIn pages
+  were opened and no rows were written in failed run
+  `linkedin-20260424T182306Z-c87df1e3`.
+- 2026-04-24: Restarted bridge and reran the safe write path:
+  `npm run linkedin-scan -- --url "<documented LinkedIn URL>" --no-evaluate --enrich-limit 20`.
+  It extracted 122 raw / 100 unique rows, promoted 64, filtered 36, enriched
+  20 detail pages, failed 0 detail reads, added 13 pipeline entries, skipped 7
+  (`experience_too_high=6`, `no_sponsorship=1`), and queued no evaluations.
+  Event log:
+  `data/scan-runs/linkedin-20260424T182344Z-2e3630e3.jsonl`.
+- 2026-04-24: All 20 enriched LinkedIn rows in the supervised write run had
+  non-empty JD bodies from guest detail fallback, ranging from 1,567 to 9,550
+  characters. Added pipeline entries included Handshake, Jobright.ai, NVIDIA,
+  Webologix, Astrana Health, hackajob, Verkada, Jobs via Dice, Flexport, Axon,
+  NVIDIA AI, and Meltwater.
+- 2026-04-24: Verification after the supervised run passed:
+  `npm --prefix bridge run test --
+  src/adapters/linkedin-scan-normalizer.test.ts
+  src/adapters/linkedin-guest-detail.test.ts`,
+  `npm --prefix bridge run typecheck`, and
+  `npm run linkedin-scan -- --help`.
+- 2026-04-24: User requested queuing evaluations for the latest LinkedIn scan
+  candidates after the supervised `/career-ops linkedin-scan` write path.
+- 2026-04-24: Initial ad hoc queue attempt wrote
+  `data/scan-runs/linkedin-eval-20260424T200749Z-26b16cf0.jsonl` and failed
+  to enqueue all 13 jobs with `fetch failed`. The bridge was healthy; the
+  failure came from running the temporary heredoc Node script in the restricted
+  sandbox, which could not reach the local bridge.
+- 2026-04-24: Added `scripts/queue-linkedin-evaluations.mjs` so scan-log
+  evaluation queueing is now a repo artifact instead of a chat-only procedure.
+  Verified its CLI with
+  `node --input-type=module -e "await import('./scripts/queue-linkedin-evaluations.mjs')" -- --help`.
+- 2026-04-24: Re-ran the queue using
+  `node --input-type=module -e "await import('./scripts/queue-linkedin-evaluations.mjs')" -- --source-log data/scan-runs/linkedin-20260424T182344Z-2e3630e3.jsonl`.
+  Result: 13 queued, 13 completed, 0 queue failures, 0 evaluation failures,
+  and 0 timeouts. Event log:
+  `data/scan-runs/linkedin-eval-20260424T201318Z-b58e592b.jsonl`; summary:
+  `data/scan-runs/linkedin-eval-20260424T201318Z-b58e592b-summary.json`.
+- 2026-04-24: The queue produced quick-screen reports
+  `reports/349-handshake-2026-04-24.md` through
+  `reports/361-nvidia-ai-2026-04-24.md`; all 13 completed snapshots reported
+  `trackerMerged=true`.
+- 2026-04-24: User clarified the desired default for LinkedIn scan enrichment:
+  unless a job is Easy Apply, the scanner must click LinkedIn's `Apply`
+  control, inspect the external ATS/job-board page, base detail scoring on that
+  page when available, and use the external URL in pipeline/evaluation outputs
+  instead of the LinkedIn job-view URL. Goal: make this behavior default for
+  enriched LinkedIn rows while keeping `--score-only` read-only and never
+  submitting applications. Success criteria: default scanner options enable
+  external Apply probing, Easy Apply remains skipped, a disable flag exists for
+  controlled fallback runs, help/mode docs describe the default, URL selection
+  prefers a Flexport-style Greenhouse link over the LinkedIn URL, and targeted
+  verification passes.
+- 2026-04-24: Implemented the default behavior change. `linkedin-scan` now sets
+  external Apply probing on by default during enrichment, keeps
+  `--open-external-apply` as an idempotent explicit opt-in, and adds
+  `--no-open-external-apply` for controlled fallback/debug runs. Updated
+  `modes/linkedin-scan.md` to state that external ATS/job-board URLs become the
+  pipeline/evaluation output URL when available.
+- 2026-04-24: Added URL-selection coverage for the concrete Flexport example:
+  LinkedIn job `4405051625` with external Greenhouse URL
+  `https://job-boards.greenhouse.io/flexport/jobs/7839298?gh_jid=7839298`
+  is preferred over the LinkedIn job-view URL.
+- 2026-04-24: Verification passed:
+  `npm --prefix bridge run test --
+  src/adapters/newgrad-links.test.ts
+  src/adapters/linkedin-guest-detail.test.ts
+  src/adapters/linkedin-scan-normalizer.test.ts`,
+  `npm --prefix bridge run typecheck`, and
+  `npm run linkedin-scan -- --help`.
 
 ## Key Decisions
 
@@ -357,6 +563,13 @@ are clickable buttons and only the selected row exposes a job-view URL.
 - Keep the legacy static extractor, but add a scanner-level fallback that
   selects each visible LinkedIn result button to recover its canonical job-view
   URL.
+- Queueing evaluations from an already-written LinkedIn scan should use the
+  checked-in `scripts/queue-linkedin-evaluations.mjs` helper. Temporary heredoc
+  Node scripts can be blocked from the local bridge by sandbox networking.
+- Default LinkedIn enrichment should probe non-Easy-Apply external Apply pages
+  because LinkedIn's in-page detail can be truncated or hidden behind `About the
+  job` expansion behavior, and the user-facing output link should be the
+  employer ATS/job-board URL when it is available.
 
 ## Risks and Blockers
 
@@ -365,9 +578,13 @@ are clickable buttons and only the selected row exposes a job-view URL.
 - Fresh LinkedIn search-result tabs may leave the authenticated detail pane on
   `Assessing your job match`; the guest jobPosting fallback is now the reliable
   source when that happens.
-- The current dirty worktree has an unrelated bridge test fixture mismatch
-  (`codexModel` missing in `bridge/src/server.test.ts`) that blocks full bridge
-  typecheck until that fixture is updated.
+- Earlier bridge typecheck failures from the dirty worktree are not currently
+  reproducing; `npm --prefix bridge run typecheck` passed on 2026-04-24.
+- Fixed for the verified guest jobPosting path: DeepIntent now enriches with
+  non-empty JD text. The authenticated detail-pane extractor may still need
+  maintenance if LinkedIn changes or blocks the public guest endpoint.
+- External Apply probing opens employer pages during enrichment. It must
+  continue to skip Easy Apply and must not fill or submit any form.
 
 ## Final Outcome
 
@@ -419,3 +636,25 @@ Primary Responsibilities, Requirements, structured requirements, and skill tags.
 The scanner also has a LinkedIn guest jobPosting fallback for cases where the
 authenticated detail pane stays stuck on the job-match skeleton; the DataVisor
 guest endpoint was verified to contain the same detailed Description signals.
+
+The Folia `/jobs/search/?currentJobId=4405315389` case is fixed. The visible
+row parser now ignores LinkedIn's duplicated `with verification` title line, so
+the row is extracted as
+`Folia Health: The Home-Reported Outcomes Company - Software Engineer`. The
+detail path now survives authenticated pane timeouts by falling back to the
+guest jobPosting endpoint; live verification recorded the Folia JD as 3,894
+characters with 12 requirements in
+`data/scan-runs/linkedin-20260424T101404Z-4e818b0f.jsonl`.
+
+The latest requested evaluation queue completed from
+`data/scan-runs/linkedin-20260424T182344Z-2e3630e3.jsonl`: 13 jobs queued, 13
+completed, 0 failed, and 0 timed out. The resulting quick-screen reports are
+`reports/349-handshake-2026-04-24.md` through
+`reports/361-nvidia-ai-2026-04-24.md`; 12 were `manual_review` and Jobright.ai
+was `skip`.
+
+LinkedIn enrichment now probes external Apply pages by default for non-Easy
+Apply postings. When a Flexport-style Greenhouse URL is captured from the Apply
+flow, the downstream pipeline/evaluation URL is the Greenhouse posting rather
+than the LinkedIn job-view URL. `--score-only` remains a no-write preview path,
+and `--no-open-external-apply` exists for controlled fallback runs.

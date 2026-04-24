@@ -16,6 +16,7 @@
  *   node scan.mjs --no-builtin     # skip Built In keyword searches
  *   node scan.mjs --builtin-only   # scan only Built In keyword searches
  *   node scan.mjs --builtin-only --pages 3
+ *   node scan.mjs --evaluate --evaluate-limit 5
  *   node scan.mjs --builtin-only --evaluate --evaluate-limit 5
  *   node scan.mjs --builtin-only --evaluate-only --evaluate-limit 5
  */
@@ -550,7 +551,7 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const noBuiltIn = args.includes('--no-builtin');
   const builtInOnly = args.includes('--builtin-only');
-  const evaluateBuiltIn = args.includes('--evaluate');
+  const evaluateScan = args.includes('--evaluate');
   const evaluateOnly = args.includes('--evaluate-only');
   const builtInPages = positiveIntOption(args, '--pages', 1);
   const evaluateLimit = positiveIntOption(args, '--evaluate-limit', null);
@@ -567,8 +568,8 @@ async function main() {
   if (evaluationMode !== 'newgrad_quick' && evaluationMode !== 'default') {
     throw new Error('--evaluation-mode must be newgrad_quick or default');
   }
-  if ((evaluateBuiltIn || evaluateOnly) && noBuiltIn) {
-    throw new Error('--evaluate/--evaluate-only requires Built In scanning; remove --no-builtin');
+  if (evaluateOnly && noBuiltIn) {
+    throw new Error('--evaluate-only requires Built In scanning; remove --no-builtin');
   }
 
   if (evaluateOnly) {
@@ -755,10 +756,10 @@ async function main() {
     }
   }
 
-  if (evaluateBuiltIn) {
+  if (evaluateScan) {
     if (dryRun) {
       console.log('\n--evaluate was requested during --dry-run; no evaluation jobs were queued.');
-    } else {
+    } else if (builtInOnly) {
       await evaluateBuiltInPending({
         bridgeBase: `http://${bridgeHost}:${bridgePort}`,
         evaluateLimit,
@@ -768,11 +769,129 @@ async function main() {
         evaluationQueueDelayMs,
         evaluationWaitTimeoutMs,
       });
+    } else {
+      await evaluateCurrentScanOffers(newOffers, {
+        bridgeBase: `http://${bridgeHost}:${bridgePort}`,
+        evaluateLimit,
+        evaluationMode,
+        waitEvaluations,
+        evaluationQueueDelayMs,
+        evaluationWaitTimeoutMs,
+      });
     }
   }
 
-  console.log(`\n→ Run /career-ops pipeline to evaluate new offers.`);
+  if (evaluateScan && !dryRun) {
+    console.log(`\n→ Direct evaluation requested; run /career-ops pipeline only for any remaining pending offers.`);
+  } else {
+    console.log(`\n→ Run /career-ops pipeline to evaluate new offers.`);
+  }
   console.log('→ Share results and get help: https://discord.gg/8pRpHETxa4');
+}
+
+async function evaluateCurrentScanOffers(offers, options) {
+  const tokenPath = 'bridge/.bridge-token';
+  if (!existsSync(tokenPath)) {
+    throw new Error('bridge token not found; start the bridge first with npm run ext:bridge');
+  }
+
+  const token = readFileSync(tokenPath, 'utf-8').trim();
+  await assertBridgeHealthy(options.bridgeBase, token);
+
+  const entries = dedupeScanOffers(offers);
+  const candidates = entries.slice(0, options.evaluateLimit ?? entries.length);
+
+  console.log(`\nCurrent scan offers: total=${entries.length}, evaluating=${candidates.length}`);
+  if (candidates.length === 0) return;
+
+  const queued = [];
+  const failed = [];
+
+  for (const [index, candidate] of candidates.entries()) {
+    console.log(`Queueing scan evaluation ${index + 1}/${candidates.length}: ${candidate.company} | ${candidate.title}`);
+    try {
+      const created = await postEnvelope(options.bridgeBase, token, '/v1/evaluate', {
+        input: buildScanEvaluationInput(candidate, options.evaluationMode),
+      });
+      queued.push({
+        jobId: created.jobId,
+        company: candidate.company,
+        role: candidate.title,
+      });
+    } catch (error) {
+      failed.push({
+        company: candidate.company,
+        role: candidate.title,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (index < candidates.length - 1 && options.evaluationQueueDelayMs > 0) {
+      await sleep(options.evaluationQueueDelayMs);
+    }
+  }
+
+  console.log(`Scan evaluation queue: queued=${queued.length}, failed=${failed.length}`);
+  for (const item of failed) {
+    console.warn(`- failed to queue ${item.company} | ${item.role}: ${item.error}`);
+  }
+
+  if (options.waitEvaluations && queued.length > 0) {
+    const result = await waitForEvaluationJobs(options.bridgeBase, token, queued, options.evaluationWaitTimeoutMs);
+    console.log(`Scan evaluation result: completed=${result.completed.length}, failed=${result.failed.length}, timedOut=${result.timedOut.length}`);
+    for (const item of result.completed) {
+      console.log(`- ${item.result.company} | ${item.result.role}: ${item.result.score}/5 report=${item.result.reportPath} trackerMerged=${item.result.trackerMerged}`);
+    }
+    for (const item of result.failed) {
+      console.warn(`- evaluation failed ${item.job.company} | ${item.job.role}: ${item.error}`);
+    }
+    for (const item of result.timedOut) {
+      console.warn(`- evaluation timed out ${item.company} | ${item.role}`);
+    }
+  } else if (queued.length > 0) {
+    console.log('Evaluation jobs queued; not waiting because --no-wait-evaluations was set.');
+  }
+}
+
+function buildScanEvaluationInput(entry, evaluationMode) {
+  return {
+    url: entry.url,
+    title: entry.title,
+    evaluationMode,
+    structuredSignals: {
+      source: entry.source || 'portal-scan',
+      company: entry.company,
+      role: entry.title,
+      ...(entry.location ? { location: entry.location } : {}),
+      ...(entry.workModel ? { workModel: entry.workModel } : {}),
+      ...(entry.postedAgo ? { postedAgo: entry.postedAgo } : {}),
+      ...(entry.description ? {
+        responsibilities: signalStrings([entry.description], 1, 400),
+      } : {}),
+    },
+    detection: {
+      label: 'job_posting',
+      confidence: 0.9,
+      signals: ['portal-scan', entry.source || 'unknown-source'],
+    },
+  };
+}
+
+function dedupeScanOffers(offers) {
+  const seen = new Set();
+  const unique = [];
+  for (const offer of offers) {
+    if (!offer?.url || !offer?.title || !offer?.company) continue;
+    const keys = pendingEntryKeys({
+      url: offer.url,
+      company: offer.company,
+      role: offer.title,
+    });
+    if (keys.some((key) => seen.has(key))) continue;
+    for (const key of keys) seen.add(key);
+    unique.push(offer);
+  }
+  return unique;
 }
 
 async function evaluateBuiltInPending(options) {

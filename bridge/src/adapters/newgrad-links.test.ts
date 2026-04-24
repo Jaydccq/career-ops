@@ -144,6 +144,25 @@ test("pickPipelineEntryUrl prefers LinkedIn Apply flow external URLs over Linked
   );
 });
 
+test("pickPipelineEntryUrl returns Flexport Greenhouse URL captured from LinkedIn Apply", () => {
+  const best = pickPipelineEntryUrl(
+    {
+      originalPostUrl: "https://www.linkedin.com/jobs/view/4405051625/",
+      applyNowUrl: "https://job-boards.greenhouse.io/flexport/jobs/7839298?gh_jid=7839298",
+      applyFlowUrls: [
+        "https://www.linkedin.com/jobs/view/4405051625/",
+        "https://job-boards.greenhouse.io/flexport/jobs/7839298?gh_jid=7839298",
+      ],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4405051625/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4405051625/",
+    },
+  );
+
+  expect(best).toBe("https://job-boards.greenhouse.io/flexport/jobs/7839298?gh_jid=7839298");
+});
+
 test("pickPipelineEntryUrl accepts LinkedIn Apply redirect hosts captured from the click", () => {
   const best = pickPipelineEntryUrl(
     {

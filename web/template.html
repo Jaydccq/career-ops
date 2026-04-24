@@ -620,16 +620,18 @@
   tbody tr:last-child { border-bottom: none; }
 
   /* Tracker column widths */
-  #tracker-table { min-width: 1180px; }
+  #tracker-table { min-width: 1450px; }
   #tracker-table col.c-num     { width: 54px; }
   #tracker-table col.c-date    { width: 108px; }
   #tracker-table col.c-co      { width: 170px; }
   #tracker-table col.c-role    { width: 270px; }
   #tracker-table col.c-score   { width: 86px; }
   #tracker-table col.c-status  { width: 118px; }
+  #tracker-table col.c-decision { width: 142px; }
   #tracker-table col.c-pdf     { width: 58px; }
   #tracker-table col.c-doss    { width: 94px; }
-  #tracker-table col.c-notes   { width: 222px; }
+  #tracker-table col.c-actions { width: 150px; }
+  #tracker-table col.c-notes   { width: 250px; }
 
   /* Scan column widths */
   #scan-table { min-width: 1040px; }
@@ -689,6 +691,23 @@
   .badge.added { background: var(--green); color: var(--paper); border-color: var(--green); }
   .badge.promoted { background: var(--ink); color: var(--paper); }
   .badge.below_threshold { background: var(--paper); color: var(--ink); border-style: dashed; }
+  .badge.manual_review { background: var(--amber); color: var(--ink); }
+  .badge.deep_eval { background: var(--green); color: var(--paper); border-color: var(--green); }
+  .tracker-action-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-start;
+  }
+  .tracker-action-cell .action-btn {
+    padding: 5px 8px;
+    border-radius: 4px;
+    line-height: 1.2;
+  }
+  .tracker-action-cell .doc-status {
+    max-width: 130px;
+    line-height: 1.35;
+  }
 
   .co { font-family: var(--serif); font-weight: 600; font-size: 13.5px; letter-spacing: 0; }
 
@@ -1117,7 +1136,7 @@
     <table id="tracker-table">
       <colgroup>
         <col class="c-num"><col class="c-date"><col class="c-co"><col class="c-role">
-        <col class="c-score"><col class="c-status"><col class="c-pdf"><col class="c-doss"><col class="c-notes">
+        <col class="c-score"><col class="c-status"><col class="c-decision"><col class="c-pdf"><col class="c-doss"><col class="c-actions"><col class="c-notes">
       </colgroup>
       <thead>
         <tr>
@@ -1127,8 +1146,10 @@
           <th class="sortable" data-key="role">Role</th>
           <th class="sortable" data-key="score">Score</th>
           <th class="sortable" data-key="status">Status</th>
+          <th>Quick Decision</th>
           <th>PDF</th>
           <th>Dossier</th>
+          <th>Actions</th>
           <th>Notes</th>
         </tr>
       </thead>
@@ -1375,6 +1396,7 @@ const APPLY_DONE_KEY = 'career_ops_apply_done_v1';
 const generatedApplyDocs = {};
 const applyDocStatus = {};
 const applyMarkStatus = {};
+const fullEvalStatus = {};
 const PDF_API_BASE = location.protocol === 'http:' || location.protocol === 'https:'
   ? ''
   : 'http://127.0.0.1:47329';
@@ -1816,6 +1838,105 @@ setHtml($('tracker-company'), optionsHtml(trackerCompanies));
 const statusSet = unique(D.applications.map(a => a.status));
 setHtml($('tracker-status'), optionsHtml(statusSet));
 
+function quickDecisionFor(row) {
+  const report = row.reportPath ? reportByPath.get(row.reportPath) : null;
+  return report?.decision || '';
+}
+
+function trackerRowKey(row) {
+  return row.reportPath || `${row.num}:${row.company}:${row.role}`;
+}
+
+function buildFullEvaluationPayload(row) {
+  const report = row.reportPath ? reportByPath.get(row.reportPath) : null;
+  return {
+    num: row.num,
+    company: row.company,
+    role: row.role,
+    score: row.score,
+    status: row.status,
+    notes: row.notes,
+    reportPath: row.reportPath,
+    jobUrl: report?.url || '',
+  };
+}
+
+function renderFullEvaluationAction(row, decision) {
+  const key = trackerRowKey(row);
+  const status = fullEvalStatus[key];
+  const canRun = decision === 'manual_review' && row.reportPath;
+  const disabledReason = !window.PDF_API_TOKEN
+    ? 'Start with npm run dashboard'
+    : !row.reportPath
+      ? 'No dossier'
+      : '';
+  const disabled = !canRun || Boolean(status?.running) || Boolean(disabledReason);
+  const label = status?.running
+    ? 'Running...'
+    : status?.done
+      ? 'Full Eval Done'
+      : 'Full Eval';
+  return `
+    <div class="tracker-action-cell">
+      ${canRun ? `<button class="action-btn primary js-full-eval" data-key="${escapeHtml(key)}" ${disabled ? 'disabled' : ''}>${escapeHtml(label)}</button>` : '<span class="doc-status">—</span>'}
+      ${disabledReason && canRun ? `<span class="doc-status">${escapeHtml(disabledReason)}</span>` : ''}
+      ${status?.message ? `<span class="doc-status" role="status" aria-live="polite">${escapeHtml(status.message)}</span>` : ''}
+    </div>
+  `;
+}
+
+async function pollFullEvaluation(row, jobId) {
+  const key = trackerRowKey(row);
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    const result = await postDashboardApi('/api/full-evaluation/status', { jobId });
+    const phase = result.job?.phase;
+    if (phase === 'completed') {
+      const reportPath = result.job?.result?.reportPath;
+      fullEvalStatus[key] = {
+        done: true,
+        running: false,
+        message: reportPath ? `Done: ${reportPath.replace(/^.*\/reports\//, 'reports/')}` : 'Done; refresh dashboard',
+      };
+      renderTracker();
+      return;
+    }
+    if (phase === 'failed') {
+      fullEvalStatus[key] = {
+        done: false,
+        running: false,
+        message: result.job?.error || 'Full evaluation failed',
+      };
+      renderTracker();
+      return;
+    }
+    fullEvalStatus[key] = {
+      running: true,
+      jobId,
+      message: `Bridge job ${phase || 'queued'}`,
+    };
+    renderTracker();
+  }
+}
+
+async function startFullEvaluation(row) {
+  const key = trackerRowKey(row);
+  fullEvalStatus[key] = { running: true, message: 'Queueing full evaluation...' };
+  renderTracker();
+  try {
+    const result = await postDashboardApi('/api/full-evaluation', buildFullEvaluationPayload(row));
+    fullEvalStatus[key] = { running: true, jobId: result.jobId, message: `Queued ${result.jobId}` };
+    renderTracker();
+    await pollFullEvaluation(row, result.jobId);
+  } catch (error) {
+    fullEvalStatus[key] = {
+      running: false,
+      message: `Full evaluation failed. ${error.message}`,
+    };
+    renderTracker();
+  }
+}
+
 function renderTracker() {
   const q = norm(val('tracker-search'));
   const company = val('tracker-company');
@@ -1841,7 +1962,8 @@ function renderTracker() {
     if (docF === 'yes' && !a.reportPath) return false;
     if (docF === 'no' && a.reportPath) return false;
     if (!q) return true;
-    return norm((a.company || '') + ' ' + (a.role || '') + ' ' + (a.status || '') + ' ' + (a.notes || '')).includes(q);
+    const decision = quickDecisionFor(a);
+    return norm((a.company || '') + ' ' + (a.role || '') + ' ' + (a.status || '') + ' ' + decision + ' ' + (a.notes || '')).includes(q);
   });
   rows = applySort(rows, val('tracker-sort'), {
     score: a => parseScore(a.score),
@@ -1852,20 +1974,31 @@ function renderTracker() {
     status: a => norm(a.status)
   });
   setCount('tracker', rows.length, D.applications.length);
-  const html = rows.map(a => `
-    <tr>
-      <td class="num-cell">${escapeHtml(a.num)}</td>
-      <td>${escapeHtml(a.date)}</td>
-      <td class="wrap-cell"><span class="co">${escapeHtml(a.company)}</span></td>
-      <td class="wrap-cell role-cell">${escapeHtml(a.role)}</td>
-      <td><span class="${scoreClass(a.score)}">${escapeHtml(a.score)}</span></td>
-      <td><span class="${badgeClass(a.status)}">${escapeHtml(a.status)}</span></td>
-      <td class="center">${escapeHtml(a.pdf)}</td>
-      <td>${a.reportPath ? `<a href="../${escapeHtml(a.reportPath)}" target="_blank">→ open</a>` : '—'}</td>
-      <td class="wrap-cell notes-cell"><span title="${escapeHtml(a.notes || '')}">${escapeHtml((a.notes || '').slice(0, 190))}${a.notes && a.notes.length > 190 ? '…' : ''}</span></td>
-    </tr>
-  `).join('');
+  const html = rows.map(a => {
+    const decision = quickDecisionFor(a);
+    return `
+      <tr>
+        <td class="num-cell">${escapeHtml(a.num)}</td>
+        <td>${escapeHtml(a.date)}</td>
+        <td class="wrap-cell"><span class="co">${escapeHtml(a.company)}</span></td>
+        <td class="wrap-cell role-cell">${escapeHtml(a.role)}</td>
+        <td><span class="${scoreClass(a.score)}">${escapeHtml(a.score)}</span></td>
+        <td><span class="${badgeClass(a.status)}">${escapeHtml(a.status)}</span></td>
+        <td>${decision ? `<span class="${badgeClass(decision)}">${escapeHtml(decision)}</span>` : '—'}</td>
+        <td class="center">${escapeHtml(a.pdf)}</td>
+        <td>${a.reportPath ? `<a href="../${escapeHtml(a.reportPath)}" target="_blank">→ open</a>` : '—'}</td>
+        <td>${renderFullEvaluationAction(a, decision)}</td>
+        <td class="wrap-cell notes-cell"><span title="${escapeHtml(a.notes || '')}">${escapeHtml((a.notes || '').slice(0, 190))}${a.notes && a.notes.length > 190 ? '…' : ''}</span></td>
+      </tr>
+    `;
+  }).join('');
   setHtml(document.querySelector('#tracker-table tbody'), html);
+  document.querySelectorAll('.js-full-eval').forEach(button => {
+    button.onclick = () => {
+      const row = rows.find(item => trackerRowKey(item) === button.dataset.key);
+      if (row) void startFullEvaluation(row);
+    };
+  });
   // Reflect active sort dropdown in header arrows
   const [sField, sDir] = val('tracker-sort').split('-');
   document.querySelectorAll('#tracker-table .sortable').forEach(th => {
