@@ -613,9 +613,10 @@ Login cookie import retest:
   the Codex CLI returned `The model gpt-5.5 does not exist or you do not have
   access to it`.
 - 2026-04-24: Added a bridge-level Codex model override. `CAREER_OPS_CODEX_MODEL`
-  can override it, and the default is `gpt-5.4`, which was verified with a
-  minimal `codex exec -m gpt-5.4` probe. Restarted the bridge; health/logs now
-  show `codexModel=gpt-5.4`.
+  can override it. At the time, the default was `gpt-5.4`, which was verified
+  with a minimal `codex exec -m gpt-5.4` probe. Superseded on 2026-04-25:
+  the current default is `gpt-5.4-mini` with medium reasoning, recorded in
+  `docs/exec-plans/active/2026-04-24-codex-eval-intelligence-medium.md`.
 - 2026-04-24: Requeued only the two failed candidates from local JD cache files.
   Peloton Interactive completed as report 328 with `2.3/5`, `SKIP`, and tracker
   merge true. Wonderschool completed as report 329 with `2.6/5`, `SKIP`, and
@@ -830,6 +831,54 @@ Login cookie import retest:
   `data/applications.md`, and 1191 lines in `data/scan-history.tsv`. Rebuilt
   `web/index.html` with `npm run dashboard:build`; dashboard output reported
   331 parsed reports, 238 applications, 436 pipeline rows, and 1190
+  scan-history rows. Verification passed: `npm run newgrad-scan -- --help`,
+  `npm run verify` (0 errors, same 2 duplicate warnings for RemoteHunter
+  Software Engineer and Anduril Industries Software Engineer), and
+  `git diff --check`.
+- 2026-04-24: User invoked `/career-ops newgrad-scan` again. Goal: run the
+  existing autonomous JobRight/newgrad scanner for the current live window,
+  enrich qualifying rows, queue default `newgrad_quick` evaluations for enrich
+  survivors, rebuild derived dashboard output if data changes, and record the
+  outcome. Success criteria: setup/update checks pass, bridge health is
+  available in real Codex mode, `npm run newgrad-scan` completes or reports a
+  concrete blocker, generated artifacts are inspected, focused verification
+  runs, and this plan records the result. Assumptions: this slash command maps
+  to the repo-native autonomous scanner, direct evaluation is intended, no
+  application should be submitted, the persistent scanner browser profile
+  should be reused, and unrelated worktree changes must be preserved.
+  Uncertainties: JobRight API/login state may have changed, direct evaluations
+  may outlive the scanner wait window, and many rows may already be deduped
+  because earlier scans ran today. Simplest viable path: start or reuse the
+  real-Codex bridge, run `npm run newgrad-scan`, inspect artifacts, rebuild the
+  dashboard when needed, then run focused verification.
+- 2026-04-24: Setup/update checks passed for this run. `node
+  update-system.mjs check` returned `offline` with local version `1.3.0`;
+  required files `cv.md`, `config/profile.yml`, `modes/_profile.md`,
+  `portals.yml`, and `data/applications.md` are present. Baseline before the
+  run: 342 markdown report files under `reports/`, 119 JD cache files, 601
+  lines in `data/pipeline.md`, 254 lines in `data/applications.md`, and 1202
+  lines in `data/scan-history.tsv`. Initial authenticated bridge health found
+  no listener on `127.0.0.1:47319`.
+- 2026-04-24: Started `npm run ext:bridge` in real Codex mode on
+  `127.0.0.1:47319`; authenticated bridge health passed with tracker,
+  CV/profile, Codex CLI, and Playwright Chromium OK. `npm run newgrad-scan`
+  completed successfully. JobRight API source returned 133 rows within 24
+  hours, promoted 44, filtered 89, enriched 44 with 0 failures, then bridge
+  enrich added 3 candidates and skipped 41. Skip breakdown: 3
+  `experience_too_high`, 8 `site_signal_mixed`, 22 `site_match_below_bar`, 1
+  `already_evaluated_report`, 6 `no_sponsorship`, and 1
+  `pipeline_threshold`.
+- 2026-04-24: Direct evaluation queued 3 candidates and completed all 3 with no
+  queue failures or timeouts. Generated reports/tracker rows: Grant Street
+  Group `377` (`3.1/5`), State of Arkansas `378` (`3.4/5`), and
+  GlobalFoundries `379` (`3.4/5`). Run artifacts were written to
+  `data/scan-runs/newgrad-20260425T002055Z-986953ee.jsonl` and
+  `data/scan-runs/newgrad-20260425T002055Z-986953ee-summary.json`.
+- 2026-04-24: Counts after the run: 345 markdown report files under `reports/`,
+  122 JD cache files, 607 lines in `data/pipeline.md`, 257 lines in
+  `data/applications.md`, and 1217 lines in `data/scan-history.tsv`. Rebuilt
+  `web/index.html` with `npm run dashboard:build`; dashboard output reported
+  345 parsed reports, 248 applications, 450 pipeline rows, and 1216
   scan-history rows. Verification passed: `npm run newgrad-scan -- --help`,
   `npm run verify` (0 errors, same 2 duplicate warnings for RemoteHunter
   Software Engineer and Anduril Industries Software Engineer), and

@@ -24,6 +24,8 @@
     "newgrad-scan": "./bridge/node_modules/.bin/tsx scripts/newgrad-scan-autonomous.ts",
     "linkedin-scan": "./bridge/node_modules/.bin/tsx scripts/linkedin-scan-bb-browser.ts",
     "indeed-scan": "./bridge/node_modules/.bin/tsx scripts/job-board-scan-bb-browser.ts --source indeed",
+    "auto:hourly-scan": "node scripts/hourly-job-scan.mjs",
+    "auto:hourly-scan:dry": "CAREER_OPS_SCAN_DRY_RUN=1 node scripts/hourly-job-scan.mjs",
     "newgrad-rerun-history": "./bridge/node_modules/.bin/tsx scripts/rerun-newgrad-history.ts",
     "pending:warm-cache": "node scripts/warm-legacy-pending-cache.mjs",
     "dashboard": "node web/dashboard-server.mjs",

@@ -28,7 +28,7 @@ function makeConfig(): BridgeConfig {
     token: TOKEN,
     claudeBin: "claude",
     codexBin: "codex",
-    codexModel: "gpt-5.4",
+    codexModel: "gpt-5.4-mini",
     codexReasoningEffort: "medium",
     nodeBin: "node",
     mode: "real",

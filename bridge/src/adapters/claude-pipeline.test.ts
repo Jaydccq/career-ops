@@ -51,7 +51,7 @@ test("buildCodexTerminalSchema keeps legitimacy in the required schema", () => {
   });
 });
 
-test("codex evaluation plans pin reasoning effort to medium", () => {
+test("codex evaluation plans pin model to 5.4 mini and reasoning effort to medium", () => {
   const repoRoot = `${tmpdir()}/career-ops-codex-effort-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const logsDir = join(repoRoot, "batch", "logs");
   const promptPath = join(repoRoot, "batch", "batch-prompt.md");
@@ -63,7 +63,7 @@ test("codex evaluation plans pin reasoning effort to medium", () => {
       repoRoot,
       claudeBin: "claude",
       codexBin: "codex",
-      codexModel: "gpt-5.4",
+      codexModel: "gpt-5.4-mini",
       codexReasoningEffort: "medium",
       nodeBin: process.execPath,
       realExecutor: "codex" as const,
@@ -87,8 +87,12 @@ test("codex evaluation plans pin reasoning effort to medium", () => {
     });
 
     expect(fullPlan.args).toContain("-c");
+    expect(fullPlan.args).toContain("-m");
+    expect(fullPlan.args).toContain("gpt-5.4-mini");
     expect(fullPlan.args).toContain('model_reasoning_effort="medium"');
     expect(quickPlan.args).toContain("-c");
+    expect(quickPlan.args).toContain("-m");
+    expect(quickPlan.args).toContain("gpt-5.4-mini");
     expect(quickPlan.args).toContain('model_reasoning_effort="medium"');
   } finally {
     rmSync(repoRoot, { recursive: true, force: true });

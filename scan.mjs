@@ -10,13 +10,14 @@
  * Zero Claude API tokens — pure HTTP + JSON.
  *
  * Usage:
- *   node scan.mjs                  # scan all enabled companies
+ *   node scan.mjs                  # scan all enabled companies and evaluate new matches
  *   node scan.mjs --dry-run        # preview without writing files
+ *   node scan.mjs --no-evaluate    # write new matches without queueing evaluations
  *   node scan.mjs --company Cohere # scan a single company
  *   node scan.mjs --no-builtin     # skip Built In keyword searches
  *   node scan.mjs --builtin-only   # scan only Built In keyword searches
  *   node scan.mjs --builtin-only --pages 3
- *   node scan.mjs --evaluate --evaluate-limit 5
+ *   node scan.mjs --evaluate --evaluate-limit 5  # compatibility; evaluation is default
  *   node scan.mjs --builtin-only --evaluate --evaluate-limit 5
  *   node scan.mjs --builtin-only --evaluate-only --evaluate-limit 5
  */
@@ -551,7 +552,7 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const noBuiltIn = args.includes('--no-builtin');
   const builtInOnly = args.includes('--builtin-only');
-  const evaluateScan = args.includes('--evaluate');
+  const evaluateScan = !args.includes('--no-evaluate');
   const evaluateOnly = args.includes('--evaluate-only');
   const builtInPages = positiveIntOption(args, '--pages', 1);
   const evaluateLimit = positiveIntOption(args, '--evaluate-limit', null);
@@ -570,6 +571,9 @@ async function main() {
   }
   if (evaluateOnly && noBuiltIn) {
     throw new Error('--evaluate-only requires Built In scanning; remove --no-builtin');
+  }
+  if (evaluateOnly && args.includes('--no-evaluate')) {
+    throw new Error('--evaluate-only cannot be combined with --no-evaluate');
   }
 
   if (evaluateOnly) {
@@ -758,7 +762,7 @@ async function main() {
 
   if (evaluateScan) {
     if (dryRun) {
-      console.log('\n--evaluate was requested during --dry-run; no evaluation jobs were queued.');
+      console.log('\nDirect evaluation is enabled by default, but --dry-run prevents evaluation jobs from being queued.');
     } else if (builtInOnly) {
       await evaluateBuiltInPending({
         bridgeBase: `http://${bridgeHost}:${bridgePort}`,
@@ -782,14 +786,26 @@ async function main() {
   }
 
   if (evaluateScan && !dryRun) {
-    console.log(`\n→ Direct evaluation requested; run /career-ops pipeline only for any remaining pending offers.`);
+    if (newOffers.length > 0 || builtInOnly) {
+      console.log(`\n→ Direct evaluation enabled; run /career-ops pipeline only for any remaining pending offers.`);
+    } else {
+      console.log(`\n→ Direct evaluation enabled; no current-run offers were eligible to queue.`);
+    }
+  } else if (dryRun) {
+    console.log(`\n→ Dry run only; no offers were written or evaluated.`);
   } else {
-    console.log(`\n→ Run /career-ops pipeline to evaluate new offers.`);
+    console.log(`\n→ Run /career-ops pipeline to evaluate new offers, or rerun without --no-evaluate for direct evaluation.`);
   }
   console.log('→ Share results and get help: https://discord.gg/8pRpHETxa4');
 }
 
 async function evaluateCurrentScanOffers(offers, options) {
+  const entries = dedupeScanOffers(offers);
+  const candidates = entries.slice(0, options.evaluateLimit ?? entries.length);
+
+  console.log(`\nCurrent scan offers: total=${entries.length}, evaluating=${candidates.length}`);
+  if (candidates.length === 0) return;
+
   const tokenPath = 'bridge/.bridge-token';
   if (!existsSync(tokenPath)) {
     throw new Error('bridge token not found; start the bridge first with npm run ext:bridge');
@@ -797,12 +813,6 @@ async function evaluateCurrentScanOffers(offers, options) {
 
   const token = readFileSync(tokenPath, 'utf-8').trim();
   await assertBridgeHealthy(options.bridgeBase, token);
-
-  const entries = dedupeScanOffers(offers);
-  const candidates = entries.slice(0, options.evaluateLimit ?? entries.length);
-
-  console.log(`\nCurrent scan offers: total=${entries.length}, evaluating=${candidates.length}`);
-  if (candidates.length === 0) return;
 
   const queued = [];
   const failed = [];

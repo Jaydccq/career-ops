@@ -63,10 +63,10 @@ Available commands:
   /career-ops project   → Evaluate portfolio project idea
   /career-ops tracker   → Application status overview
   /career-ops apply     → Live application assistant (reads form + generates answers)
-  /career-ops scan      → Scan portals and discover new offers
-  /career-ops builtin-scan → Scan Built In keyword searches only
+  /career-ops scan      → Scan portals and evaluate new offers
+  /career-ops builtin-scan → Scan Built In searches and evaluate matches
   /career-ops linkedin-scan → Scan LinkedIn Jobs via bb-browser
-  /career-ops indeed-scan → Scan Indeed Jobs via bb-browser
+  /career-ops indeed-scan → Scan Indeed Jobs via bb-browser and evaluate matches
   /career-ops batch     → Batch processing with parallel workers
   /career-ops patterns  → Analyze rejection patterns and improve targeting
   /career-ops cover-letter → Generate single-page cover letter PDF (matches CV design)

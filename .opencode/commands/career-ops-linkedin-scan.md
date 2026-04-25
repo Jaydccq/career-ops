@@ -1,8 +1,8 @@
 ---
-description: Scan LinkedIn Jobs with bb-browser and discover matching roles
+description: Scan LinkedIn Jobs with bb-browser and evaluate matching roles
 ---
 
-Scan LinkedIn Jobs using career-ops linkedin-scan mode.
+Scan LinkedIn Jobs and evaluate survivors using career-ops linkedin-scan mode.
 
 Load the career-ops skill:
 ```

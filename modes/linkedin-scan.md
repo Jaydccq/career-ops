@@ -2,7 +2,7 @@
 
 Scans a LinkedIn Jobs search page through the authenticated `bb-browser`
 profile, scores visible jobs with the existing newgrad scanner, enriches
-promoted detail pages, and optionally queues `newgrad_quick` evaluations.
+promoted detail pages, and queues `newgrad_quick` evaluations by default.
 
 ## Prerequisites
 

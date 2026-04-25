@@ -2,7 +2,7 @@
 
 Scans an Indeed search URL through the read-only `bb-browser site indeed/jobs`
 adapter, scores jobs with the existing newgrad scanner, enriches promoted rows,
-and optionally queues `newgrad_quick` evaluations.
+and queues `newgrad_quick` evaluations by default.
 
 ## Prerequisites
 
@@ -37,7 +37,8 @@ bun run indeed-scan -- --url "<Indeed URL>" --score-only --limit 20
 `--score-only` extracts and scores rows without calling bridge write endpoints.
 The full URL is preserved, including `fromage=7`, empty `l=`, and `sc=...`.
 
-Write pipeline candidates without evaluations:
+Write pipeline candidates without evaluations only when you intentionally want
+the old list-only path:
 
 ```bash
 bun run indeed-scan -- --url "<Indeed URL>" --no-evaluate --enrich-limit 5

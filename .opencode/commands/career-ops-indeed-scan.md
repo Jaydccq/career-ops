@@ -1,8 +1,8 @@
 ---
-description: Scan Indeed Jobs and discover matching roles
+description: Scan Indeed Jobs and evaluate matching roles
 ---
 
-Scan Indeed for new offers using career-ops indeed-scan mode.
+Scan Indeed for matching roles and evaluate survivors using career-ops indeed-scan mode.
 
 Load the career-ops skill:
 ```

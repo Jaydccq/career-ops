@@ -1,28 +1,47 @@
-# Modo: scan — Portal Scanner (Descubrimiento de Ofertas)
+# Modo: scan — Portal Scanner (Discovery + Direct Evaluation)
 
-Escanea portales de empleo configurados, filtra por relevancia de título, y añade nuevas ofertas al pipeline para evaluación posterior.
+Escanea portales de empleo configurados, filtra por relevancia de título,
+añade nuevas ofertas al pipeline, y por defecto envía las ofertas nuevas de la
+ejecución actual a `newgrad_quick` para generar reportes/tracker rows.
 
-> **Nota (v1.5+):** El escáner por defecto (`scan.mjs` / `bun run scan`) es **zero-token** y sólo consulta directamente las APIs públicas de Greenhouse, Ashby y Lever. Los niveles con Playwright/WebSearch descritos abajo son el flujo **agente** (ejecutado por Claude/Codex), no lo que hace `scan.mjs`. Si una empresa no tiene API Greenhouse/Ashby/Lever, `scan.mjs` la ignorará; para esos casos, el agente debe completar manualmente el Nivel 1 (Playwright) o Nivel 3 (WebSearch).
+> **Nota (v1.5+):** La fase de descubrimiento de `scan.mjs` / `bun run scan`
+> sigue siendo zero-token y consulta directamente las APIs públicas de
+> Greenhouse, Ashby, Lever y las búsquedas Built In configuradas. La fase de
+> evaluación directa sí usa el bridge/modelo. Los niveles con
+> Playwright/WebSearch descritos abajo son el flujo **agente** (ejecutado por
+> Claude/Codex), no lo que hace `scan.mjs`. Si una empresa no tiene API
+> Greenhouse/Ashby/Lever, `scan.mjs` la ignorará; para esos casos, el agente
+> debe completar manualmente el Nivel 1 (Playwright) o Nivel 3 (WebSearch).
 
 ## Ejecución recomendada
 
-Default discovery only:
+Default full flow:
 
 ```bash
 bun run scan
 ```
 
-Discovery plus direct quick evaluation for offers discovered in this run:
+`bun run scan` scans configured Greenhouse/Ashby/Lever APIs and legacy Built In
+keyword searches, writes new rows to `data/pipeline.md` and
+`data/scan-history.tsv`, queues current-run offers through `/v1/evaluate` with
+`evaluationMode: newgrad_quick`, and waits for tracker/report completion by
+default. Start the bridge first with `bun run ext:bridge`.
+
+Discovery only:
 
 ```bash
-bun run scan -- --evaluate
+bun run scan -- --no-evaluate
+```
+
+Bounded direct evaluation:
+
+```bash
 bun run scan -- --evaluate --evaluate-limit 5
 ```
 
-`--evaluate` queues current-run offers through the bridge `/v1/evaluate`
-endpoint with `evaluationMode: newgrad_quick`, waits for completion by default,
-and writes reports/tracker rows the same way `newgrad-scan` does. Start the
-bridge first with `bun run ext:bridge`.
+`--evaluate` remains accepted for compatibility, but direct evaluation is now
+the default. Use `--no-evaluate` only when you intentionally want the old
+pipeline-only behavior.
 
 Compatibility paths:
 
@@ -31,8 +50,9 @@ bun run scan -- --builtin-only --evaluate
 bun run scan -- --builtin-only --evaluate-only --evaluate-limit 5
 ```
 
-`--builtin-only --evaluate` and `--evaluate-only` preserve the legacy Built In
-pending-row evaluator. `--dry-run --evaluate` never queues jobs.
+`--builtin-only` defaults to the legacy Built In pending-row evaluator after
+the scan. `--evaluate-only` evaluates already-saved Built In pending rows.
+`--dry-run` never queues jobs.
 
 Ejecutar como subagente para no consumir contexto del main:
 
@@ -166,9 +186,9 @@ Los niveles son aditivos — se ejecutan todos, los resultados se mezclan y dedu
 8. **Para cada oferta nueva verificada que pase filtros**:
    a. Añadir a `pipeline.md` sección "Pendientes": `- [ ] {url} | {company} | {title}`
    b. Registrar en `scan-history.tsv`: `{url}\t{date}\t{query_name}\t{title}\t{company}\tadded`
-   c. Si `--evaluate` está activo, enviar las ofertas nuevas de esta ejecución
-      a `/v1/evaluate` con `evaluationMode: newgrad_quick` y esperar el merge
-      de report/tracker, salvo que se pase `--no-wait-evaluations`
+   c. Salvo que `--no-evaluate` esté activo, enviar las ofertas nuevas de esta
+      ejecución a `/v1/evaluate` con `evaluationMode: newgrad_quick` y esperar
+      el merge de report/tracker, salvo que se pase `--no-wait-evaluations`
 
 9. **Ofertas filtradas por título**: registrar en `scan-history.tsv` con status `skipped_title`
 10. **Ofertas duplicadas**: registrar con status `skipped_dup`
@@ -218,7 +238,7 @@ Nuevas añadidas a pipeline.md: N
   + {company} | {title} | {query_name}
   ...
 
-→ Ejecuta /career-ops pipeline para evaluar las nuevas ofertas si no usaste --evaluate.
+→ Direct evaluation queued current-run offers. Use /career-ops pipeline only for any remaining pending offers.
 ```
 
 ## Gestión de careers_url

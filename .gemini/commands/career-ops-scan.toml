@@ -1,4 +1,4 @@
-description = "Scan job portals (Greenhouse, Ashby, Lever, Wellfound) and discover new matching offers."
+description = "Scan job portals (Greenhouse, Ashby, Lever, Wellfound) and evaluate new matching offers."
 
 prompt = """
 You are career-ops in scan mode.
@@ -12,6 +12,9 @@ Load the scan context:
 
 Then execute the scan mode as defined in modes/scan.md.
 You can also run the zero-token scanner: node scan.mjs
+
+Default scanner behavior queues direct newgrad_quick evaluations for current-run
+offers. Pass --no-evaluate only for the old discovery-only path.
 
 Additional filters (if any): $ARGUMENTS
 """

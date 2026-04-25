@@ -2,7 +2,7 @@
 
 Scans Built In job searches through the read-only `bb-browser site builtin/jobs`
 adapter, scores them with the existing newgrad scanner, enriches promoted rows,
-and can optionally queue direct tracker evaluations.
+and queues direct tracker evaluations by default.
 
 ## When To Use
 
@@ -66,13 +66,18 @@ Expected behavior:
   `builtin-scan` source tag.
 - Does not queue formal evaluations when `--no-evaluate` is set.
 
-### Step 3: Evaluate saved roles directly
+### Step 3: Scan and evaluate directly
 
-After saving, either run the broader pipeline mode or queue Built In pending
-rows directly:
+Default behavior without `--no-evaluate` queues `newgrad_quick` evaluations for
+enrich survivors and waits for tracker merge:
 
 ```bash
-/career-ops pipeline
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --evaluate-limit 5
+```
+
+To evaluate already-saved legacy Built In rows directly:
+
+```bash
 bun run builtin-scan -- --evaluate-only --evaluate-limit 5
 ```
 
@@ -81,12 +86,6 @@ bun run builtin-scan -- --evaluate-only --evaluate-limit 5
 `/v1/evaluate` using `newgrad_quick`, and waits for tracker merge by default.
 Completed rows enter Apply Next only when the tracker status is `Evaluated` and
 the score is at least `3.5/5`.
-
-To scan and evaluate in one command, use:
-
-```bash
-bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --evaluate-limit 5
-```
 
 `--score-only`, `--dry-run`, and `--dry-run --evaluate` never queue jobs; they only report the scan
 summary. Do not submit applications automatically.
@@ -218,5 +217,7 @@ When reporting results, include:
 - Title-filter removals.
 - Deduplicated rows.
 - New rows added or dry-run candidates.
+- Evaluation jobs queued/completed unless `--no-evaluate` was used.
 - Any network or parsing errors.
-- Reminder to run `/career-ops pipeline` after saving new roles.
+- Reminder to run `/career-ops pipeline` only for remaining pending roles after
+  a direct-evaluation run.

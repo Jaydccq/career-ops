@@ -29,6 +29,10 @@ npx playwright install chromium
 - `Generate the tailored ATS PDF for this role using Career-Ops.`
 - `Export the tailored CV as LaTeX/Overleaf .tex for this role.`
 
+## Automations
+
+- Hourly weekday job scanning: `docs/codex-hourly-scan-automation.md`
+
 ## Routing Map
 
 | User intent | Files Codex should read |
