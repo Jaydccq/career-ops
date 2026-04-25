@@ -428,6 +428,22 @@ describe("scoreAndFilter", () => {
     expect(result.filtered).toHaveLength(0);
   });
 
+  test("keeps early-career experience ranges that use an en dash", () => {
+    const config = makeConfig({
+      hard_filters: { max_years_experience: 2 },
+    });
+    const rows = [
+      makeRow({
+        qualifications: "Experience Level: New College Graduate / Early Career (0–5 years).",
+      }),
+    ];
+
+    const result = scoreAndFilter(rows, config, [], new Set());
+
+    expect(result.promoted).toHaveLength(1);
+    expect(result.filtered).toHaveLength(0);
+  });
+
   test("negative keyword in title filters row with reason 'negative_title'", () => {
     const config = makeConfig();
     const rows = [makeRow({ title: "Intern - Software Engineering" })];

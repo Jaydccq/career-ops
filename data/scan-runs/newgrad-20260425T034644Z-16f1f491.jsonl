@@ -1,0 +1,3 @@
+{"at":"2026-04-25T03:46:44.548Z","scanRunId":"newgrad-20260425T034644Z-16f1f491","source":"newgrad-scan","event":"scan_started"}
+{"at":"2026-04-25T03:46:44.549Z","scanRunId":"newgrad-20260425T034644Z-16f1f491","source":"newgrad-scan","event":"bridge_health_check_started","bridgeBase":"http://127.0.0.1:47319"}
+{"at":"2026-04-25T03:46:44.570Z","scanRunId":"newgrad-20260425T034644Z-16f1f491","source":"newgrad-scan","event":"scan_failed","error":"fetch failed"}

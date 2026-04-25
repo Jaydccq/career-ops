@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  buildBuiltInPageUrl,
   buildIndeedPageUrl,
   normalizeBuiltInAdapterRows,
   normalizeIndeedAdapterRows,
@@ -39,6 +40,61 @@ describe("job-board-scan-normalizer", () => {
         qualifications: expect.stringContaining("Develop software solutions"),
       }),
     ]);
+  });
+
+  test("does not treat Built In work model labels as locations", () => {
+    const rows = normalizeBuiltInAdapterRows([
+      {
+        position: 1,
+        title: "Software Engineer I",
+        company: "Acme",
+        location: "In-Office",
+        summary: "Build and maintain software services for customer applications.",
+        url: "https://builtin.com/job/software-engineer-i/123",
+      },
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        location: "",
+        workModel: "In-Office",
+      }),
+    ]);
+  });
+
+  test("does not treat Built In combined work model labels as locations", () => {
+    const rows = normalizeBuiltInAdapterRows([
+      {
+        position: 1,
+        title: "Software Engineer I",
+        company: "Acme",
+        location: "In-Office or Remote",
+        summary: "Build and maintain software services for customer applications.",
+        url: "https://builtin.com/job/software-engineer-i/456",
+      },
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        location: "",
+        workModel: "In-Office or Remote",
+      }),
+    ]);
+  });
+
+  test("preserves Built In URL filters while paging", () => {
+    const url = buildBuiltInPageUrl(
+      "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&city=Durham&state=North+Carolina&country=USA",
+      2,
+    );
+
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("search")).toBe("Software Engineering");
+    expect(parsed.searchParams.get("city")).toBe("Durham");
+    expect(parsed.searchParams.get("state")).toBe("North Carolina");
+    expect(parsed.searchParams.get("country")).toBe("USA");
+    expect(parsed.searchParams.get("allLocations")).toBeNull();
+    expect(parsed.searchParams.get("page")).toBe("2");
   });
 
   test("normalizes Indeed adapter rows into NewGradRow shape", () => {

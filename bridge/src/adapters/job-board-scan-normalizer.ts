@@ -37,7 +37,8 @@ export function buildBuiltInPageUrl(baseUrl: string, page: number): string {
 function normalizeJob(job: AdapterJob, index: number, source: "builtin.com" | "indeed.com"): NewGradRow {
   const title = text(job.title);
   const company = text(job.company);
-  const location = text(job.location);
+  const rawLocation = text(job.location);
+  const location = isWorkModelLabel(rawLocation) ? "" : rawLocation;
   const url = canonicalJobUrl(text(job.url), source);
   const attributes = arrayText(job.attributes);
   const summary = [text(job.summary), text(job.snippet), attributes.join(" ")]
@@ -50,7 +51,7 @@ function normalizeJob(job: AdapterJob, index: number, source: "builtin.com" | "i
     title,
     company,
     location,
-    workModel: text(job.workModel) || inferWorkModel([location, ...attributes].join(" ")),
+    workModel: text(job.workModel) || (isWorkModelLabel(rawLocation) ? rawLocation : inferWorkModel([rawLocation, ...attributes].join(" "))),
     salary: text(job.salary) || null,
     postedAgo: text(job.postedAgo),
     detailUrl: url,
@@ -83,6 +84,10 @@ function inferWorkModel(value: string): string {
   if (/\bhybrid\b/i.test(value)) return "Hybrid";
   if (/\bon-?site|in-?office\b/i.test(value)) return "On-site";
   return "";
+}
+
+function isWorkModelLabel(value: string): boolean {
+  return /^(remote|hybrid|on-?site|in-?office)(?:\s+or\s+(?:remote|hybrid|on-?site|in-?office))*$/i.test(value);
 }
 
 function isEarlyCareer(value: string): boolean {

@@ -13,7 +13,6 @@ Claude workflow.
 - Node.js 18+
 - Playwright Chromium installed for PDF generation and reliable job verification
 - `pdflatex` on PATH if you want local LaTeX CV PDF compilation
-- Go 1.21+ if you want the TUI dashboard
 
 ## Install
 
@@ -69,7 +68,4 @@ layer.
 
 ```bash
 npm run verify
-
-# optional dashboard build
-cd dashboard && go build ./...
 ```

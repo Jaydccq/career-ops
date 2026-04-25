@@ -1,0 +1,5 @@
+{"at":"2026-04-25T03:46:46.046Z","scanRunId":"linkedin-20260425T034646Z-f673a869","source":"linkedin-scan","event":"scan_started"}
+{"at":"2026-04-25T03:46:46.046Z","scanRunId":"linkedin-20260425T034646Z-f673a869","source":"linkedin-scan","event":"scan_configured","url":"https://www.linkedin.com/jobs/search-results/?keywords=software+engineer+AI+engineer+new+graduate&f_TPR=r4000","limit":75,"pages":3,"pageSize":25,"scrollSteps":2,"scoreOnly":true,"enrichLimit":null,"openExternalApply":true,"evaluate":true,"evaluateLimit":null,"evaluationMode":"newgrad_quick","waitEvaluations":true,"bridgeBase":"http://127.0.0.1:47319"}
+{"at":"2026-04-25T03:46:46.130Z","scanRunId":"linkedin-20260425T034646Z-f673a869","source":"linkedin-scan","event":"bb_browser_available"}
+{"at":"2026-04-25T03:46:46.130Z","scanRunId":"linkedin-20260425T034646Z-f673a869","source":"linkedin-scan","event":"bridge_health_check_started","bridgeBase":"http://127.0.0.1:47319"}
+{"at":"2026-04-25T03:46:46.151Z","scanRunId":"linkedin-20260425T034646Z-f673a869","source":"linkedin-scan","event":"scan_failed","error":"fetch failed"}

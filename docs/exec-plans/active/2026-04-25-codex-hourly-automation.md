@@ -49,6 +49,12 @@ through 22:00 America/New_York, and document the Codex App setup steps.
 6. Narrow LinkedIn automation freshness.
    Verify: hourly automation passes a LinkedIn URL with `f_TPR=r4000` by
    default while preserving the profile URL as the base query.
+7. Fix retry blockers from the bridge-enabled catch-up run.
+   Verify: top-level bridge probe waits for a just-started real/codex bridge,
+   and Indeed command construction omits empty `--location`.
+8. Preserve the user-selected Indeed search filters for scheduled scans.
+   Verify: hourly automation builds the Indeed command with `--url` from
+   profile config or `CAREER_OPS_INDEED_URL`.
 
 ## Verification approach
 
@@ -98,6 +104,75 @@ through 22:00 America/New_York, and document the Codex App setup steps.
 - 2026-04-25: Verified the LinkedIn URL transform with a Node YAML parse check;
   generated automation URL had `f_TPR=r4000`. Also reran `node --check
   scripts/hourly-job-scan.mjs`, `git diff --check`, and `npm run verify`.
+- 2026-04-25 03:25Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The command exited before source execution because
+  it was outside the configured America/New_York schedule window, so no sources
+  ran, no evaluations completed, and no new `data/automation` summary was
+  written. Manual catch-up command: `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run
+  auto:hourly-scan`.
+- 2026-04-25 03:47Z: Ran the requested test catch-up with
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan`. The sandbox run
+  wrote `data/automation/hourly-scan-2026-04-25T03-46-15-821Z.md` but hit DNS
+  failures and `tsx` IPC `EPERM`, so the command was rerun with approved
+  unsandboxed execution. The unsandboxed run wrote
+  `data/automation/hourly-scan-2026-04-25T03-46-46-635Z.md`, ran requested
+  sources `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed
+  0 evaluations because no real/codex bridge was reachable. Direct scan ran in
+  read-only preview mode and found 9 newest candidate roles, but did not write
+  them or queue evaluations. Blockers: bridge unavailable
+  (`npm run ext:bridge`), Built In browser daemon Chrome/CDP disconnected
+  (`bb-browser daemon shutdown && bb-browser tab list`), Newgrad and LinkedIn
+  failed bridge health checks with `fetch failed`, Indeed failed with
+  `missing value for --location`, and Pallet returned HTTP 404 in direct scan.
+- 2026-04-25 03:50Z: After the user started the bridge, reran
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan` with approved
+  unsandboxed execution. The run wrote
+  `data/automation/hourly-scan-2026-04-25T03-50-10-526Z.md`. The top-level
+  orchestration bridge probe still reported `bridge_unavailable_preview`, so
+  direct scan stayed dry-run and no evaluations were queued. Source status:
+  `scan` ok, `newgrad` ok, `builtin` failed, `linkedin` failed, `indeed`
+  failed. Newgrad scanner itself reported `Bridge health: ok`, read 50 JobRight
+  API rows within 24h, promoted 19, filtered 31, and wrote
+  `data/scan-runs/newgrad-20260425T034956Z-66083039-summary.json`. Completed
+  evaluations remained 0. Remaining blockers: browser daemon Chrome/CDP
+  disconnected for Built In and LinkedIn (`bb-browser daemon shutdown &&
+  bb-browser tab list`), Indeed still passes an empty `--location`, and Pallet
+  still returns HTTP 404.
+- 2026-04-25: Confirmed the current bridge health payload is
+  `execution.mode=real` and `execution.realExecutor=codex`. Updated the
+  orchestrator to poll briefly for a just-started bridge before preview
+  fallback, and to omit the Indeed `--location` option when
+  `CAREER_OPS_INDEED_LOCATION` is empty.
+- 2026-04-25 04:20Z: Restarted the bb-browser daemon with
+  `bb-browser daemon shutdown` and verified Chrome/CDP recovery with
+  `bb-browser tab list`. Ran a full catch-up using
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan` in the approved
+  local environment. The orchestrator detected the existing real/codex bridge,
+  ran all sources, wrote
+  `data/automation/hourly-scan-2026-04-25T04-19-55-048Z.md`, and completed 6
+  evaluations: 3 from direct scan, 1 from newgrad, and 2 from LinkedIn. High
+  results were Uber Graduate 2026 Software Engineer I Mobile iOS at 4.55/5 and
+  Jobright.ai AI Engineer Entry Level at 4.3/5. Built In still failed with
+  truncated bb-browser JSON, one LinkedIn candidate failed `/v1/evaluate` with
+  invalid envelope, and direct scan still had Pallet HTTP 404. Indeed no longer
+  failed on empty `--location`; it ran and skipped two candidates for
+  `salary_below_minimum`.
+- 2026-04-25: The full run exposed a tracker table break from a LinkedIn title
+  containing `|`. Repaired `data/applications.md` row #358 for Loop, added a
+  `merge-tracker.mjs` cell sanitizer, and added a bridge merge-tracker test for
+  pipe-containing role titles. `npm run verify` passed afterward with only the
+  existing RemoteHunter and Anduril duplicate warnings.
+- 2026-04-25: Updated the hourly orchestrator so Indeed scans prefer a full
+  search URL from `CAREER_OPS_INDEED_URL` or
+  `config/profile.yml -> indeed_scan.search_url`. Added the user's entry-level
+  Indeed URL to profile config so the scheduled run preserves the `sc=` filter
+  instead of rebuilding a plain query/location search.
+- 2026-04-25: Verified the Indeed URL change with `node --check
+  scripts/hourly-job-scan.mjs`, `git diff --check` for touched files, a Node
+  YAML parse check showing `q=software engineer, AI engineer`, empty `l=`, and
+  `sc=0kf:explvl(ENTRY_LEVEL);`, plus a score-only Indeed smoke test. The smoke
+  test parsed 16 rows from the supplied URL, kept 5 under the test limit,
+  promoted 1, filtered 4, and called no bridge write endpoints.
 
 ## Key decisions
 
@@ -108,9 +183,16 @@ through 22:00 America/New_York, and document the Codex App setup steps.
 - Do not start a local listening bridge from Codex Automation by default. The
   automation sandbox can reject `listen()` with `EPERM`, so scheduled runs
   should either reuse an already-running bridge or fall back to preview mode.
+- Wait up to `CAREER_OPS_SCAN_BRIDGE_WAIT_MS` for bridge readiness so a bridge
+  started immediately before the automation run does not cause a false preview
+  fallback.
+- Sanitize markdown tracker cells in `merge-tracker.mjs` because generated TSV
+  fields can legitimately contain `|` from job-board titles.
 - Keep LinkedIn automation freshness narrower than the manual profile default:
   use `f_TPR=r4000` for scheduled hourly runs instead of the broader
   `f_TPR=r86400` 24-hour window.
+- Keep user-selected Indeed filters as a full URL in profile config, because
+  query/location reconstruction drops SERP filters such as entry-level `sc=`.
 
 ## Risks and blockers
 
@@ -123,6 +205,12 @@ through 22:00 America/New_York, and document the Codex App setup steps.
   the real/codex bridge. In that case the automation will run preview scans
   only. Recovery for full evaluations is to keep `npm run ext:bridge` running
   from a normal local terminal before the scheduled run.
+- Built In and external ATS detail reads can still return truncated JSON from
+  bb-browser when page text/output is large; this remains the next reliability
+  gap.
+- One LinkedIn candidate failed evaluation queueing with `BAD_REQUEST invalid
+  envelope`; inspect the candidate payload before relying on fully unattended
+  LinkedIn evaluation for all promoted rows.
 
 ## Final outcome
 

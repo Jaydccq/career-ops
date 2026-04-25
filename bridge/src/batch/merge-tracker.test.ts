@@ -111,3 +111,38 @@ test("higher score duplicate uses rerun status instead of preserving stale skip"
   const tracker = readFileSync(join(repoRoot, "data", "applications.md"), "utf-8");
   expect(tracker).toContain("| 320 | 2026-04-23 | Wonderschool | Early Career Software Engineer - Applied AI | 4.05/5 | Evaluated | ❌ | [330](reports/330-wonderschool-2026-04-23.md) |");
 });
+
+test("sanitizes pipe characters before writing markdown tracker cells", () => {
+  const repoRoot = makeRepo();
+  writeFileSync(
+    join(repoRoot, "data", "applications.md"),
+    [
+      "# Career-Ops Applications Tracker",
+      "",
+      "| # | Date | Company | Role | Score | Status | PDF | Report | Notes |",
+      "|---|------|---------|------|-------|--------|-----|--------|-------|",
+      "",
+    ].join("\n"),
+    "utf-8",
+  );
+  writeFileSync(
+    join(repoRoot, "batch", "tracker-additions", "pipe-role.tsv"),
+    [
+      "321",
+      "2026-04-25",
+      "Loop",
+      "2026 New Grad | Software Engineer, Full-Stack",
+      "SKIP",
+      "2.3/5",
+      "❌",
+      "[384](reports/384-loop-2026-04-25.md)",
+      "Role title contained a pipe.",
+    ].join("\t"),
+    "utf-8",
+  );
+
+  runMerge(repoRoot);
+
+  const tracker = readFileSync(join(repoRoot, "data", "applications.md"), "utf-8");
+  expect(tracker).toContain("| 321 | 2026-04-25 | Loop | 2026 New Grad - Software Engineer, Full-Stack | 2.3/5 | SKIP | ❌ | [384](reports/384-loop-2026-04-25.md) |");
+});

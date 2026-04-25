@@ -11,7 +11,7 @@
  * Usage:
  *   node generate-cover-letter.mjs <content.json> <output.pdf> [--format=letter|a4]
  *
- * The JSON shape is documented in examples/sample-cover-letter.json.
+ * The JSON shape is documented in modes/cover-letter.md.
  *
  * Why this script exists:
  *   - The cover letter mode (modes/cover-letter.md) tells the agent WHAT to write.
@@ -102,10 +102,10 @@ function selectJdQuotesAndProofs(jdText, proofPoints) {
  */
 function validateContent(content) {
   if (!content.candidate) {
-    throw new Error('content.candidate is required (see examples/sample-cover-letter.json for the expected shape)');
+    throw new Error('content.candidate is required (see modes/cover-letter.md for the expected shape)');
   }
   if (!content.letter) {
-    throw new Error('content.letter is required (see examples/sample-cover-letter.json for the expected shape)');
+    throw new Error('content.letter is required (see modes/cover-letter.md for the expected shape)');
   }
   const requiredCandidateFields = ['name', 'email', 'linkedin_url', 'linkedin_display', 'location'];
   for (const k of requiredCandidateFields) {

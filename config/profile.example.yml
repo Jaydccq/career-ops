@@ -51,7 +51,7 @@ narrative:
     - name: "Open Source Tool"
       url: "https://github.com/janesmith/tool"
       hero_metric: "2K+ GitHub stars"
-  # Optional: dashboard/demo URL with credentials
+  # Optional: private demo URL with credentials
   # dashboard:
   #   url: "https://janesmith.dev/demo"
   #   password: "demo-2026"

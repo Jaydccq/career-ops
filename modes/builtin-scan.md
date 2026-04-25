@@ -40,6 +40,7 @@ Run:
 ```bash
 bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --score-only --limit 20
 bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=Software+Engineering&" --dry-run --pages 2 --limit 50
+bun run builtin-scan -- --url "https://builtin.com/jobs/hybrid/office?search=new+grad+software+engineer&city=&state=&country=USA&allLocations=true" --score-only --include-older --pages 2 --limit 50
 ```
 
 Expected behavior:
@@ -49,6 +50,9 @@ Expected behavior:
   `data/applications.md`.
 - Prints raw row count, promoted/filtered counts, and top matching roles.
 - Does not write files.
+- `--include-older` is only for bounded live E2E validation when current
+  same-day Built In rows do not contain a good early-career match. Daily scans
+  should omit it so the normal 24h freshness gate remains active.
 
 ### Step 2: Save new results if the preview looks useful
 

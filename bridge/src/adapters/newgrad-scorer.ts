@@ -166,7 +166,7 @@ function extractMinimumYearsExperience(text: string): number | null {
   if (!normalized) return null;
 
   let minimum: number | null = null;
-  const matches = normalized.matchAll(/(\d+)\s*(?:\+|plus)?(?:\s*-\s*\d+)?\s*(?:years?|yrs?)/g);
+  const matches = normalized.matchAll(/(\d+)\s*(?:\+|plus)?(?:\s*[-–—]\s*\d+)?\s*(?:years?|yrs?)/g);
   for (const match of matches) {
     const candidate = Number(match[1]);
     if (!Number.isFinite(candidate)) continue;

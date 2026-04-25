@@ -66,6 +66,7 @@ write-path evaluation, tracker maintenance, and dashboard rebuild.
 - If no bridge is reachable, continues in read-only preview mode instead of
   failing before source scans start. In preview mode it does not write pipeline
   candidates, queue evaluations, merge tracker rows, or rebuild the dashboard.
+- Waits briefly for a just-started bridge before falling back to preview mode.
 - Runs the configured source list, defaulting to
   `scan,newgrad,builtin,linkedin,indeed`.
 - For LinkedIn automation runs, reads `config/profile.yml ->
@@ -73,6 +74,9 @@ write-path evaluation, tracker maintenance, and dashboard rebuild.
   `r4000` by default. `f_TPR=r86400` means roughly posted in the last 24 hours;
   `r4000` keeps hourly automation focused on the newest roughly last-hour
   postings.
+- For Indeed automation runs, reads `config/profile.yml ->
+  indeed_scan.search_url` or `CAREER_OPS_INDEED_URL` as the full search URL, so
+  filters such as entry-level `sc=` are preserved.
 - Uses `newgrad_quick` by default with `CAREER_OPS_SCAN_EVALUATE_LIMIT=3`.
 - Runs tracker/dashboard maintenance after successful live scans.
 - Writes `data/automation/hourly-scan-*.md` with source status, completed
@@ -92,8 +96,10 @@ CAREER_OPS_SCAN_IGNORE_WINDOW=1
 CAREER_OPS_SCAN_DRY_RUN=1
 CAREER_OPS_SCAN_START_BRIDGE=1
 CAREER_OPS_SCAN_REQUIRE_BRIDGE=1
+CAREER_OPS_SCAN_BRIDGE_WAIT_MS=15000
 CAREER_OPS_LINKEDIN_POSTED_WITHIN=r4000
 CAREER_OPS_LINKEDIN_URL="https://www.linkedin.com/jobs/search-results/?keywords=software%20ai%20engineer%20new%20graduate&f_TPR=r4000"
+CAREER_OPS_INDEED_URL="https://www.indeed.com/jobs?q=software+engineer%2C+AI+engineer&l=&sc=0kf%3Aexplvl%28ENTRY_LEVEL%29%3B"
 ```
 
 `CAREER_OPS_SCAN_START_BRIDGE=1` restores automatic bridge startup. Use it only

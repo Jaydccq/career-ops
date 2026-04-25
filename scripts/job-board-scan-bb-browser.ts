@@ -68,6 +68,7 @@ type Options = {
   pages: number;
   dryRun: boolean;
   scoreOnly: boolean;
+  includeOlder: boolean;
   evaluateOnly: boolean;
   pendingLimit: number;
   evaluate: boolean;
@@ -138,6 +139,7 @@ Options:
   --path <path-or-url>            Built In path or URL when --url is omitted.
   --dry-run                       Compatibility alias for --score-only.
   --score-only                    Extract and score rows without bridge write endpoints.
+  --include-older                 Include rows outside the normal 24h freshness gate. Useful for bounded live E2E validation.
   --evaluate-only                 Evaluate already saved Built In pending rows through the legacy path.
   --pending-limit <n>             Pending rows to read for --evaluate-only. Default: 100.
   --no-evaluate                   Stop after enrich/pipeline write.
@@ -171,6 +173,7 @@ function parseArgs(argv: string[]): Options {
     pages: 1,
     dryRun: false,
     scoreOnly: false,
+    includeOlder: false,
     evaluateOnly: false,
     pendingLimit: 100,
     evaluate: true,
@@ -229,6 +232,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--score-only":
         options.scoreOnly = true;
+        break;
+      case "--include-older":
+        options.includeOlder = true;
         break;
       case "--evaluate-only":
         options.evaluateOnly = true;
@@ -326,8 +332,8 @@ async function main(): Promise<void> {
   const token = options.scoreOnly ? null : await readBridgeToken();
   if (token) await assertBridgeHealthy(bridgeBase, token);
 
-  const score = options.scoreOnly
-    ? scoreRowsLocally(rows)
+  const score = options.scoreOnly || options.includeOlder
+    ? scoreRowsLocally(rows, { includeOlder: options.includeOlder })
     : await scoreRows(bridgeBase, token!, rows);
   console.log(`Scored rows: promoted=${score.promoted.length}, filtered=${score.filtered.length}`);
   printPromotedRows(score.promoted);
@@ -518,7 +524,10 @@ async function assertBridgeHealthy(base: string, token: string): Promise<void> {
   console.log("Bridge health: ok");
 }
 
-function scoreRowsLocally(rows: NewGradRow[]): NewGradScoreResult {
+function scoreRowsLocally(
+  rows: NewGradRow[],
+  options: { includeOlder?: boolean } = {},
+): NewGradScoreResult {
   const scanConfig = loadNewGradScanConfig(repoRoot);
   const negativeKeywords = loadNegativeKeywords(repoRoot);
   const trackedSet = loadTrackedCompanyRoles(repoRoot);
@@ -527,7 +536,7 @@ function scoreRowsLocally(rows: NewGradRow[]): NewGradScoreResult {
   const preFiltered: FilteredRow[] = [];
 
   for (const row of rows) {
-    if (!isRecentNewGradRow(row)) {
+    if (!options.includeOlder && !isRecentNewGradRow(row)) {
       preFiltered.push({
         row,
         reason: "older_than_24h",
@@ -1119,18 +1128,68 @@ async function runProcess(
   args: readonly string[],
   options: { allowJsonError: boolean },
 ): Promise<{ stdout: string; stderr: string }> {
+  const tempDir = await mkdtemp(join(tmpdir(), "career-ops-bb-site-"));
+  const stdoutPath = join(tempDir, "stdout");
+  const stdoutFile = await open(stdoutPath, "w");
+  let fileClosed = false;
+  let stderr = "";
+
   try {
-    return await execFile(command, [...args], {
-      maxBuffer: 25 * 1024 * 1024,
-      timeout: 180_000,
+    await new Promise<void>((resolvePromise, reject) => {
+      const child = spawn(command, [...args], {
+        stdio: ["ignore", stdoutFile.fd, "pipe"],
+      });
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      }, 180_000);
+
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+      child.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.on("close", (code, signal) => {
+        clearTimeout(timeout);
+        if (timedOut) {
+          reject(new Error(`${command} timed out after 180000ms`));
+          return;
+        }
+        if (code === 0) {
+          resolvePromise();
+          return;
+        }
+        reject(new Error(`${command} exited with ${signal ?? code ?? "unknown status"}`));
+      });
     });
+
+    await stdoutFile.close();
+    fileClosed = true;
+    return { stdout: await readFile(stdoutPath, "utf8"), stderr };
   } catch (error) {
-    const err = error as Error & { stdout?: string; stderr?: string };
-    if (options.allowJsonError && err.stdout?.trim().startsWith("{")) {
-      return { stdout: err.stdout, stderr: err.stderr ?? "" };
+    if (!fileClosed) {
+      await stdoutFile.close().catch(() => undefined);
+      fileClosed = true;
     }
-    const detail = [err.message, err.stderr, err.stdout].filter(Boolean).join("\n");
+    const stdout = existsSync(stdoutPath) ? await readFile(stdoutPath, "utf8") : "";
+    if (options.allowJsonError && stdout.trim().startsWith("{")) {
+      return { stdout, stderr };
+    }
+    const detail = [
+      error instanceof Error ? error.message : String(error),
+      stderr.trim(),
+      stdout,
+    ].filter(Boolean).join("\n");
     throw new Error(detail);
+  } finally {
+    if (!fileClosed) {
+      await stdoutFile.close().catch(() => undefined);
+    }
+    await rm(tempDir, { recursive: true, force: true });
   }
 }
 

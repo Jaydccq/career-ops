@@ -3,7 +3,7 @@
 /**
  * update-system.mjs — Safe auto-updater for career-ops
  *
- * Updates ONLY system layer files (modes, scripts, dashboard, templates).
+ * Updates ONLY system layer files (modes, scripts, templates).
  * NEVER touches user data (cv.md, profile.yml, _profile.md, data/, reports/).
  *
  * Usage:
@@ -44,7 +44,6 @@ const SYSTEM_PATHS = [
   'modes/project.md',
   'modes/tracker.md',
   'modes/training.md',
-  'modes/de/',
   'CLAUDE.md',
   'AGENTS.md',
   'generate-pdf.mjs',
@@ -56,14 +55,12 @@ const SYSTEM_PATHS = [
   'update-system.mjs',
   'batch/batch-prompt.md',
   'batch/batch-runner.sh',
-  'dashboard/',
   'templates/',
   'fonts/',
   '.claude/skills/',
   'docs/',
   'VERSION',
   'DATA_CONTRACT.md',
-  'CONTRIBUTING.md',
   'README.md',
   'LICENSE',
   'CITATION.cff',

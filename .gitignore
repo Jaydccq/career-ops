@@ -43,7 +43,6 @@ bun.lock
 .claude/scheduled_tasks.lock
 .claude/memory/
 .claude/projects/
-career-dashboard
 package-lock.json
 
 # Bridge

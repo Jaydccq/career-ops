@@ -25,6 +25,7 @@ const automationDir = join(repoRoot, "data", "automation");
 const lockPath = join(automationDir, "hourly-scan.lock");
 const lockTtlMs = Number(process.env.CAREER_OPS_SCAN_LOCK_TTL_MS ?? 75 * 60 * 1000);
 const stepTimeoutMs = Number(process.env.CAREER_OPS_SCAN_STEP_TIMEOUT_MS ?? 45 * 60 * 1000);
+const bridgeWaitMs = Number(process.env.CAREER_OPS_SCAN_BRIDGE_WAIT_MS ?? 15_000);
 
 const sources = (process.env.CAREER_OPS_SCAN_SOURCES ?? "scan,newgrad,builtin,linkedin,indeed")
   .split(",")
@@ -145,7 +146,7 @@ async function prepareBridge() {
     };
   }
 
-  const existing = await bridgeHealth();
+  const existing = await waitForBridge();
   if (isCodexRealBridge(existing)) {
     console.log("Using existing career-ops bridge in real/codex mode.");
     return {
@@ -222,6 +223,20 @@ async function prepareBridge() {
   };
 }
 
+async function waitForBridge() {
+  const deadline = Date.now() + Math.max(0, bridgeWaitMs);
+  let lastHealth = await bridgeHealth();
+  if (isCodexRealBridge(lastHealth) || bridgeWaitMs <= 0) return lastHealth;
+
+  while (Date.now() < deadline) {
+    await sleep(500);
+    lastHealth = await bridgeHealth();
+    if (isCodexRealBridge(lastHealth)) return lastHealth;
+  }
+
+  return lastHealth;
+}
+
 function stopBridgeIfStarted() {
   if (!bridgeChild || bridgeChild.killed) return;
 
@@ -250,6 +265,12 @@ async function linkedinAutomationUrl() {
   return url.toString();
 }
 
+async function indeedAutomationUrl() {
+  const explicitUrl = process.env.CAREER_OPS_INDEED_URL;
+  const baseUrl = explicitUrl?.trim() || (await readIndeedProfileUrl());
+  return baseUrl || null;
+}
+
 async function readLinkedinProfileUrl() {
   const profilePath = join(repoRoot, "config", "profile.yml");
   if (!existsSync(profilePath)) return null;
@@ -261,8 +282,20 @@ async function readLinkedinProfileUrl() {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+async function readIndeedProfileUrl() {
+  const profilePath = join(repoRoot, "config", "profile.yml");
+  if (!existsSync(profilePath)) return null;
+
+  const parsed = yaml.load(await readFile(profilePath, "utf8"));
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const value = parsed.indeed_scan?.search_url;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 async function commandForSource(source, writesEnabled) {
   const preview = dryRun || !writesEnabled;
+  const indeedLocationArgs = indeedLocation.trim() ? ["--location", indeedLocation] : [];
   const sharedEvalArgs = [
     "--evaluate-limit",
     defaultEvalLimit,
@@ -322,15 +355,14 @@ async function commandForSource(source, writesEnabled) {
   }
 
   if (source === "indeed") {
+    const url = await indeedAutomationUrl();
+    const searchArgs = url ? ["--url", url] : ["--query", indeedQuery, ...indeedLocationArgs];
     return preview
       ? [
           "run",
           "indeed-scan",
           "--",
-          "--query",
-          indeedQuery,
-          "--location",
-          indeedLocation,
+          ...searchArgs,
           "--score-only",
           "--pages",
           "1",
@@ -341,10 +373,7 @@ async function commandForSource(source, writesEnabled) {
           "run",
           "indeed-scan",
           "--",
-          "--query",
-          indeedQuery,
-          "--location",
-          indeedLocation,
+          ...searchArgs,
           "--pages",
           "1",
           "--limit",

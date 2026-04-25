@@ -71,7 +71,7 @@ function checkCv() {
     label: 'cv.md not found',
     fix: [
       'Create cv.md in the project root with your CV in markdown',
-      'See examples/ for reference CVs',
+      'Use templates/cv-template.html for output styling reference',
     ],
   };
 }

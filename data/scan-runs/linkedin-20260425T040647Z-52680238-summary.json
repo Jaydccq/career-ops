@@ -1,0 +1,24 @@
+{
+  "scanRunId": "linkedin-20260425T040647Z-52680238",
+  "source": "linkedin-scan",
+  "startedAt": "2026-04-25T04:06:47.869Z",
+  "updatedAt": "2026-04-25T04:19:35.750Z",
+  "status": "completed",
+  "counts": {
+    "discovered": 66,
+    "listPromoted": 30,
+    "listFiltered": 36,
+    "enriched": 10,
+    "enrichmentFailed": 0,
+    "detailAdded": 8,
+    "detailSkipped": 2,
+    "queued": 2,
+    "queueFailed": 1,
+    "queueSkipped": 0,
+    "completed": 2,
+    "failed": 0,
+    "timedOut": 0
+  },
+  "eventLogPath": "/Users/hongxichen/Desktop/career-ops/data/scan-runs/linkedin-20260425T040647Z-52680238.jsonl",
+  "summaryPath": "/Users/hongxichen/Desktop/career-ops/data/scan-runs/linkedin-20260425T040647Z-52680238-summary.json"
+}

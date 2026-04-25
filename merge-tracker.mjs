@@ -97,6 +97,13 @@ function chooseMergedPdf(existingPdf, additionPdf) {
   return existingPdf === '✅' && additionPdf !== '✅' ? existingPdf : additionPdf;
 }
 
+function trackerCell(value) {
+  return String(value ?? '')
+    .replace(/\|/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function parseAppLine(line) {
   const parts = line.split('|').map(s => s.trim());
   if (parts.length < 9) return null;
@@ -293,7 +300,7 @@ for (const file of tsvFiles) {
       if (lineIdx >= 0) {
         const status = chooseMergedStatus(duplicate.status, addition.status);
         const pdf = chooseMergedPdf(duplicate.pdf, addition.pdf);
-        const updatedLine = `| ${duplicate.num} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${status} | ${pdf} | ${addition.report} | Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes} |`;
+        const updatedLine = `| ${duplicate.num} | ${trackerCell(addition.date)} | ${trackerCell(addition.company)} | ${trackerCell(addition.role)} | ${trackerCell(addition.score)} | ${trackerCell(status)} | ${trackerCell(pdf)} | ${trackerCell(addition.report)} | ${trackerCell(`Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes}`)} |`;
         appLines[lineIdx] = updatedLine;
         updated++;
       }
@@ -306,7 +313,7 @@ for (const file of tsvFiles) {
     const entryNum = addition.num > maxNum ? addition.num : ++maxNum;
     if (addition.num > maxNum) maxNum = addition.num;
 
-    const newLine = `| ${entryNum} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${addition.status} | ${addition.pdf} | ${addition.report} | ${addition.notes} |`;
+    const newLine = `| ${entryNum} | ${trackerCell(addition.date)} | ${trackerCell(addition.company)} | ${trackerCell(addition.role)} | ${trackerCell(addition.score)} | ${trackerCell(addition.status)} | ${trackerCell(addition.pdf)} | ${trackerCell(addition.report)} | ${trackerCell(addition.notes)} |`;
     newLines.push(newLine);
     added++;
     console.log(`➕ Add #${entryNum}: ${addition.company} — ${addition.role} (${addition.score})`);

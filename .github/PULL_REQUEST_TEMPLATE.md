@@ -17,7 +17,6 @@
 
 ## Checklist
 
-- [ ] I have read [CONTRIBUTING.md](https://github.com/santifer/career-ops/blob/main/CONTRIBUTING.md)
 - [ ] I linked a related issue above (required for features and architecture changes)
 - [ ] My PR does not include personal data (CV, email, real names)
 - [ ] I ran `node test-all.mjs` and all tests pass

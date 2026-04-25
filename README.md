@@ -34,7 +34,6 @@ Useful entry points:
 - `npm run pending:warm-cache` warms legacy pending-job cache data.
 - `npm run gemini:eval -- "JD text"` runs the upstream Gemini evaluator.
 - `node generate-latex.mjs` runs the upstream LaTeX CV export path.
-- `go test ./...` checks the dashboard package directly.
 
 ## Local Data
 
@@ -49,7 +48,7 @@ Private working data stays local and gitignored:
 - `reports/`
 - `output/`
 
-Use examples and templates when sharing setup:
+Use templates when sharing setup:
 
 - `config/profile.example.yml`
 - `templates/portals.example.yml`

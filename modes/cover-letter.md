@@ -55,7 +55,7 @@ This mode REQUIRES `_shared.md` to be loaded first.
 
 ## Content JSON Shape
 
-The agent must produce a JSON file matching `examples/sample-cover-letter.json`:
+The agent must produce a JSON file matching this shape:
 
 ```json
 {
@@ -88,7 +88,7 @@ The agent must produce a JSON file matching `examples/sample-cover-letter.json`:
 - US/Canada companies → `"format": "letter"`, `"page_width": "8.5in"`
 - Rest of world → `"format": "a4"`, `"page_width": "210mm"`
 
-**Language rule:** Same language as the JD (EN default). For German JDs, use `modes/de/` translations and salutation "Sehr geehrtes Team von {Company},".
+**Language rule:** English by default. Use another language only when the user explicitly asks.
 
 ## Output Path
 
@@ -119,6 +119,6 @@ Example: `output/cover-letter-jane-doe-acme-ai-2026-04-09.pdf`
 | Symptom | Fix |
 |---------|-----|
 | `Pages: 2` reported | Paragraphs too long. Cut to 60-70 words each and re-run. |
-| `Unreplaced placeholders` error | JSON missing a required field. Check shape against `examples/sample-cover-letter.json`. |
+| `Unreplaced placeholders` error | JSON missing a required field. Check the content shape above. |
 | `generate-pdf.mjs` not found | Run from project root, not from `modes/`. |
 | Cliché word warning | The user's `_shared.md` flagged a banned word. Rewrite. |
