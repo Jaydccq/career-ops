@@ -131,6 +131,30 @@ const NEGATIVE_LOCAL_REASON_TOKENS = new Set([
   "visa_sponsorship_not_explicitly_confirmed",
   "visa_sponsorship_unknown",
 ]);
+const UNKNOWN_SPONSORSHIP_REVIEW_TOKENS = new Set([
+  "sponsorship_not_confirmed",
+  "sponsorship_not_explicitly_confirmed",
+  "sponsorship_status_unconfirmed",
+  "sponsorship_unknown",
+  "unknown_sponsorship",
+  "visa_sponsorship_not_confirmed",
+  "visa_sponsorship_not_explicitly_confirmed",
+  "visa_sponsorship_support_unknown",
+  "visa_sponsorship_unknown",
+]);
+const NON_SPONSORSHIP_MANUAL_REVIEW_TOKENS = new Set([
+  "aggregator_listing",
+  "duplicate_posting",
+  "legitimacy_unclear",
+  "low_signal",
+  "missing_jd",
+  "posting_legitimacy_unclear",
+  "questionable_source",
+  "seniority_unclear",
+  "source_quality_unclear",
+  "suspicious_posting",
+  "unclear_seniority",
+]);
 
 interface ClaudeTerminalJson {
   status: "completed" | "failed";
@@ -211,6 +235,7 @@ export const __internal = {
   buildQuickEvaluationSchema,
   buildQuickEvaluationPrompt,
   buildQuickEvaluationArtifacts,
+  applyQuickEvaluationPolicy,
   sanitizeQuickEvaluationPageText,
   sanitizeUntrustedPromptText,
   shouldFallbackToFullEvalAfterQuickFailure,
@@ -2155,7 +2180,15 @@ async function runQuickEvaluation(args: {
         { logPath: args.logPath }
       );
     }
-    return terminal;
+    const normalized = applyQuickEvaluationPolicy(args.input, terminal);
+    if (normalized.decision !== terminal.decision) {
+      appendJobLog(
+        args.logPath,
+        "bridge",
+        `quick-eval policy override decision=${terminal.decision}->${normalized.decision}`,
+      );
+    }
+    return normalized;
   } finally {
     for (const path of executionPlan.cleanupPaths) {
       safeRemoveFile(path);
@@ -2397,10 +2430,11 @@ function buildQuickEvaluationPrompt(args: {
     "- Hard blockers should heavily push toward `skip`: no sponsorship support when visa sponsorship is required, active security clearance requirement, or explicit experience beyond the candidate max years.",
     "- Treat active security clearance as a hard blocker only for active/current Secret, Top Secret, or TS/SCI requirements. Ignore preferred, public-trust-only, or ability-to-obtain language.",
     "- Unknown sponsorship support, not-explicitly-confirmed sponsorship, and missing compensation are uncertainty signals, not standalone hard blockers.",
+    "- Do not choose `manual_review` solely because sponsorship is unknown or not explicitly confirmed. If the role is otherwise strong and there is no explicit no-sponsorship or restricted-work-authorization language, choose `deep_eval` and note sponsorship as a risk for the full evaluation.",
     "- Do not put `sponsorship_unknown`, `visa_sponsorship_unknown`, `visa_sponsorship_not_explicitly_confirmed`, or equivalent unknown/not-confirmed sponsorship wording in `blockers`; only explicit no-sponsorship or restricted-work-authorization language is a sponsorship blocker.",
     "- Do not put `missing_compensation`, `salary_unknown`, `compensation_missing`, or equivalent missing-salary wording in `blockers`; only an explicit salary high end below `compensationMinUsd` is a salary blocker.",
     "- If title-level signals say new grad / junior / engineer I, do not let noisy employment-type or seniority metadata override that by itself.",
-    "- Prefer `manual_review` over `skip` for high-fit roles where the main concern is uncertainty rather than a confirmed blocker.",
+    "- Prefer `manual_review` over `skip` for high-fit roles where the main concern is uncertainty unrelated to sponsorship, such as posting legitimacy, duplicated aggregator listings, unclear seniority, or missing JD evidence.",
     "- Prefer `skip` for vague, low-signal, clearly senior, or low-value roles.",
     "- `score` is a 0-5 screening score, not the final deep-eval score.",
     "- `reasons` should be 2-6 short machine-readable bullets for why the role is promising.",
@@ -2410,6 +2444,77 @@ function buildQuickEvaluationPrompt(args: {
     "",
     "Return only a JSON object matching the provided schema exactly.",
   ].join("\n");
+}
+
+function applyQuickEvaluationPolicy(
+  input: EvaluationInput,
+  evaluation: QuickEvaluationJson,
+): QuickEvaluationJson {
+  if (!shouldPromoteUnknownSponsorshipManualReview(input, evaluation)) {
+    return evaluation;
+  }
+
+  return {
+    ...evaluation,
+    decision: "deep_eval",
+    blockers: evaluation.blockers.filter((blocker) =>
+      !UNKNOWN_SPONSORSHIP_REVIEW_TOKENS.has(normalizeMachineReason(blocker)),
+    ),
+    reasons: mergeSignalArrays(evaluation.reasons, [
+      "sponsorship_unknown_allowed_for_deep_eval",
+    ]) ?? evaluation.reasons,
+  };
+}
+
+function shouldPromoteUnknownSponsorshipManualReview(
+  input: EvaluationInput,
+  evaluation: QuickEvaluationJson,
+): boolean {
+  if (evaluation.decision !== "manual_review") return false;
+
+  const blockerTokens = evaluation.blockers.map(normalizeMachineReason);
+  const nonSponsorshipBlockers = blockerTokens.filter((token) =>
+    token && !UNKNOWN_SPONSORSHIP_REVIEW_TOKENS.has(token),
+  );
+  if (nonSponsorshipBlockers.length > 0) return false;
+
+  const reviewText = normalizeQuickScreenText([
+    evaluation.tldr,
+    evaluation.legitimacy,
+    ...evaluation.reasons,
+    ...evaluation.blockers,
+  ].join(" "));
+  if (!hasUnknownSponsorshipSignal(input, reviewText)) return false;
+  if (hasNonSponsorshipManualReviewConcern(reviewText, evaluation.legitimacy)) {
+    return false;
+  }
+
+  return true;
+}
+
+function hasUnknownSponsorshipSignal(
+  input: EvaluationInput,
+  reviewText: string,
+): boolean {
+  if (input.structuredSignals?.sponsorshipSupport === "unknown") return true;
+  for (const token of UNKNOWN_SPONSORSHIP_REVIEW_TOKENS) {
+    if (reviewText.includes(token.replace(/_/g, " "))) return true;
+    if (reviewText.includes(token)) return true;
+  }
+  return /sponsorship (?:is )?(?:unknown|unclear|unconfirmed|not confirmed|not explicitly confirmed)/.test(reviewText) ||
+    /visa sponsorship (?:is )?(?:unknown|unclear|unconfirmed|not confirmed|not explicitly confirmed)/.test(reviewText);
+}
+
+function hasNonSponsorshipManualReviewConcern(
+  reviewText: string,
+  legitimacy: string,
+): boolean {
+  if (normalizeQuickScreenText(legitimacy) === "suspicious") return true;
+  for (const token of NON_SPONSORSHIP_MANUAL_REVIEW_TOKENS) {
+    if (reviewText.includes(token.replace(/_/g, " "))) return true;
+    if (reviewText.includes(token)) return true;
+  }
+  return false;
 }
 
 function sanitizeQuickEvaluationPageText(pageText: string | null | undefined): string | null {

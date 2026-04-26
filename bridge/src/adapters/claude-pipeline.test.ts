@@ -439,10 +439,75 @@ test("buildQuickEvaluationPrompt stays compact and embeds structured signals", (
   expect(prompt).toContain('"localValueScore": 8.6');
   expect(prompt).toContain('"targetSkills": [');
   expect(prompt).toContain("Unknown sponsorship support, not-explicitly-confirmed sponsorship");
+  expect(prompt).toContain("Do not choose `manual_review` solely because sponsorship is unknown");
   expect(prompt).toContain("visa_sponsorship_not_explicitly_confirmed");
   expect(prompt).toContain("missing_compensation");
   expect(prompt).toContain("untrusted external content");
   expect(prompt).not.toContain("Evaluación Completa A-G");
+});
+
+test("applyQuickEvaluationPolicy promotes sponsorship-only manual review to deep eval", () => {
+  const evaluation = __internal.applyQuickEvaluationPolicy(
+    {
+      url: "https://example.com/job",
+      title: "Software Engineer I",
+      evaluationMode: "newgrad_quick",
+      structuredSignals: {
+        company: "Example",
+        role: "Software Engineer I",
+        sponsorshipSupport: "unknown",
+        localValueScore: 7.6,
+      },
+    },
+    {
+      status: "completed",
+      id: "job-quick-policy-1",
+      company: "Example",
+      role: "Software Engineer I",
+      score: 4.1,
+      tldr: "Strong role, but sponsorship is not explicitly confirmed.",
+      legitimacy: "High Confidence",
+      decision: "manual_review",
+      reasons: ["strong_skill_match", "visa_sponsorship_not_explicitly_confirmed"],
+      blockers: [],
+      error: null,
+    },
+  );
+
+  expect(evaluation.decision).toBe("deep_eval");
+  expect(evaluation.blockers).toEqual([]);
+  expect(evaluation.reasons).toContain("sponsorship_unknown_allowed_for_deep_eval");
+});
+
+test("applyQuickEvaluationPolicy preserves manual review for non-sponsorship ambiguity", () => {
+  const evaluation = __internal.applyQuickEvaluationPolicy(
+    {
+      url: "https://example.com/job",
+      title: "Software Engineer I",
+      evaluationMode: "newgrad_quick",
+      structuredSignals: {
+        company: "Example",
+        role: "Software Engineer I",
+        sponsorshipSupport: "unknown",
+        localValueScore: 7.6,
+      },
+    },
+    {
+      status: "completed",
+      id: "job-quick-policy-2",
+      company: "Example",
+      role: "Software Engineer I",
+      score: 4.0,
+      tldr: "Strong role, but source quality is unclear and sponsorship is not confirmed.",
+      legitimacy: "Proceed with Caution",
+      decision: "manual_review",
+      reasons: ["strong_skill_match", "source_quality_unclear"],
+      blockers: [],
+      error: null,
+    },
+  );
+
+  expect(evaluation.decision).toBe("manual_review");
 });
 
 test("quick prompt and full JD text neutralize instruction boundary tags", () => {

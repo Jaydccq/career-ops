@@ -550,6 +550,82 @@ are clickable buttons and only the selected row exposes a job-view URL.
   src/adapters/linkedin-scan-normalizer.test.ts`,
   `npm --prefix bridge run typecheck`, and
   `npm run linkedin-scan -- --help`.
+- 2026-04-26: User invoked `/career op linkedin scan`. Goal: execute the
+  repo-native LinkedIn scan using `config/profile.yml ->
+  linkedin_scan.search_url`. Success criteria: required setup files are present,
+  update status is known, bridge health is verified or restored, a no-write
+  preview reports extracted/promoted counts, a bounded write/enrich path runs
+  only after preview success, and the scan outcome is recorded here.
+- 2026-04-26: Assumptions: the misspelled command maps to
+  `/career-ops linkedin-scan`; the configured profile URL is the intended search
+  URL; external Apply probing may open employer job pages but must not fill or
+  submit any application form; direct formal evaluation queueing is not required
+  unless the scanner's default path is explicitly used.
+- 2026-04-26: Required setup files are present. `node update-system.mjs check`
+  returned `offline` with local version `1.3.0`. `npm run linkedin-scan --
+  --help` passed and confirmed current defaults: `--pages 6`, `--limit 100`,
+  external Apply probing enabled, and `newgrad_quick` as the evaluation mode.
+- 2026-04-26: The first no-write preview reached bridge health but failed before
+  extraction because the `bb-browser` daemon had a stale Chrome CDP connection:
+  `Chrome not connected (CDP at 127.0.0.1:19825)`. Restarted the daemon with
+  `bb-browser daemon shutdown`, reopened the configured LinkedIn URL through
+  `bb-browser open`, and retried.
+- 2026-04-26: No-write preview then passed:
+  `npm run linkedin-scan -- --score-only` extracted 116 raw LinkedIn rows, kept
+  100 unique rows after dedupe, promoted 61, filtered 39, called no bridge write
+  endpoints, and wrote summary
+  `data/scan-runs/linkedin-20260426T040251Z-d0858034-summary.json`.
+- 2026-04-26: Bounded write/enrich path passed:
+  `npm run linkedin-scan -- --no-evaluate --enrich-limit 20` extracted 116 raw
+  rows, kept 100 unique rows, promoted 43, filtered 57, enriched 20, failed 0
+  detail reads, added 6 pipeline entries, skipped 14, queued 0 evaluations, and
+  wrote summary
+  `data/scan-runs/linkedin-20260426T041403Z-65bdfc3d-summary.json`.
+- 2026-04-26: Skip breakdown for the write/enrich pass was
+  `no_sponsorship=3`, `salary_below_minimum=7`, `experience_too_high=3`, and
+  `already_in_pipeline=1`. Added candidates were General Motors, Prestige
+  Staffing, Google, two Jobs via Dice postings, and JPMorganChase.
+- 2026-04-26: Safety check: the run skipped an Easy Apply control for Prestige
+  Staffing and did not submit, fill, save, dismiss, or message on any
+  application surface. Direct evaluations were intentionally disabled by
+  `--no-evaluate`.
+- 2026-04-26: User asked to evaluate "these", interpreted as the six
+  `linkedin-scan` pipeline rows added by
+  `linkedin-20260426T041403Z-65bdfc3d`. Goal: queue formal `newgrad_quick`
+  evaluations for those six rows using the existing
+  `scripts/queue-linkedin-evaluations.mjs` helper and wait for completion.
+  Success criteria: CV sync passes, authenticated bridge health passes inside
+  the helper, six jobs are queued from the final scan log, reports/tracker rows
+  are produced or concrete failures are recorded, and the queue summary path is
+  logged here.
+- 2026-04-26: `node cv-sync-check.mjs` passed before queueing evaluations.
+- 2026-04-26: Evaluation queue passed:
+  `node --input-type=module -e "await import('./scripts/queue-linkedin-evaluations.mjs')" --
+  --source-log data/scan-runs/linkedin-20260426T041403Z-65bdfc3d.jsonl
+  --limit 6` queued 6 jobs, completed 6, failed 0, and timed out 0. Queue
+  summary:
+  `data/scan-runs/linkedin-eval-20260426T052700Z-3eb0deb7-summary.json`.
+- 2026-04-26: Generated reports:
+  `reports/388-prestige-staffing-2026-04-26.md`,
+  `reports/389-general-motors-2026-04-26.md`,
+  `reports/390-google-2026-04-26.md`,
+  `reports/391-jobs-via-dice-2026-04-26.md`,
+  `reports/392-jpmorganchase-2026-04-26.md`, and
+  `reports/393-jobs-via-dice-2026-04-26.md`.
+- 2026-04-26: Visible tracker rows were added for JPMorganChase, General
+  Motors, Prestige Staffing, one Jobs via Dice posting, and Google. The second
+  Jobs via Dice report exists and the queue summary marks its tracker merge as
+  true, but no separate visible tracker row was found for report 393, likely
+  because the tracker merge deduped by company/role.
+- 2026-04-26: Evaluation recommendations: General Motors 4.3/5
+  `manual_review`; Prestige Staffing 4.1/5 `manual_review`; Google 4.1/5
+  `manual_review`; Jobs via Dice Marina del Rey 4.2/5 `manual_review`; Jobs via
+  Dice Manhattan Beach 3.8/5 `manual_review`; JPMorganChase 4.2/5
+  `manual_review`.
+- 2026-04-26: Superseded by the follow-up sponsorship-policy change in
+  `docs/exec-plans/active/2026-04-26-quick-screen-sponsorship-deep-eval.md`.
+  The six `manual_review` quick-screen outcomes were re-run as full deep
+  evaluations with reports 394-399.
 
 ## Key Decisions
 
@@ -658,3 +734,15 @@ Apply postings. When a Flexport-style Greenhouse URL is captured from the Apply
 flow, the downstream pipeline/evaluation URL is the Greenhouse posting rather
 than the LinkedIn job-view URL. `--score-only` remains a no-write preview path,
 and `--no-open-external-apply` exists for controlled fallback runs.
+
+The 2026-04-26 `/career op linkedin scan` run completed after recovering a
+stale `bb-browser` CDP connection. The verified preview read 100 unique rows and
+promoted 61 with no writes. The bounded write/enrich pass read 100 unique rows,
+enriched 20, added 6 pipeline entries, skipped 14 under existing policy gates,
+and queued no evaluations because `--no-evaluate` was used.
+
+The follow-up evaluation request first completed as six `newgrad_quick`
+quick-screen reports 388 through 393. Those quick-screen `manual_review`
+outcomes were later superseded by the 2026-04-26 sponsorship-policy change and
+full deep-eval rerun recorded in
+`docs/exec-plans/active/2026-04-26-quick-screen-sponsorship-deep-eval.md`.

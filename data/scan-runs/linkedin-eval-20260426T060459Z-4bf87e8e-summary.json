@@ -1,0 +1,127 @@
+{
+  "queueRunId": "linkedin-eval-20260426T060459Z-4bf87e8e",
+  "sourceLog": "data/scan-runs/linkedin-20260426T041403Z-65bdfc3d.jsonl",
+  "queueLog": "data/scan-runs/linkedin-eval-20260426T060459Z-4bf87e8e.jsonl",
+  "queued": 6,
+  "queueFailed": 0,
+  "completed": 6,
+  "failed": 0,
+  "timedOut": 0,
+  "jobs": {
+    "queued": [
+      {
+        "jobId": "DafwCxun1ibM8VCvQv9FG",
+        "company": "General Motors",
+        "role": "Software Engineer, Autonomy Behavior Validation",
+        "url": "https://generalmotors.wd5.myworkdayjobs.com/careers_gm/job/sunnyvale-california-united-states-of-america/software-engineer--autonomy-behavior-validation_jr-202603134?source=linkedin"
+      },
+      {
+        "jobId": "egNRktuzrSj4iVEaHudnE",
+        "company": "Prestige Staffing",
+        "role": "AI Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4337701917/"
+      },
+      {
+        "jobId": "Kb_OI4mVk41cAvYdVR1ox",
+        "company": "Google",
+        "role": "Software Engineer, Edge TPU Compilers, Silicon",
+        "url": "https://careers.google.com/jobs/results/123315190769820358-software-engineer/?src=online%2flinkedin%2flinkedin_us&utm_campaign=contract&utm_medium=jobposting&utm_source=linkedin"
+      },
+      {
+        "jobId": "-aXFYAu3ZAvrC0WLz1xdH",
+        "company": "Jobs via Dice",
+        "role": "Startup-Full Stack AI Engineer-Build AI Glasses and More!",
+        "url": "https://click.appcast.io/t/ubu-ejwaw1he4zuh4glzlj7-f_34_zentfq1qgqw0se="
+      },
+      {
+        "jobId": "pkv63MEtfCXK6Fy09JSLG",
+        "company": "Jobs via Dice",
+        "role": "Startup-Full Stack AI Engineer-Build AI Glasses and More!",
+        "url": "https://click.appcast.io/t/r2gicezvrwaqtna4bnzokapka7lyh-_xwaag1k75ybi="
+      },
+      {
+        "jobId": "gQrotyKJJce00UmflTweL",
+        "company": "JPMorganChase",
+        "role": "Applied AI ML- Associate",
+        "url": "https://jpmorganchase.contacthr.com/151916331"
+      }
+    ],
+    "completed": [
+      {
+        "jobId": "DafwCxun1ibM8VCvQv9FG",
+        "company": "General Motors",
+        "role": "Software Engineer, Autonomy Behavior Validation",
+        "url": "https://generalmotors.wd5.myworkdayjobs.com/careers_gm/job/sunnyvale-california-united-states-of-america/software-engineer--autonomy-behavior-validation_jr-202603134?source=linkedin",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:06:47.695Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/394-general-motors-2026-04-26.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "egNRktuzrSj4iVEaHudnE",
+        "company": "Prestige Staffing",
+        "role": "AI Engineer",
+        "url": "https://www.linkedin.com/jobs/view/4337701917/",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:07:17.951Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/395-prestige-staffing-2026-04-26.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "Kb_OI4mVk41cAvYdVR1ox",
+        "company": "Google",
+        "role": "Software Engineer, Edge TPU Compilers, Silicon",
+        "url": "https://careers.google.com/jobs/results/123315190769820358-software-engineer/?src=online%2flinkedin%2flinkedin_us&utm_campaign=contract&utm_medium=jobposting&utm_source=linkedin",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:09:04.870Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/396-google-2026-04-26.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "-aXFYAu3ZAvrC0WLz1xdH",
+        "company": "Jobs via Dice",
+        "role": "Startup-Full Stack AI Engineer-Build AI Glasses and More!",
+        "url": "https://click.appcast.io/t/ubu-ejwaw1he4zuh4glzlj7-f_34_zentfq1qgqw0se=",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:09:30.836Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/397-jobs-via-dice-2026-04-26.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "pkv63MEtfCXK6Fy09JSLG",
+        "company": "Jobs via Dice",
+        "role": "Startup-Full Stack AI Engineer-Build AI Glasses and More!",
+        "url": "https://click.appcast.io/t/r2gicezvrwaqtna4bnzokapka7lyh-_xwaag1k75ybi=",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:10:56.697Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/398-jobs-via-dice-2026-04-26.md",
+        "trackerMerged": true
+      },
+      {
+        "jobId": "gQrotyKJJce00UmflTweL",
+        "company": "JPMorganChase",
+        "role": "Applied AI ML- Associate",
+        "url": "https://jpmorganchase.contacthr.com/151916331",
+        "phase": "completed",
+        "updatedAt": "2026-04-26T06:11:32.295Z",
+        "score": null,
+        "recommendation": null,
+        "reportPath": "/Users/hongxichen/Desktop/career-ops/reports/399-jpmorganchase-2026-04-26.md",
+        "trackerMerged": true
+      }
+    ],
+    "failed": [],
+    "timedOut": [],
+    "failedQueue": []
+  }
+}

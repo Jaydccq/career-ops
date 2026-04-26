@@ -67,7 +67,7 @@ export interface BridgeConfig {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 47319;
 const DEFAULT_EVAL_TIMEOUT_SEC = 900;   // 15 min — claude -p can be slow
-const DEFAULT_EVAL_CONCURRENCY = 2;
+const DEFAULT_EVAL_CONCURRENCY = 3;
 const DEFAULT_EVAL_RPM = 30;
 const DEFAULT_LIVENESS_TIMEOUT_SEC = 20;
 const DEFAULT_CODEX_MODEL = "gpt-5.4-mini";
