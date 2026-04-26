@@ -8,6 +8,8 @@ Node/Playwright PDF generators.
 
 ```bash
 npm run dashboard       # start local dashboard server
+bun run dashboard       # same script through Bun
+bun run dashborad       # typo-compatible alias
 ```
 
 Then open the printed local URL, usually `http://127.0.0.1:47329/`.
@@ -18,7 +20,7 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
 |---------------|------------------------------|--------------------------------------------|
 | Apply Next    | `data/applications.md` + `reports/*.md` | Priority shortlist, selective shortlist, local completion marks |
 | Reports       | `reports/*.md`               | Filter, select, render Markdown in panel   |
-| Tracker       | `data/applications.md` + `reports/*.md` | Filter, status dropdown, quick-screen decision column, full-evaluation queue button |
+| Tracker       | `data/applications.md` + `reports/*.md` + `data/gmail-signals.jsonl` | Pipeline cards, active/attention counts, top opportunities, Gmail-only rows, email evidence, full-evaluation queue button |
 | Pipeline      | `data/pipeline.md`           | Filter, done/pending toggle                |
 | Scan History  | `data/scan-history.tsv`      | Filter, portal dropdown, sortable columns  |
 | Keywords      | `data/newgrad-skill-stats.json` | Last-scan and profile matched/missed skill coverage |
@@ -36,6 +38,43 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
    `**Decision:** manual_review`. `manual_review` rows show a **Full Eval**
    button when the local dashboard server is running. The button queues a
    default bridge evaluation, so `npm run ext:bridge` must also be running.
+5. Gmail signals are optional derived facts from read-only mailbox review. If
+   `data/gmail-signals.jsonl` exists, Tracker matches records by
+   `applicationNum` or exact company+role. Unmatched signals render as
+   Gmail-only rows so companies discovered from the inbox still appear in the
+   pipeline. Expanded rows show short email evidence, not full raw bodies.
+6. Every local dashboard start runs `scripts/refresh-gmail-signals.mjs` once
+   before serving the page. The script records its result in the gitignored
+   `data/gmail-refresh-status.json`.
+
+For a connector-assisted mailbox scan, run `/career-ops gmail-scan` inside
+Codex.
+
+For automatic local Gmail API refreshes, create a Google Cloud OAuth client
+with Application type `Desktop app`, save it as
+`config/gmail-oauth-credentials.json`, and run:
+
+```bash
+bun run gmail:auth
+bun run gmail:scan
+```
+
+Do not use a Google OAuth `Web application` client for this local scanner. The
+auth flow uses a random `127.0.0.1` callback port; Web clients commonly fail
+with `redirect_uri_mismatch`.
+
+The same Google Cloud project must have Gmail API enabled. If the scan reports
+that Gmail API has not been used or is disabled, enable Gmail API in that
+project, wait for propagation, then run `bun run gmail:scan` again.
+
+After `gmail:auth`, every `bun run dashboard` startup attempts a fresh Gmail API
+scan through `scripts/gmail-oauth-refresh.mjs`. To override the scanner command:
+
+```bash
+CAREER_OPS_GMAIL_REFRESH_COMMAND='["node","scripts/gmail-oauth-refresh.mjs"]' bun run dashboard
+```
+
+Use `CAREER_OPS_DASHBOARD_REFRESH_GMAIL=0 bun run dashboard` to skip the hook.
 
 The `Apply Next` tab also stores a local completion marker in browser
 `localStorage`. That marker is a dashboard convenience only; canonical tracker
@@ -51,6 +90,9 @@ To write a standalone `web/index.html` snapshot:
 ```bash
 npm run dashboard:build
 ```
+
+Static export intentionally omits local profile email and Gmail signal data.
+Run `npm run dashboard` for the private, fully enriched local view.
 
 Run it after:
 

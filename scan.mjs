@@ -23,9 +23,10 @@
  */
 
 import { randomUUID } from 'crypto';
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
 import yaml from 'js-yaml';
 import { pathToFileURL } from 'url';
+import { getJobBoardProvider } from './providers/job-board-providers.mjs';
 const parseYaml = yaml.load;
 
 // ── Config ──────────────────────────────────────────────────────────
@@ -36,6 +37,19 @@ const COMPANY_MEMORY_PATH = 'data/newgrad-company-memory.yml';
 const SCAN_HISTORY_PATH = 'data/scan-history.tsv';
 const PIPELINE_PATH = 'data/pipeline.md';
 const APPLICATIONS_PATH = 'data/applications.md';
+const REPORTS_PATH = 'reports';
+const TRACKING_PARAMS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'utm_id',
+  'ref',
+  'source',
+  'gh_src',
+  'lever-source',
+]);
 
 // Ensure required directories exist (fresh setup)
 mkdirSync('data', { recursive: true });
@@ -62,13 +76,52 @@ const DEFAULT_BUILTIN_SEARCHES = [
 
 // ── API detection ───────────────────────────────────────────────────
 
-function detectApi(company) {
+export function detectApi(company) {
+  const providerId = typeof company.api_provider === 'string'
+    ? company.api_provider.trim().toLowerCase()
+    : '';
+  if (providerId && getJobBoardProvider(providerId)) {
+    return { type: providerId, url: company.api || company.careers_url || '' };
+  }
+
   // Greenhouse: explicit api field
   if (company.api && company.api.includes('greenhouse')) {
     return { type: 'greenhouse', url: company.api };
   }
 
   const url = company.careers_url || '';
+
+  // Amazon Jobs: public search.json endpoint. Defaults to US-only to avoid
+  // global keyword searches flooding the pipeline with unrelated regions.
+  if (/amazon\.jobs\/en\/search/.test(url)) {
+    try {
+      const target = new URL(url);
+      const hasCountry = [...target.searchParams.keys()].some((key) => key.startsWith('country'));
+      const searchParams = new URLSearchParams(target.searchParams);
+      if (!hasCountry && company.country !== 'ALL') {
+        searchParams.append('country[]', 'USA');
+        searchParams.append('country[]', 'US');
+      }
+      searchParams.set('result_limit', String(company.result_limit || 100));
+      const countryCodes = company.country === 'ALL'
+        ? null
+        : [...searchParams.entries()]
+          .filter(([key]) => key.startsWith('country'))
+          .map(([, value]) => normalizeAmazonCountryCode(value))
+          .filter(Boolean);
+      return {
+        type: 'amazon',
+        url: `https://www.amazon.jobs/en/search.json?${searchParams.toString()}`,
+        countryCodes,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (url.includes('jobs.a16z.com')) {
+    return { type: 'a16z', url };
+  }
 
   // Ashby
   const ashbyMatch = url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/);
@@ -132,15 +185,78 @@ function parseLever(json, companyName) {
   }));
 }
 
-const PARSERS = { greenhouse: parseGreenhouse, ashby: parseAshby, lever: parseLever };
+export function parseAmazon(json, companyName, apiMeta = {}) {
+  const jobs = json?.jobs || [];
+  if (!Array.isArray(jobs)) return [];
+
+  const allowedCountryCodes = Array.isArray(apiMeta.countryCodes)
+    ? new Set(apiMeta.countryCodes)
+    : null;
+
+  return jobs
+    .filter(j => !allowedCountryCodes || allowedCountryCodes.has(normalizeAmazonCountryCode(j.country_code)))
+    .map(j => ({
+      title: j.title || '',
+      url: j.job_path ? new URL(j.job_path, 'https://www.amazon.jobs').toString() : '',
+      company: companyName,
+      location: j.normalized_location || j.location || '',
+    }))
+    .filter(job => job.url);
+}
+
+function normalizeAmazonCountryCode(value) {
+  const code = String(value ?? '').trim().toUpperCase();
+  if (!code) return '';
+  if (code === 'US') return 'USA';
+  if (code === 'GB') return 'GBR';
+  if (code === 'DE') return 'DEU';
+  if (code === 'AU') return 'AUS';
+  return code;
+}
+
+const PARSERS = {
+  greenhouse: parseGreenhouse,
+  ashby: parseAshby,
+  lever: parseLever,
+  amazon: parseAmazon,
+};
+
+const RAW_ATS_CAREERS_HOSTS = [
+  /(^|\.)myworkdayjobs\.com$/i,
+  /(^|\.)myworkday\.com$/i,
+];
+
+export function isRawAtsCareersUrl(value) {
+  if (!value) return false;
+  try {
+    const { hostname } = new URL(value);
+    return RAW_ATS_CAREERS_HOSTS.some((pattern) => pattern.test(hostname));
+  } catch {
+    return false;
+  }
+}
+
+export function buildBrandedCareersWarnings(companies) {
+  return companies
+    .filter((company) => company.enabled !== false)
+    .filter((company) => isRawAtsCareersUrl(company.careers_url))
+    .filter((company) => company.allow_raw_ats_careers_url !== true)
+    .map((company) => ({
+      company: company.name,
+      careersUrl: company.careers_url,
+    }));
+}
 
 // ── Fetch with timeout ──────────────────────────────────────────────
 
 async function fetchJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const headers = url.includes('amazon.jobs')
+    ? { 'User-Agent': 'Mozilla/5.0' }
+    : undefined;
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal, headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } finally {
@@ -397,7 +513,7 @@ function loadSeenUrls() {
     const lines = readFileSync(SCAN_HISTORY_PATH, 'utf-8').split('\n');
     for (const line of lines.slice(1)) { // skip header
       const url = line.split('\t')[0];
-      if (url) seen.add(url);
+      if (url) seen.add(normalizeScanUrl(url));
     }
   }
 
@@ -405,7 +521,7 @@ function loadSeenUrls() {
   if (existsSync(PIPELINE_PATH)) {
     const text = readFileSync(PIPELINE_PATH, 'utf-8');
     for (const match of text.matchAll(/- \[[ x]\] (https?:\/\/\S+)/g)) {
-      seen.add(match[1]);
+      seen.add(normalizeScanUrl(match[1]));
     }
   }
 
@@ -413,7 +529,16 @@ function loadSeenUrls() {
   if (existsSync(APPLICATIONS_PATH)) {
     const text = readFileSync(APPLICATIONS_PATH, 'utf-8');
     for (const match of text.matchAll(/https?:\/\/[^\s|)]+/g)) {
-      seen.add(match[0]);
+      seen.add(normalizeScanUrl(match[0]));
+    }
+  }
+
+  if (existsSync(REPORTS_PATH)) {
+    for (const file of readdirSync(REPORTS_PATH)) {
+      if (!file.endsWith('.md')) continue;
+      const markdown = readFileSync(`${REPORTS_PATH}/${file}`, 'utf-8');
+      const match = markdown.match(/^\*\*URL:\*\*\s+(.+)$/m);
+      if (match?.[1]) seen.add(normalizeScanUrl(match[1]));
     }
   }
 
@@ -426,14 +551,68 @@ function loadSeenCompanyRoles() {
     const text = readFileSync(APPLICATIONS_PATH, 'utf-8');
     // Parse markdown table rows: | # | Date | Company | Role | ...
     for (const match of text.matchAll(/\|[^|]+\|[^|]+\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|/g)) {
-      const company = match[1].trim().toLowerCase();
-      const role = match[2].trim().toLowerCase();
-      if (company && role && company !== 'company') {
-        seen.add(`${company}::${role}`);
+      const company = match[1].trim();
+      const role = match[2].trim();
+      if (company && role && normalizeIdentityValue(company) !== 'company') {
+        seen.add(scanCompanyRoleKey(company, role));
       }
     }
   }
+
+  if (existsSync(REPORTS_PATH)) {
+    for (const file of readdirSync(REPORTS_PATH)) {
+      if (!file.endsWith('.md')) continue;
+      const markdown = readFileSync(`${REPORTS_PATH}/${file}`, 'utf-8');
+      const parsed = parseReportCompanyRole(markdown);
+      if (parsed) seen.add(scanCompanyRoleKey(parsed.company, parsed.role));
+    }
+  }
   return seen;
+}
+
+function normalizeScanUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw);
+    for (const key of [...url.searchParams.keys()]) {
+      if (TRACKING_PARAMS.has(key)) url.searchParams.delete(key);
+    }
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function scanCompanyRoleKey(company, role) {
+  return `${normalizeIdentityValue(company)}::${normalizeIdentityValue(role)}`;
+}
+
+function normalizeIdentityValue(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseReportCompanyRole(markdown) {
+  const heading = markdown.match(/^#\s+(?:Evaluation|Evaluaci[oó]n):\s+(.+)$/m)?.[1]?.trim();
+  if (!heading) return null;
+
+  const emDash = heading.match(/^(.+?)\s+—\s+(.+)$/);
+  if (emDash) return { company: emDash[1].trim(), role: emDash[2].trim() };
+
+  const spacedHyphen = heading.match(/^(.+?)\s+-\s+(.+)$/);
+  if (spacedHyphen) return { company: spacedHyphen[1].trim(), role: spacedHyphen[2].trim() };
+
+  return null;
 }
 
 // ── Pipeline writer ─────────────────────────────────────────────────
@@ -607,6 +786,7 @@ async function main() {
   const selectedCompanies = companies
     .filter(c => c.enabled !== false)
     .filter(c => !filterCompany || c.name.toLowerCase().includes(filterCompany));
+  const brandedCareersWarnings = buildBrandedCareersWarnings(selectedCompanies);
   const activeClearanceSkippedCompanies = builtInOnly
     ? 0
     : selectedCompanies.filter(c => shouldSkipActiveClearanceCompany(c.name, activeClearanceCompanySkips)).length;
@@ -621,6 +801,15 @@ async function main() {
   console.log(`Scanning ${apiTargets.length} companies via API (${skippedCount} skipped — no API detected)`);
   if (activeClearanceSkippedCompanies > 0) {
     console.log(`Company targets skipped by active-clearance blacklist: ${activeClearanceSkippedCompanies}`);
+  }
+  if (!builtInOnly && brandedCareersWarnings.length > 0) {
+    console.log(`Raw ATS careers_url warnings: ${brandedCareersWarnings.length}`);
+    for (const warning of brandedCareersWarnings.slice(0, 5)) {
+      console.log(`  ⚠ ${warning.company}: prefer branded careers URL over ${warning.careersUrl}`);
+    }
+    if (brandedCareersWarnings.length > 5) {
+      console.log(`  ... ${brandedCareersWarnings.length - 5} more`);
+    }
   }
   console.log(`Scanning ${builtInSearches.length} Built In keyword searches`);
   if (builtInSearches.length > 0) console.log(`Built In pages per search: ${builtInPages}`);
@@ -643,8 +832,27 @@ async function main() {
   const tasks = apiTargets.map(company => async () => {
     const { type, url } = company._api;
     try {
-      const json = await fetchJson(url);
-      const jobs = PARSERS[type](json, company.name);
+      const provider = getJobBoardProvider(type);
+      let jobs;
+
+      if (provider) {
+        const apiFilters = company.api_filters && typeof company.api_filters === 'object' && !Array.isArray(company.api_filters)
+          ? company.api_filters
+          : {};
+        const result = await provider.searchJobs({
+          ...apiFilters,
+          size: company.api_size,
+        });
+        if (result.errors?.length > 0 && result.jobs.length === 0) {
+          throw new Error(result.errors.join('; '));
+        }
+        jobs = result.jobs.map(job => provider.mapToScanOffer(job)).filter(Boolean);
+      } else {
+        const parser = PARSERS[type];
+        if (!parser) throw new Error(`No parser registered for API type ${type}`);
+        const json = await fetchJson(url);
+        jobs = parser(json, company.name, company._api);
+      }
       totalFound += jobs.length;
 
       for (const job of jobs) {
@@ -652,17 +860,18 @@ async function main() {
           totalFiltered++;
           continue;
         }
-        if (seenUrls.has(job.url)) {
+        const jobUrl = normalizeScanUrl(job.url);
+        if (seenUrls.has(jobUrl)) {
           totalDupes++;
           continue;
         }
-        const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
+        const key = scanCompanyRoleKey(job.company, job.title);
         if (seenCompanyRoles.has(key)) {
           totalDupes++;
           continue;
         }
         // Mark as seen to avoid intra-scan dupes
-        seenUrls.add(job.url);
+        seenUrls.add(jobUrl);
         seenCompanyRoles.add(key);
         newOffers.push({ ...job, source: `${type}-api` });
       }
@@ -691,16 +900,17 @@ async function main() {
               totalFiltered++;
               continue;
             }
-            if (seenUrls.has(job.url)) {
+            const jobUrl = normalizeScanUrl(job.url);
+            if (seenUrls.has(jobUrl)) {
               totalDupes++;
               continue;
             }
-            const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
+            const key = scanCompanyRoleKey(job.company, job.title);
             if (seenCompanyRoles.has(key)) {
               totalDupes++;
               continue;
             }
-            seenUrls.add(job.url);
+            seenUrls.add(jobUrl);
             seenCompanyRoles.add(key);
             newOffers.push({ ...job, source: BUILTIN_SOURCE });
           }

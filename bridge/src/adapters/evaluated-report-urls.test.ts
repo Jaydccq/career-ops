@@ -4,7 +4,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import {
+  loadEvaluatedJobIdentities,
+  loadEvaluatedReportUrls,
+} from "./evaluated-report-urls.js";
 
 const tempDirs: string[] = [];
 
@@ -59,6 +62,35 @@ describe("evaluated-report-urls", () => {
     const urls = loadEvaluatedReportUrls(repoRoot);
 
     expect([...urls]).toEqual(["https://jobs.example.com/role/123"]);
+  });
+
+  test("loads normalized company-role identities from report headings", () => {
+    const repoRoot = makeRepoRoot();
+
+    writeFileSync(
+      join(repoRoot, "reports", "001-vizient-2026-04-24.md"),
+      [
+        "# Evaluación: Vizient, Inc — Associate Software Engineer",
+        "",
+        "**URL:** https://careers.example.com/job/123",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    writeFileSync(
+      join(repoRoot, "reports", "002-everis-2026-04-24.md"),
+      [
+        "# Evaluation: Everis - Software Engineer, Product & Growth",
+        "",
+        "**URL:** https://jobs.example.com/role/456",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const identities = loadEvaluatedJobIdentities(repoRoot);
+
+    expect(identities.companyRoles.has("vizient|associate software engineer")).toBe(true);
+    expect(identities.companyRoles.has("everis|software engineer product and growth")).toBe(true);
   });
 });
 

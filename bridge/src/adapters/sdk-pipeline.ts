@@ -70,9 +70,9 @@ import { bridgeError } from "../runtime/errors.js";
 import { scoreAndFilter } from "./newgrad-scorer.js";
 import { recordNewGradSkillStats } from "./newgrad-skill-stats.js";
 import { scoreEnrichedRowValue } from "./newgrad-value-scorer.js";
-import { pickPipelineEntryUrl } from "./newgrad-links.js";
+import { pickPipelineEntryUrl, pipelineEntryUrlCandidates } from "./newgrad-links.js";
 import { formatPendingValueReasonsTag } from "./newgrad-pipeline-metadata.js";
-import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { loadEvaluatedJobIdentities } from "./evaluated-report-urls.js";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
@@ -95,6 +95,7 @@ import {
 import { readBuiltInPendingEntries as readPendingBuiltInEntries } from "./builtin-pending.js";
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
+import { jobCompanyRoleKey } from "./job-identity.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Zod schema for structured evaluation output                                */
@@ -428,7 +429,7 @@ export function createSdkPipelineAdapter(
       const negativeKeywords = loadNegativeKeywords(config.repoRoot);
       const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
       const existingPipelineUrls = loadPipelineUrls(config.repoRoot);
-      const evaluatedReportUrls = loadEvaluatedReportUrls(config.repoRoot);
+      const evaluatedReportIdentities = loadEvaluatedJobIdentities(config.repoRoot);
 
       const entries: PipelineEntry[] = [];
       const candidates: PipelineEntry[] = [];
@@ -519,21 +520,30 @@ export function createSdkPipelineAdapter(
           valueReasons: valueScore.reasons,
           source: entrySource,
         };
-        const canonicalEntryUrl = canonicalizeJobUrl(entryUrl) ?? entryUrl;
+        const canonicalCandidateUrls = pipelineEntryUrlCandidates(
+          enrichedRow.detail,
+          enrichedRow.row.row,
+        ).map((url) => canonicalizeJobUrl(url) ?? url);
 
-        if (evaluatedReportUrls.has(canonicalEntryUrl)) {
+        const evaluatedCompanyRole = jobCompanyRoleKey(entry.company, entry.role);
+        if (
+          canonicalCandidateUrls.some((url) => evaluatedReportIdentities.urls.has(url)) ||
+          (evaluatedCompanyRole && evaluatedReportIdentities.companyRoles.has(evaluatedCompanyRole))
+        ) {
           skipRow("already_evaluated_report", enrichedRow);
           continue;
         }
 
-        if (existingPipelineUrls.has(canonicalEntryUrl)) {
+        if (canonicalCandidateUrls.some((url) => existingPipelineUrls.has(url))) {
           skipRow("already_in_pipeline", enrichedRow);
           continue;
         }
 
         candidates.push(entry);
         entries.push(entry);
-        existingPipelineUrls.add(canonicalEntryUrl);
+        for (const url of canonicalCandidateUrls) {
+          existingPipelineUrls.add(url);
+        }
         onProgress?.(processed, rows.length, enrichedRow);
       }
 

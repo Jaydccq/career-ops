@@ -83,6 +83,40 @@ describe("newgrad-config", () => {
     expect(config.hard_filters.max_years_experience).toBe(2);
   });
 
+  test("loadNewGradScanConfig merges sponsorship keyword file into hard filters", () => {
+    const repoRoot = makeRepoRoot();
+    writeFileSync(
+      join(repoRoot, "config/sponsorship-keywords.yml"),
+      [
+        "positive_keywords:",
+        '  - "open to sponsoring"',
+        "negative_keywords:",
+        '  - "not eligible for sponsorship"',
+        "government_blockers:",
+        '  - "public trust clearance"',
+        "authorization_blockers:",
+        '  - "green card holder"',
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const config = loadNewGradScanConfig(repoRoot);
+
+    expect(config.hard_filters.sponsorship_positive_keywords).toEqual(
+      expect.arrayContaining(["open to sponsoring"]),
+    );
+    expect(config.hard_filters.no_sponsorship_keywords).toEqual(
+      expect.arrayContaining([
+        "not eligible for sponsorship",
+        "green card holder",
+      ]),
+    );
+    expect(config.hard_filters.clearance_keywords).toEqual(
+      expect.arrayContaining(["public trust clearance"]),
+    );
+  });
+
   test("loadNewGradScanConfig reads detail value and compensation thresholds", () => {
     const repoRoot = makeRepoRoot();
     writeFileSync(

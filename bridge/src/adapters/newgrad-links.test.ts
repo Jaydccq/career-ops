@@ -1,6 +1,12 @@
 import { expect, test } from "vitest";
 
-import { hasExternalNewGradUrl, isJobrightUrl, pickBestNewGradUrl, pickPipelineEntryUrl } from "./newgrad-links.js";
+import {
+  hasExternalNewGradUrl,
+  isJobrightUrl,
+  pickBestNewGradUrl,
+  pickPipelineEntryUrl,
+  pipelineEntryUrlCandidates,
+} from "./newgrad-links.js";
 
 test("pickBestNewGradUrl prefers a known ATS link over Jobright", () => {
   const best = pickBestNewGradUrl(
@@ -73,6 +79,27 @@ test("pickPipelineEntryUrl still returns Jobright when no better candidate exist
   expect(best).toBe("https://jobright.ai/jobs/info/internal-2");
   expect(isJobrightUrl(best)).toBe(true);
   expect(hasExternalNewGradUrl(best)).toBe(false);
+});
+
+test("pipelineEntryUrlCandidates keeps company apply and source job aliases", () => {
+  const candidates = pipelineEntryUrlCandidates(
+    {
+      originalPostUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+      applyNowUrl: "https://job-boards.greenhouse.io/example/jobs/7839298?gh_jid=7839298",
+      applyFlowUrls: [
+        "https://job-boards.greenhouse.io/example/jobs/7839298?gh_jid=7839298",
+      ],
+    },
+    {
+      applyUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+      detailUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+    },
+  );
+
+  expect(candidates).toEqual([
+    "https://job-boards.greenhouse.io/example/jobs/7839298?gh_jid=7839298",
+    "https://www.linkedin.com/jobs/view/4347121472/",
+  ]);
 });
 
 test("pickPipelineEntryUrl prefers concrete Jobright detail over Jobright recommendations", () => {

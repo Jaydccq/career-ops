@@ -17,7 +17,7 @@ import type {
 } from "../contracts/newgrad.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
 import { writeJdFile } from "../lib/write-jd-file.js";
-import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { loadEvaluatedJobIdentities } from "./evaluated-report-urls.js";
 import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePendingValueReasons } from "./newgrad-pipeline-metadata.js";
 import {
@@ -40,7 +40,7 @@ export function readNewGradPendingEntries(
   const tracked = loadTrackedCompanyRoles(repoRoot);
   const negativeKeywords = loadNegativeKeywords(repoRoot);
   const scanConfig = loadNewGradScanConfig(repoRoot);
-  const evaluatedReportUrls = loadEvaluatedReportUrls(repoRoot);
+  const evaluatedReportIdentities = loadEvaluatedJobIdentities(repoRoot);
   const entries: NewGradPendingEntry[] = [];
   const seenUrls = new Set<string>();
   const seenCompanyRoles = new Set<string>();
@@ -50,7 +50,7 @@ export function readNewGradPendingEntries(
     tracked,
     negativeKeywords,
     scanConfig,
-    evaluatedReportUrls,
+    evaluatedReportIdentities,
     seenUrls,
     seenCompanyRoles,
     entries,
@@ -174,7 +174,7 @@ function readPipelineEntries(
   tracked: ReadonlySet<string>,
   negativeKeywords: readonly string[],
   scanConfig: NewGradScanConfig,
-  evaluatedReportUrls: ReadonlySet<string>,
+  evaluatedReportIdentities: ReturnType<typeof loadEvaluatedJobIdentities>,
   seenUrls: Set<string>,
   seenCompanyRoles: Set<string>,
   entries: NewGradPendingEntry[],
@@ -207,7 +207,13 @@ function readPipelineEntries(
     const pageText = localJdPath ? readLocalJd(repoRoot, localJdPath) : undefined;
     const url = groups.url ?? "";
     const canonicalUrl = normalizeJobUrl(url);
-    if (seenUrls.has(canonicalUrl) || evaluatedReportUrls.has(canonicalUrl)) continue;
+    if (
+      seenUrls.has(canonicalUrl) ||
+      evaluatedReportIdentities.urls.has(canonicalUrl) ||
+      evaluatedReportIdentities.companyRoles.has(companyRoleKey)
+    ) {
+      continue;
+    }
     seenUrls.add(canonicalUrl);
     seenCompanyRoles.add(companyRoleKey);
 

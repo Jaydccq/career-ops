@@ -3,6 +3,8 @@ cv.md
 data/applications.md
 data/pipeline.md
 data/scan-history.tsv
+data/gmail-signals.jsonl
+data/gmail-refresh-status.json
 reports/*.md
 !reports/.gitkeep
 output/*
@@ -20,6 +22,8 @@ jds/*
 cv.md
 article-digest.md
 config/profile.yml
+config/gmail-oauth-credentials.json
+config/gmail-oauth-token.json
 portals.yml
 modes/_profile.md
 .update-dismissed

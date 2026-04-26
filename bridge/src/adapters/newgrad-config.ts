@@ -5,10 +5,18 @@ import type { FilteredRow, NewGradScanConfig } from "../contracts/newgrad.js";
 import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 
 const COMPANY_MEMORY_PATH = "data/newgrad-company-memory.yml";
+const SPONSORSHIP_KEYWORDS_PATH = "config/sponsorship-keywords.yml";
 
 interface BlockedCompanyMemory {
   no_sponsorship_companies: string[];
   active_security_clearance_companies: string[];
+}
+
+interface SponsorshipKeywords {
+  positive_keywords: string[];
+  negative_keywords: string[];
+  government_blockers: string[];
+  authorization_blockers: string[];
 }
 
 const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
@@ -48,6 +56,7 @@ const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
       "u.s. citizens or permanent residents",
       "permanent residents",
     ],
+    sponsorship_positive_keywords: [],
     no_sponsorship_companies: [],
     clearance_keywords: [
       "active secret security clearance",
@@ -70,21 +79,16 @@ const DEFAULT_SCAN_CONFIG: NewGradScanConfig = {
 
 export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
   const companyMemory = loadBlockedCompanyMemory(repoRoot);
+  const sponsorshipKeywords = loadSponsorshipKeywords(repoRoot);
   const profilePath = join(repoRoot, "config/profile.yml");
   if (!existsSync(profilePath)) {
     return {
       ...DEFAULT_SCAN_CONFIG,
-      hard_filters: {
-        ...DEFAULT_SCAN_CONFIG.hard_filters,
-        no_sponsorship_companies: mergeUniqueStrings(
-          DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
-          companyMemory.no_sponsorship_companies,
-        ),
-        active_security_clearance_companies: mergeUniqueStrings(
-          DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
-          companyMemory.active_security_clearance_companies,
-        ),
-      },
+      hard_filters: buildHardFiltersWithSystemKeywords(
+        DEFAULT_SCAN_CONFIG.hard_filters,
+        companyMemory,
+        sponsorshipKeywords,
+      ),
     };
   }
 
@@ -96,17 +100,11 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
       return {
         ...DEFAULT_SCAN_CONFIG,
         compensation_min_usd: compensationMinUsd,
-        hard_filters: {
-          ...DEFAULT_SCAN_CONFIG.hard_filters,
-          no_sponsorship_companies: mergeUniqueStrings(
-            DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
-            companyMemory.no_sponsorship_companies,
-          ),
-          active_security_clearance_companies: mergeUniqueStrings(
-            DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
-            companyMemory.active_security_clearance_companies,
-          ),
-        },
+        hard_filters: buildHardFiltersWithSystemKeywords(
+          DEFAULT_SCAN_CONFIG.hard_filters,
+          companyMemory,
+          sponsorshipKeywords,
+        ),
       };
     }
 
@@ -213,7 +211,7 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
         DEFAULT_SCAN_CONFIG.detail_value_threshold,
       ),
       compensation_min_usd: compensationMinUsd,
-      hard_filters: {
+      hard_filters: buildHardFiltersWithSystemKeywords({
         blocked_companies:
           blockedCompanies.length > 0
             ? blockedCompanies
@@ -240,19 +238,15 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
           noSponsorshipKeywords.length > 0
             ? noSponsorshipKeywords
             : DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_keywords,
-        no_sponsorship_companies: mergeUniqueStrings(
-          noSponsorshipCompanies,
-          companyMemory.no_sponsorship_companies,
-        ),
+        sponsorship_positive_keywords:
+          DEFAULT_SCAN_CONFIG.hard_filters.sponsorship_positive_keywords ?? [],
+        no_sponsorship_companies: noSponsorshipCompanies,
         clearance_keywords:
           clearanceKeywords.length > 0
             ? clearanceKeywords
             : DEFAULT_SCAN_CONFIG.hard_filters.clearance_keywords,
-        active_security_clearance_companies: mergeUniqueStrings(
-          activeSecurityClearanceCompanies,
-          companyMemory.active_security_clearance_companies,
-        ),
-      },
+        active_security_clearance_companies: activeSecurityClearanceCompanies,
+      }, companyMemory, sponsorshipKeywords),
       detail_concurrent_tabs: extractYamlNumber(
         section,
         "detail_concurrent_tabs",
@@ -275,19 +269,67 @@ export function loadNewGradScanConfig(repoRoot: string): NewGradScanConfig {
   } catch {
     return {
       ...DEFAULT_SCAN_CONFIG,
-      hard_filters: {
-        ...DEFAULT_SCAN_CONFIG.hard_filters,
-        no_sponsorship_companies: mergeUniqueStrings(
-          DEFAULT_SCAN_CONFIG.hard_filters.no_sponsorship_companies,
-          companyMemory.no_sponsorship_companies,
-        ),
-        active_security_clearance_companies: mergeUniqueStrings(
-          DEFAULT_SCAN_CONFIG.hard_filters.active_security_clearance_companies,
-          companyMemory.active_security_clearance_companies,
-        ),
-      },
+      hard_filters: buildHardFiltersWithSystemKeywords(
+        DEFAULT_SCAN_CONFIG.hard_filters,
+        companyMemory,
+        sponsorshipKeywords,
+      ),
     };
   }
+}
+
+function loadSponsorshipKeywords(repoRoot: string): SponsorshipKeywords {
+  const keywordsPath = join(repoRoot, SPONSORSHIP_KEYWORDS_PATH);
+  const empty = {
+    positive_keywords: [],
+    negative_keywords: [],
+    government_blockers: [],
+    authorization_blockers: [],
+  };
+  if (!existsSync(keywordsPath)) return empty;
+
+  try {
+    const lines = readFileSync(keywordsPath, "utf-8").split(/\r?\n/);
+    return {
+      positive_keywords: extractYamlArray(lines, "positive_keywords", 0),
+      negative_keywords: extractYamlArray(lines, "negative_keywords", 0),
+      government_blockers: extractYamlArray(lines, "government_blockers", 0),
+      authorization_blockers: extractYamlArray(lines, "authorization_blockers", 0),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function buildHardFiltersWithSystemKeywords(
+  hardFilters: NewGradScanConfig["hard_filters"],
+  companyMemory: BlockedCompanyMemory,
+  sponsorshipKeywords: SponsorshipKeywords,
+): NewGradScanConfig["hard_filters"] {
+  return {
+    ...hardFilters,
+    no_sponsorship_keywords: mergeUniqueStrings(
+      hardFilters.no_sponsorship_keywords,
+      sponsorshipKeywords.negative_keywords,
+      sponsorshipKeywords.authorization_blockers,
+    ),
+    sponsorship_positive_keywords: mergeUniqueStrings(
+      hardFilters.sponsorship_positive_keywords ?? [],
+      sponsorshipKeywords.positive_keywords,
+    ),
+    no_sponsorship_companies: mergeUniqueStrings(
+      hardFilters.no_sponsorship_companies,
+      companyMemory.no_sponsorship_companies,
+    ),
+    clearance_keywords: mergeUniqueStrings(
+      hardFilters.clearance_keywords,
+      sponsorshipKeywords.government_blockers,
+    ),
+    active_security_clearance_companies: mergeUniqueStrings(
+      hardFilters.active_security_clearance_companies,
+      companyMemory.active_security_clearance_companies,
+    ),
+  };
 }
 
 export function loadNegativeKeywords(repoRoot: string): string[] {

@@ -63,7 +63,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `analyze-patterns.mjs` | Pattern analysis script (JSON output) |
 | `followup-cadence.mjs` | Follow-up cadence calculator (JSON output) |
 | `data/follow-ups.md` | Follow-up history tracker |
-| `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever APIs directly, zero LLM cost |
+| `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever/A16Z/Amazon APIs directly |
 | `check-liveness.mjs` | Job posting liveness checker |
 | `liveness-core.mjs` | Shared liveness logic (expired signals win over generic Apply text) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy). Header includes `**Legitimacy:** {tier}`. |
@@ -90,6 +90,7 @@ When using [OpenCode](https://opencode.ai), the following slash commands are ava
 | `/career-ops-builtin-scan` | `/career-ops builtin-scan` | Scan Built In keyword searches |
 | `/career-ops-linkedin-scan` | `/career-ops linkedin-scan` | Scan LinkedIn Jobs via bb-browser |
 | `/career-ops-indeed-scan` | `/career-ops indeed-scan` | Scan Indeed Jobs via bb-browser |
+| `/career-ops-gmail-scan` | `/career-ops gmail-scan` | Scan Gmail hiring signals into dashboard |
 | `/career-ops-batch` | `/career-ops batch` | Batch processing with parallel workers |
 | `/career-ops-patterns` | `/career-ops patterns` | Analyze rejection patterns and improve targeting |
 | `/career-ops-followup` | `/career-ops followup` | Follow-up cadence tracker |
@@ -237,6 +238,7 @@ This system is designed to be customized by YOU (AI Agent). When the user asks y
 | Searches Built In only | `builtin-scan` |
 | Searches LinkedIn Jobs only | `linkedin-scan` |
 | Searches Indeed Jobs only | `indeed-scan` |
+| Scans Gmail application signals | `gmail-scan` |
 | Processes pending URLs | `pipeline` |
 | Batch processes offers | `batch` |
 | Asks about rejection patterns or wants to improve targeting | `patterns` |

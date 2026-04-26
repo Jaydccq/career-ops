@@ -47,6 +47,10 @@ import {
   wasNewGradRowSeen,
 } from "../bridge/src/adapters/newgrad-scan-history.ts";
 import { scoreAndFilter } from "../bridge/src/adapters/newgrad-scorer.ts";
+import {
+  filterKnownEvaluationCandidates,
+  loadEvaluationDedupeKeys,
+} from "./evaluation-dedupe.ts";
 
 const PROTOCOL_VERSION = "1.0.0";
 const DEFAULT_HOST = "127.0.0.1";
@@ -365,8 +369,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  const candidates = dedupePipelineEntries([...(enrich.candidates ?? enrich.entries)])
-    .slice(0, options.evaluateLimit ?? undefined);
+  const dedupedCandidates = dedupePipelineEntries([...(enrich.candidates ?? enrich.entries)]);
+  const filteredCandidates = filterKnownEvaluationCandidates(
+    dedupedCandidates,
+    loadEvaluationDedupeKeys(repoRoot),
+  );
+  if (filteredCandidates.skipped > 0) {
+    console.log(`Skipped ${filteredCandidates.skipped} already evaluated/tracked direct-evaluation candidates.`);
+  }
+  const candidates = filteredCandidates.candidates.slice(0, options.evaluateLimit ?? undefined);
   if (candidates.length === 0) {
     console.log("No enrich survivors eligible for direct evaluation.");
     return;

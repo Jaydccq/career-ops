@@ -6,12 +6,13 @@ ejecución actual a `newgrad_quick` para generar reportes/tracker rows.
 
 > **Nota (v1.5+):** La fase de descubrimiento de `scan.mjs` / `bun run scan`
 > sigue siendo zero-token y consulta directamente las APIs públicas de
-> Greenhouse, Ashby, Lever y las búsquedas Built In configuradas. La fase de
-> evaluación directa sí usa el bridge/modelo. Los niveles con
+> Greenhouse, Ashby, Lever, A16Z, Amazon Jobs y las búsquedas Built In
+> configuradas. La fase de evaluación directa sí usa el bridge/modelo. Los niveles con
 > Playwright/WebSearch descritos abajo son el flujo **agente** (ejecutado por
 > Claude/Codex), no lo que hace `scan.mjs`. Si una empresa no tiene API
-> Greenhouse/Ashby/Lever, `scan.mjs` la ignorará; para esos casos, el agente
-> debe completar manualmente el Nivel 1 (Playwright) o Nivel 3 (WebSearch).
+> Greenhouse/Ashby/Lever/A16Z/Amazon, `scan.mjs` la ignorará; para
+> esos casos, el agente debe completar manualmente el Nivel 1 (Playwright) o
+> Nivel 3 (WebSearch).
 
 ## Ejecución recomendada
 
@@ -21,8 +22,8 @@ Default full flow:
 bun run scan
 ```
 
-`bun run scan` scans configured Greenhouse/Ashby/Lever APIs and legacy Built In
-keyword searches, writes new rows to `data/pipeline.md` and
+`bun run scan` scans configured Greenhouse/Ashby/Lever/A16Z/Amazon
+APIs and legacy Built In keyword searches, writes new rows to `data/pipeline.md` and
 `data/scan-history.tsv`, queues current-run offers through `/v1/evaluate` with
 `evaluationMode: newgrad_quick`, and waits for tracker/report completion by
 default. Start the bridge first with `bun run ext:bridge`.
@@ -94,6 +95,8 @@ Para empresas con API pública o feed estructurado, usar la respuesta JSON/XML c
 - **Lever**: `https://api.lever.co/v0/postings/{company}?mode=json`
 - **Teamtailor**: `https://{company}.teamtailor.com/jobs.rss`
 - **Workday**: `https://{company}.{shard}.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs`
+- **A16Z**: provider-backed `api_provider: a16z` for `https://jobs.a16z.com`
+- **Amazon Jobs**: `https://www.amazon.jobs/en/search?...` detected and mapped to `search.json`; US-only by default unless `country: ALL` or explicit `country[]` params are configured
 
 **Convención de parsing por provider:**
 - `greenhouse`: `jobs[]` → `title`, `absolute_url`
@@ -102,6 +105,8 @@ Para empresas con API pública o feed estructurado, usar la respuesta JSON/XML c
 - `lever`: array raíz `[]` → `text`, `hostedUrl` (fallback: `applyUrl`)
 - `teamtailor`: RSS items → `title`, `link`
 - `workday`: `jobPostings[]`/`jobPostings` (según tenant) → `title`, `externalPath` o URL construida desde el host
+- `a16z`: `jobs[]` → `title`, `url`, `companyName`, `normalizedLocations`
+- `amazon`: `jobs[]` → `title`, `job_path`, `normalized_location`
 
 ### Nivel 3 — WebSearch queries (DESCUBRIMIENTO AMPLIO)
 
@@ -178,8 +183,10 @@ Los niveles son aditivos — se ejecutan todos, los resultados se mezclan y dedu
         - URL final contiene `?error=true` (Greenhouse redirige así cuando la oferta está cerrada)
         - Página contiene: "job no longer available" / "no longer open" / "position has been filled" / "this job has expired" / "page not found"
         - Solo navbar y footer visibles, sin contenido JD (contenido < ~300 chars)
-   d. Si expirada: registrar en `scan-history.tsv` con status `skipped_expired` y descartar
-   e. Si activa: continuar al paso 8
+   d. Si expirada por 404/410 y la empresa pertenece a `tracked_companies`, ejecutar un único WebSearch de rescate antes de descartar:
+      `"{role title}" "{company}" site:{careers_url_domain}`. Si aparece el mismo rol en una URL nueva, usar esa URL y continuar. Este rescate no aplica a resultados de descubrimiento amplio que no estén vinculados a una empresa monitorizada.
+   e. Si expirada sin rescate: registrar en `scan-history.tsv` con status `skipped_expired` y descartar
+   f. Si activa: continuar al paso 8
 
    **No interrumpir el scan entero si una URL falla.** Si `browser_navigate` da error (timeout, 403, etc.), marcar como `skipped_expired` y continuar con la siguiente.
 
@@ -281,7 +288,9 @@ Fallback: si solo tienes la URL ATS directa, navega primero al sitio web de la e
 
 **Si `careers_url` devuelve 404 o redirect:**
 1. Anotar en el resumen de salida
-2. Intentar scan_query como fallback
+2. Intentar `scan_query` como fallback, o un WebSearch acotado:
+   `"{role title}" "{company}" site:{careers_url_domain}` cuando se está
+   comprobando una oferta concreta de una empresa en `tracked_companies`
 3. Marcar para actualización manual
 
 ## Mantenimiento del portals.yml

@@ -12,8 +12,9 @@
  */
 
 import { execSync, execFileSync } from 'child_process';
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -46,7 +47,13 @@ console.log('\n🧪 career-ops test suite\n');
 
 console.log('1. Syntax checks');
 
-const mjsFiles = readdirSync(ROOT).filter(f => f.endsWith('.mjs'));
+const providerFiles = existsSync(join(ROOT, 'providers'))
+  ? readdirSync(join(ROOT, 'providers')).filter(f => f.endsWith('.mjs')).map(f => `providers/${f}`)
+  : [];
+const mjsFiles = [
+  ...readdirSync(ROOT).filter(f => f.endsWith('.mjs')),
+  ...providerFiles,
+];
 for (const f of mjsFiles) {
   const result = run('node', ['--check', f]);
   if (result !== null) {
@@ -116,6 +123,218 @@ try {
   fail(`Liveness classification tests crashed: ${e.message}`);
 }
 
+// ── 3A. SCANNER PROVIDERS ───────────────────────────────────────
+
+console.log('\n3A. Scanner provider parsing');
+
+try {
+  const {
+    detectApi,
+    parseAmazon,
+    isRawAtsCareersUrl,
+    buildBrandedCareersWarnings,
+  } = await import(pathToFileURL(join(ROOT, 'scan.mjs')).href);
+  const {
+    buildA16zSearchPayload,
+    mapA16zJobToScanOffer,
+  } = await import(pathToFileURL(join(ROOT, 'providers/job-board-a16z.mjs')).href);
+  const {
+    buildTheirStackSearchPayload,
+    hasRequiredTheirStackFilter,
+    mapTheirStackJobToScanOffer,
+  } = await import(pathToFileURL(join(ROOT, 'providers/job-board-theirstack.mjs')).href);
+
+  const amazonApi = detectApi({
+    name: 'Amazon Jobs',
+    careers_url: 'https://www.amazon.jobs/en/search?base_query=software+engineer',
+  });
+  const amazonGlobalApi = detectApi({
+    name: 'Amazon Jobs',
+    careers_url: 'https://www.amazon.jobs/en/search?base_query=software+engineer',
+    country: 'ALL',
+  });
+  const amazonJobs = parseAmazon({
+    jobs: [{
+      title: 'Software Development Engineer',
+      job_path: '/en/jobs/123/software-development-engineer',
+      normalized_location: 'Seattle, WA, USA',
+      country_code: 'USA',
+    }, {
+      title: 'Software Engineer, Global',
+      job_path: '/en/jobs/456/software-engineer-global',
+      normalized_location: 'Cambridge, England, GBR',
+      country_code: 'GBR',
+    }],
+  }, 'Amazon', amazonApi);
+
+  const a16zPayload = buildA16zSearchPayload({
+    size: 12,
+    markets: ['Artificial Intelligence'],
+    locations: [{ label: 'United States', value: 'us' }],
+    remoteOnly: true,
+  });
+  const a16zOffer = mapA16zJobToScanOffer({
+    title: 'AI Engineer',
+    url: 'https://jobs.a16z.com/companies/example/jobs/1',
+    companyName: 'Example AI',
+    normalizedLocations: [{ label: 'San Francisco', value: 'sf' }],
+  });
+
+  const theirStackPayload = buildTheirStackSearchPayload({
+    size: 5,
+    posted_at_max_age_days: 7,
+    job_country_code_or: ['US'],
+  });
+  const theirStackOffer = mapTheirStackJobToScanOffer({
+    job_title: 'Machine Learning Engineer',
+    final_url: 'https://example.com/jobs/ml-engineer',
+    company: 'Example Co',
+    short_location: 'New York, NY',
+  });
+
+  const brandedWarnings = buildBrandedCareersWarnings([
+    { name: 'Mastercard', careers_url: 'https://mastercard.wd1.myworkdayjobs.com/jobs' },
+    { name: 'Allowed ATS', careers_url: 'https://allowed.myworkdayjobs.com/jobs', allow_raw_ats_careers_url: true },
+    { name: 'OpenAI', careers_url: 'https://openai.com/careers' },
+  ]);
+
+  if (
+    amazonApi?.type === 'amazon' &&
+    amazonApi.url.includes('/search.json?') &&
+    amazonApi.url.includes('country%5B%5D=USA') &&
+    amazonApi.countryCodes.includes('USA') &&
+    !amazonGlobalApi.url.includes('country%5B%5D=USA') &&
+    amazonGlobalApi.countryCodes === null &&
+    amazonJobs.length === 1 &&
+    amazonJobs[0]?.url === 'https://www.amazon.jobs/en/jobs/123/software-development-engineer' &&
+    a16zPayload.meta.size === 12 &&
+    a16zPayload.query.markets[0] === 'Artificial Intelligence' &&
+    a16zPayload.query.locations[0] === 'us' &&
+    a16zPayload.query.remoteOnly === true &&
+    a16zOffer?.company === 'Example AI' &&
+    theirStackPayload.limit === 5 &&
+    theirStackPayload.posted_at_max_age_days === 7 &&
+    hasRequiredTheirStackFilter(theirStackPayload) &&
+    theirStackOffer?.url === 'https://example.com/jobs/ml-engineer' &&
+    isRawAtsCareersUrl('https://foo.myworkdayjobs.com/jobs') &&
+    brandedWarnings.length === 1 &&
+    brandedWarnings[0].company === 'Mastercard'
+  ) {
+    pass('Scanner providers build URLs/payloads and normalize offers');
+  } else {
+    fail('Scanner provider parsing returned unexpected output');
+  }
+} catch (e) {
+  fail(`Scanner provider tests crashed: ${e.message}`);
+}
+
+// ── 3B. DASHBOARD GMAIL SIGNALS ────────────────────────────────
+
+console.log('\n3B. Dashboard Gmail signal parsing');
+
+try {
+  const { parseGmailSignals, parseProfile, parseGmailRefreshStatus } = await import(pathToFileURL(join(ROOT, 'web/build-dashboard.mjs')).href);
+  const { parseRefreshCommand, summarizeGmailSignals } = await import(pathToFileURL(join(ROOT, 'scripts/refresh-gmail-signals.mjs')).href);
+  const { extractSignalFromMessage, isGmailApiSetupError, mergeSignals, parseOAuthCallback, readOAuthClient } = await import(pathToFileURL(join(ROOT, 'scripts/gmail-oauth-refresh.mjs')).href);
+  const tmp = mkdtempSync(join(tmpdir(), 'career-ops-gmail-signals-'));
+  const fixture = join(tmp, 'gmail-signals.jsonl');
+  const profileFixture = join(tmp, 'profile.yml');
+  const statusFixture = join(tmp, 'gmail-refresh-status.json');
+  writeFileSync(fixture, [
+    '# query: newer_than:30d application',
+    JSON.stringify({
+      id: 'msg-1:interview',
+      applicationNum: 42,
+      company: 'Example Co',
+      role: 'Software Engineer',
+      eventType: 'interview',
+      eventDate: '2026-04-25',
+      summary: 'Recruiter sent interview scheduling link',
+    }),
+    '{not json}',
+    '',
+  ].join('\n'));
+  writeFileSync(profileFixture, 'candidate:\n  email: "candidate@example.com"\n');
+  writeFileSync(statusFixture, JSON.stringify({
+    status: 'skipped',
+    message: 'fixture',
+    signalSummary: { rows: 1, errors: 1 },
+  }));
+  const parsed = parseGmailSignals(fixture);
+  const profile = parseProfile(profileFixture);
+  const refreshStatus = parseGmailRefreshStatus(statusFixture);
+  const refreshCommand = parseRefreshCommand('["node","scripts/gmail-oauth-refresh.mjs"]');
+  const signalSummary = summarizeGmailSignals(fixture);
+  const extracted = extractSignalFromMessage({
+    id: 'gmail-msg-1',
+    threadId: 'gmail-thread-1',
+    internalDate: String(Date.parse('2026-04-24T20:00:00Z')),
+    snippet: 'Your meeting is scheduled for April 29, 2026 at 3:15 PM PDT.',
+    payload: {
+      headers: [
+        { name: 'From', value: 'Richard Barella from Arista Networks <notifications@arista.com>' },
+        { name: 'Subject', value: 'Interview invitation for Application Engineer position' },
+        { name: 'Date', value: 'Fri, 24 Apr 2026 20:00:00 +0000' },
+      ],
+      parts: [{
+        mimeType: 'text/plain',
+        body: {
+          data: Buffer.from('Thank you for applying to the Application Engineer position at Arista Networks. Your meeting is scheduled.', 'utf8')
+            .toString('base64')
+            .replace(/=/g, '')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_'),
+        },
+      }],
+    },
+  });
+  const mergedSignals = mergeSignals([{ id: 'gmail-msg-1:interview', company: 'Old' }], [extracted]);
+  const redirectUri = 'http://127.0.0.1:54609/oauth2callback';
+  const emptyCallback = parseOAuthCallback('/oauth2callback', redirectUri, 'expected-state');
+  const validCallback = parseOAuthCallback('/oauth2callback?state=expected-state&code=abc123', redirectUri, 'expected-state');
+  const mismatchCallback = parseOAuthCallback('/oauth2callback?state=wrong&code=abc123', redirectUri, 'expected-state');
+  const webCredentialsFixture = join(tmp, 'web-client.json');
+  writeFileSync(webCredentialsFixture, JSON.stringify({
+    web: {
+      client_id: 'web-client.apps.googleusercontent.com',
+      client_secret: 'secret',
+    },
+  }));
+  let rejectedWebClient = false;
+  try {
+    readOAuthClient(webCredentialsFixture);
+  } catch (error) {
+    rejectedWebClient = error.setupRequired && error.message.includes('Desktop app');
+  }
+  rmSync(tmp, { recursive: true, force: true });
+  if (
+    parsed.rows.length === 1 &&
+    parsed.errors.length === 1 &&
+    profile.email === 'candidate@example.com' &&
+    refreshStatus?.status === 'skipped' &&
+    refreshCommand.join(' ') === 'node scripts/gmail-oauth-refresh.mjs' &&
+    signalSummary.rows === 1 &&
+    signalSummary.errors === 1 &&
+    extracted?.eventType === 'interview' &&
+    extracted?.company === 'Arista Networks' &&
+    extracted?.role === 'Application Engineer' &&
+    mergedSignals.length === 1 &&
+    mergedSignals[0].company === 'Arista Networks' &&
+    emptyCallback.status === 'waiting' &&
+    validCallback.status === 'success' &&
+    validCallback.code === 'abc123' &&
+    mismatchCallback.status === 'state_mismatch' &&
+    rejectedWebClient &&
+    isGmailApiSetupError('Gmail API has not been used in project 123 before or it is disabled.')
+  ) {
+    pass('Dashboard Gmail signal/profile/refresh parsers and OAuth classifier keep valid rows');
+  } else {
+    fail(`Dashboard Gmail parsers returned rows=${parsed.rows.length}, errors=${parsed.errors.length}, email="${profile.email}"`);
+  }
+} catch (e) {
+  fail(`Dashboard Gmail signal parsing tests crashed: ${e.message}`);
+}
+
 // ── 4. DATA CONTRACT ────────────────────────────────────────────
 
 console.log('\n4. Data contract validation');
@@ -139,7 +358,8 @@ for (const f of systemFiles) {
 
 // Check user files are NOT tracked (gitignored)
 const userFiles = [
-  'config/profile.yml', 'modes/_profile.md', 'portals.yml',
+  'config/profile.yml', 'modes/_profile.md', 'portals.yml', 'data/gmail-signals.jsonl', 'data/gmail-refresh-status.json',
+  'config/gmail-oauth-credentials.json', 'config/gmail-oauth-token.json',
 ];
 for (const f of userFiles) {
   const tracked = run('git', ['ls-files', f]);
@@ -221,6 +441,7 @@ const expectedModes = [
   '_shared.md', '_profile.template.md', 'oferta.md', 'pdf.md', 'scan.md',
   'batch.md', 'apply.md', 'auto-pipeline.md', 'contacto.md', 'deep.md',
   'ofertas.md', 'pipeline.md', 'project.md', 'tracker.md', 'training.md',
+  'gmail-scan.md',
 ];
 
 for (const mode of expectedModes) {
@@ -237,6 +458,13 @@ if (shared.includes('_profile.md')) {
   pass('_shared.md references _profile.md');
 } else {
   fail('_shared.md does NOT reference _profile.md');
+}
+
+const careerOpsSkill = readFile('.claude/skills/career-ops/SKILL.md');
+if (careerOpsSkill.includes('gmail-scan') && careerOpsSkill.includes('modes/{mode}.md')) {
+  pass('career-ops skill routes gmail-scan mode');
+} else {
+  fail('career-ops skill does not route gmail-scan mode');
 }
 
 // ── 8. CLAUDE.md INTEGRITY ──────────────────────────────────────

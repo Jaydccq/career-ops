@@ -446,6 +446,8 @@ export interface NewGradScanConfig {
     max_years_experience: number;
     /** Lowercased phrases that indicate sponsorship is unavailable. */
     no_sponsorship_keywords: readonly string[];
+    /** Phrases that indicate sponsorship is available. */
+    sponsorship_positive_keywords?: readonly string[];
     /** Company names that should be skipped because they do not sponsor. */
     no_sponsorship_companies: readonly string[];
     /** Lowercased phrases that indicate active secret clearance is required. */

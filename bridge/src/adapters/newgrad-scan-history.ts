@@ -8,6 +8,7 @@ import {
 import { dirname, join } from "node:path";
 
 import type { NewGradRow } from "../contracts/newgrad.js";
+import { loadEvaluatedJobIdentities } from "./evaluated-report-urls.js";
 import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePostedAgo } from "./newgrad-scorer.js";
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
@@ -48,6 +49,7 @@ export function loadNewGradSeenKeys(repoRoot: string): NewGradSeenKeys {
 
   readScanHistory(repoRoot, urls, companyRoles);
   readPipelineUrls(repoRoot, urls, companyRoles);
+  readEvaluatedReports(repoRoot, urls, companyRoles);
 
   return { urls, companyRoles };
 }
@@ -131,6 +133,16 @@ function readPipelineUrls(
     const key = jobCompanyRoleKey(match[1] ?? "", match[2] ?? "");
     if (key) companyRoles.add(key);
   }
+}
+
+function readEvaluatedReports(
+  repoRoot: string,
+  urls: Set<string>,
+  companyRoles: Set<string>,
+): void {
+  const identities = loadEvaluatedJobIdentities(repoRoot);
+  for (const url of identities.urls) urls.add(url);
+  for (const key of identities.companyRoles) companyRoles.add(key);
 }
 
 function isTerminalScanStatus(status: string): boolean {

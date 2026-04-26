@@ -259,6 +259,432 @@
     padding: 18px;
     color: var(--muted);
   }
+  .gmail-signal-list {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .gmail-signal-item {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .gmail-signal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+  .gmail-signal-text {
+    color: #343932;
+    font-size: 10.5px;
+    line-height: 1.35;
+    max-width: 220px;
+  }
+  .tracker-shell {
+    display: grid;
+    gap: 14px;
+  }
+  .tracker-hero {
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    display: grid;
+  }
+  .tracker-hero-copy {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--ink);
+    display: flex;
+    gap: 18px;
+    justify-content: space-between;
+    align-items: end;
+  }
+  .tracker-hero-copy .kicker {
+    color: var(--signal);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .tracker-hero-copy h2 {
+    font-family: var(--serif);
+    font-size: 28px;
+    line-height: 1.06;
+    font-style: italic;
+    margin-bottom: 10px;
+  }
+  .tracker-hero-copy p {
+    color: var(--muted);
+    max-width: 68ch;
+  }
+  .tracker-hero-meta {
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+    min-width: 240px;
+  }
+  .tracker-account {
+    display: inline-flex;
+    border: 1px solid var(--ink);
+    padding: 5px 9px;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--paper-3);
+  }
+  .tracker-refresh {
+    max-width: 76ch;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.45;
+    text-align: right;
+  }
+  .tracker-refresh.is-ok { color: var(--green); }
+  .tracker-refresh.is-failed { color: var(--signal); }
+  .tracker-refresh.is-skipped,
+  .tracker-refresh.is-unknown { color: var(--muted); }
+  .tracker-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .tracker-hero-stat {
+    padding: 14px 16px;
+    border-right: 1px dashed rgba(11,11,8,0.2);
+  }
+  .tracker-hero-stat:last-child { border-right: none; }
+  .tracker-hero-stat strong {
+    display: block;
+    color: var(--signal);
+    font-size: 30px;
+    line-height: 1;
+    margin-bottom: 7px;
+  }
+  .tracker-hero-stat span {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .opportunity-panel,
+  .pipeline-panel {
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: end;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--ink);
+    background: var(--paper-2);
+  }
+  .panel-head h3 {
+    font-family: var(--serif);
+    font-size: 24px;
+    line-height: 1.05;
+    font-style: italic;
+    margin-bottom: 5px;
+  }
+  .panel-head p {
+    color: var(--muted);
+    max-width: 72ch;
+  }
+  .panel-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .opportunity-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .opportunity-card {
+    padding: 14px 16px;
+    border-right: 1px dashed rgba(11,11,8,0.25);
+    border-bottom: 1px dashed rgba(11,11,8,0.25);
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+  .opportunity-card.is-empty {
+    grid-column: 1 / -1;
+  }
+  .opportunity-card h4 {
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.15;
+  }
+  .opportunity-step {
+    color: #343932;
+    line-height: 1.45;
+  }
+  .opportunity-actions,
+  .flow-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pipeline-overview {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(120px, 1fr));
+    border-bottom: 1px solid var(--ink);
+    overflow-x: auto;
+  }
+  .pipeline-stage-card {
+    border: none;
+    border-right: 1px dashed rgba(11,11,8,0.25);
+    background: var(--paper);
+    color: var(--ink);
+    padding: 12px 14px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--mono);
+    min-width: 120px;
+  }
+  .pipeline-stage-card:last-child { border-right: none; }
+  .pipeline-stage-card:hover,
+  .pipeline-stage-card.is-active {
+    background: var(--signal-soft);
+  }
+  .pipeline-stage-card strong {
+    display: block;
+    font-size: 22px;
+    color: var(--signal);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .pipeline-stage-card span {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pipeline-toolbar {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto auto;
+    gap: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+  .pipeline-toolbar .search-wrap {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    border-right: 1px solid var(--ink);
+  }
+  .pipeline-toolbar input[type="search"] {
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 13px 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+    min-width: 0;
+  }
+  .tracker-flow-stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0 16px;
+    font-size: 10px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .tracker-flow-stats strong {
+    color: var(--signal);
+    font-size: 16px;
+    margin-right: 4px;
+  }
+  .tracker-flow-list {
+    display: grid;
+  }
+  .tracker-list-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--paper-2);
+    border-bottom: 1px solid var(--ink);
+  }
+  .tracker-list-head strong {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-style: italic;
+  }
+  .tracker-list-head span {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .tracker-filters {
+    border-bottom: 1px solid var(--ink);
+    background: var(--paper-3);
+  }
+  .tracker-filters > summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .tracker-basic-filters {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) repeat(3, minmax(140px, auto));
+    border-bottom: 1px solid var(--ink);
+  }
+  .tracker-stage {
+    display: grid;
+  }
+  .tracker-stage-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border-top: 1px solid var(--ink);
+  }
+  .tracker-stage-head strong {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-style: italic;
+  }
+  .tracker-stage-head span {
+    color: var(--signal);
+    font-weight: 700;
+  }
+  .tracker-flow-card {
+    display: grid;
+    grid-template-columns: 42px minmax(220px, 1.4fr) minmax(170px, 0.8fr) minmax(190px, 1fr) minmax(96px, 0.5fr) minmax(150px, 0.8fr);
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(11,11,8,0.12);
+    background: var(--paper);
+  }
+  .tracker-flow-card:hover { background: var(--paper-2); }
+  .company-logo {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--ink);
+    background: var(--paper-3);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    color: var(--signal);
+    font-size: 12px;
+  }
+  .flow-company {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .flow-company strong {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+  .flow-title-line {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .flow-title-line strong {
+    min-width: 0;
+  }
+  .flow-role-inline {
+    color: #343932;
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .flow-role,
+  .flow-contact,
+  .flow-attention,
+  .flow-updated {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .flow-label {
+    color: var(--muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .flow-main {
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .flow-sub {
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+  .flow-updated .flow-main,
+  .flow-updated .flow-sub {
+    white-space: nowrap;
+  }
+  .flow-email-details {
+    grid-column: 2 / -1;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .flow-email-details summary {
+    cursor: pointer;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    list-style-position: inside;
+  }
+  .flow-email-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .flow-email-item {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    background: rgba(248, 250, 252, 0.72);
+  }
+  .flow-email-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .flow-email-subject {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .flow-email-snippet {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .flow-attention.is-hot .flow-main {
+    color: var(--signal);
+    font-weight: 700;
+  }
+  .tracker-empty-state {
+    padding: 28px 18px;
+    color: var(--muted);
+    text-align: center;
+  }
   .apply-card {
     padding: 16px 18px;
     border-top: 1px solid rgba(11,11,8,0.12);
@@ -788,6 +1214,7 @@
   #tracker-table col.c-role    { width: 270px; }
   #tracker-table col.c-score   { width: 86px; }
   #tracker-table col.c-status  { width: 118px; }
+  #tracker-table col.c-gmail   { width: 230px; }
   #tracker-table col.c-decision { width: 142px; }
   #tracker-table col.c-pdf     { width: 58px; }
   #tracker-table col.c-doss    { width: 94px; }
@@ -854,6 +1281,16 @@
   .badge.below_threshold { background: var(--paper); color: var(--ink); border-style: dashed; }
   .badge.manual_review { background: var(--amber); color: var(--ink); }
   .badge.deep_eval { background: var(--green); color: var(--paper); border-color: var(--green); }
+  .badge.gmail_attention,
+  .badge.action_required,
+  .badge.interview,
+  .badge.oa,
+  .badge.offer { background: var(--signal); color: var(--paper); border-color: var(--signal); }
+  .badge.gmail_signal,
+  .badge.applied,
+  .badge.responded { background: var(--paper-2); color: var(--ink); }
+  .badge.rejected,
+  .badge.discarded { background: var(--ink); color: var(--paper); }
   .tracker-action-cell {
     display: flex;
     flex-direction: column;
@@ -1084,6 +1521,34 @@
     .masthead .brand { font-size: 32px; }
     .apply-overview { grid-template-columns: 1fr; }
     .apply-overview-copy { border-right: none; border-bottom: 1px solid var(--ink); }
+    .tracker-hero-copy { display: grid; }
+    .tracker-hero-meta { justify-items: start; min-width: 0; }
+    .tracker-refresh { text-align: left; }
+    .tracker-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tracker-hero-stat:nth-child(2n) { border-right: none; }
+    .tracker-hero-stat:nth-child(n+3) { border-top: 1px dashed rgba(11,11,8,0.2); }
+    .pipeline-overview { grid-template-columns: repeat(6, minmax(132px, 1fr)); }
+    .pipeline-toolbar { grid-template-columns: 1fr; }
+    .pipeline-toolbar .search-wrap { border-right: none; border-bottom: 1px solid var(--ink); }
+    .tracker-basic-filters { grid-template-columns: 1fr; }
+    .tracker-basic-filters .search-wrap,
+    .tracker-basic-filters .sort-wrap { border-right: none; border-bottom: 1px solid var(--ink); min-height: 42px; }
+    .tracker-list-head { display: grid; }
+    .tracker-flow-stats { min-height: 42px; flex-wrap: wrap; }
+    .tracker-flow-card {
+      grid-template-columns: 36px minmax(0, 1fr);
+      align-items: start;
+    }
+    .flow-role,
+    .flow-contact,
+    .flow-attention,
+    .flow-updated,
+    .flow-actions {
+      grid-column: 2;
+    }
+    .flow-email-details {
+      grid-column: 1 / -1;
+    }
     .bar-primary { grid-template-columns: 1fr; }
     .bar-primary .search-wrap,
     .sort-wrap { border-right: none; border-bottom: 1px solid var(--ink); }
@@ -1249,6 +1714,149 @@
 </section>
 
 <section id="tab-tracker" class="pane">
+  <div class="tracker-shell">
+    <section class="tracker-hero">
+      <div class="tracker-hero-copy">
+        <div>
+          <div class="kicker">Action workbench</div>
+          <h2>Application tracker</h2>
+          <p>Start with work that needs a reply, an assessment, or interview readiness. Use filters only after the action queue is clear.</p>
+        </div>
+        <div class="tracker-hero-meta">
+          <div class="tracker-account" id="tracker-account">—</div>
+          <div class="tracker-refresh" id="tracker-refresh">—</div>
+        </div>
+      </div>
+      <div class="tracker-hero-stats">
+        <div class="tracker-hero-stat"><strong id="tracker-attention-n">0</strong><span>need attention</span></div>
+        <div class="tracker-hero-stat"><strong id="tracker-interview-n">0</strong><span>interviewing</span></div>
+        <div class="tracker-hero-stat"><strong id="tracker-oa-n">0</strong><span>OA / assessments</span></div>
+        <div class="tracker-hero-stat"><strong id="tracker-active-n">0</strong><span>active applications</span></div>
+      </div>
+    </section>
+
+    <section class="opportunity-panel">
+      <div class="panel-head">
+        <div>
+          <h3>Action center</h3>
+          <p>The next few application moves, sorted by urgency and recent hiring signal strength.</p>
+        </div>
+        <div class="panel-actions">
+          <button type="button" class="action-btn" data-preset="tracker-gmail-attention">Need attention</button>
+          <button type="button" class="action-btn" data-preset="tracker-interviews">Interviews</button>
+        </div>
+      </div>
+      <div class="opportunity-grid" id="tracker-action-center"></div>
+    </section>
+
+    <section class="pipeline-panel">
+      <div class="panel-head">
+        <div>
+          <h3>Pipeline overview</h3>
+          <p>See where the active search is moving, then click a stage to focus the application list.</p>
+        </div>
+        <div class="panel-actions">
+          <button type="button" class="action-btn" data-preset="tracker-all-active">All active</button>
+        </div>
+      </div>
+      <div class="pipeline-overview" id="tracker-pipeline-overview"></div>
+      <div class="tracker-list-head">
+        <div>
+          <strong>Application list</strong>
+          <span>compact rows with latest thread, attention reason, and next action</span>
+        </div>
+        <div class="tracker-flow-stats">
+          <span><strong id="tracker-flow-visible-n">0</strong>shown</span>
+          <span><strong id="tracker-flow-attention-n">0</strong>need attention</span>
+        </div>
+      </div>
+      <div class="tracker-basic-filters">
+        <div class="search-wrap">
+          <input id="tracker-search" type="search" aria-label="Search tracker" placeholder="Search company, role, or recruiter">
+        </div>
+        <div class="sort-wrap">
+          <label>Stage</label>
+          <select id="tracker-status"><option value="">all stages</option></select>
+        </div>
+        <div class="sort-wrap">
+          <label>Attention</label>
+          <div class="toggle-group" data-group="tracker-gmail">
+            <button data-v="" class="active">any</button>
+            <button data-v="has">has signal</button>
+            <button data-v="attention">needs action</button>
+          </div>
+        </div>
+        <div class="sort-wrap">
+          <label>Sort</label>
+          <select id="tracker-sort">
+            <option value="attention-desc" selected>Attention first</option>
+            <option value="date-desc">Updated · new → old</option>
+            <option value="date-asc">Updated · old → new</option>
+            <option value="score-desc">Score · high → low</option>
+            <option value="score-asc">Score · low → high</option>
+            <option value="company-asc">Company · A → Z</option>
+            <option value="company-desc">Company · Z → A</option>
+            <option value="role-asc">Role · A → Z</option>
+            <option value="role-desc">Role · Z → A</option>
+            <option value="status-asc">Stage · A → Z</option>
+            <option value="status-desc">Stage · Z → A</option>
+          </select>
+        </div>
+      </div>
+      <details class="tracker-filters">
+        <summary>More filters</summary>
+      <div class="bar-filters">
+        <div class="f-cell">
+          <label>Company</label>
+          <select id="tracker-company"><option value="">all</option></select>
+        </div>
+        <div class="f-cell">
+          <label>Score range</label>
+          <div class="range">
+            <input id="tracker-score-min" type="number" step="0.1" min="0" max="5" placeholder="0.0">
+            <span class="dash">—</span>
+            <input id="tracker-score-max" type="number" step="0.1" min="0" max="5" placeholder="5.0">
+          </div>
+        </div>
+        <div class="f-cell">
+          <label>Updated</label>
+          <div class="range">
+            <input id="tracker-date-from" type="date">
+            <span class="dash">—</span>
+            <input id="tracker-date-to" type="date">
+          </div>
+        </div>
+        <div class="f-cell">
+          <label>PDF</label>
+          <div class="toggle-group" data-group="tracker-pdf">
+            <button data-v="" class="active">any</button>
+            <button data-v="yes">yes</button>
+            <button data-v="no">no</button>
+          </div>
+        </div>
+        <div class="f-cell">
+          <label>Dossier</label>
+          <div class="toggle-group" data-group="tracker-dossier">
+            <button data-v="" class="active">any</button>
+            <button data-v="yes">yes</button>
+            <button data-v="no">no</button>
+          </div>
+        </div>
+        <div class="reset-cell"><button class="reset-btn" data-reset="tracker">reset</button></div>
+      </div>
+      </details>
+      <div class="preset-row" aria-label="Tracker quick views">
+        <span>Quick views</span>
+        <button type="button" data-preset="tracker-gmail-attention">Need attention</button>
+        <button type="button" data-preset="tracker-interviews">Interviews</button>
+        <button type="button" data-preset="tracker-oa">OA pending</button>
+        <button type="button" data-preset="tracker-ready">Ready to apply</button>
+        <button type="button" data-preset="tracker-missing-pdf">Missing PDF</button>
+      </div>
+      <div class="tracker-flow-list" id="tracker-flow-list"></div>
+    </section>
+  </div>
+  <template id="legacy-tracker-table">
   <div class="filter-bar">
     <div class="bar-primary">
       <div class="search-wrap">
@@ -1281,6 +1889,14 @@
       <div class="f-cell">
         <label>Status</label>
         <select id="tracker-status"><option value="">all</option></select>
+      </div>
+      <div class="f-cell">
+        <label>Gmail</label>
+        <div class="toggle-group" data-group="tracker-gmail">
+          <button data-v="" class="active">any</button>
+          <button data-v="has">has</button>
+          <button data-v="attention">attention</button>
+        </div>
       </div>
       <div class="f-cell">
         <label>Score range</label>
@@ -1320,6 +1936,7 @@
       <span>Quick views</span>
       <button type="button" data-preset="tracker-ready">Ready 4+</button>
       <button type="button" data-preset="tracker-manual">Manual review</button>
+      <button type="button" data-preset="tracker-gmail-attention">Gmail attention</button>
       <button type="button" data-preset="tracker-missing-pdf">Missing PDF</button>
       <button type="button" data-preset="tracker-missing-dossier">Missing dossier</button>
     </div>
@@ -1330,7 +1947,7 @@
     <table id="tracker-table">
       <colgroup>
         <col class="c-num"><col class="c-date"><col class="c-co"><col class="c-role">
-        <col class="c-score"><col class="c-status"><col class="c-decision"><col class="c-pdf"><col class="c-doss"><col class="c-actions"><col class="c-notes">
+        <col class="c-score"><col class="c-status"><col class="c-gmail"><col class="c-decision"><col class="c-pdf"><col class="c-doss"><col class="c-actions"><col class="c-notes">
       </colgroup>
       <thead>
         <tr>
@@ -1340,6 +1957,7 @@
           <th class="sortable" data-key="role">Role</th>
           <th class="sortable" data-key="score">Score</th>
           <th class="sortable" data-key="status">Status</th>
+          <th>Gmail Signals</th>
           <th>Quick Decision</th>
           <th>PDF</th>
           <th>Dossier</th>
@@ -1350,6 +1968,7 @@
       <tbody></tbody>
     </table>
   </div>
+  </template>
 </section>
 
 <section id="tab-pipeline" class="pane">
@@ -1591,6 +2210,7 @@ const val = (id) => $(id).value;
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
 const parseScore = (s) => { const m = (s || '').match(/([\d.]+)/); return m ? parseFloat(m[1]) : null; };
 const norm = (s) => (s || '').toLowerCase();
+const normKey = (s) => norm(s).replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
 const unique = (items) => [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const optionsHtml = (items, allLabel = 'all') =>
   `<option value="">${escapeHtml(allLabel)}</option>` +
@@ -1607,6 +2227,9 @@ function badgeClass(raw) {
   return `badge ${s}`;
 }
 const reportByPath = new Map(D.reports.map(r => [`reports/${r.filename}`, r]));
+const gmailSignals = D.gmailSignals?.rows || [];
+const gmailSignalErrors = D.gmailSignals?.errors || [];
+const gmailRefresh = D.gmailRefresh || null;
 const APPLY_DONE_KEY = 'career_ops_apply_done_v1';
 const generatedApplyDocs = {};
 const applyDocStatus = {};
@@ -1767,8 +2390,11 @@ function wireToggles() {
 }
 
 function setCount(prefix, n, t, suffix = '') {
-  $(`${prefix}-count-n`).textContent = n;
-  $(`${prefix}-count-t`).textContent = t + (suffix ? ' ' + suffix : '');
+  const countN = $(`${prefix}-count-n`);
+  const countT = $(`${prefix}-count-t`);
+  if (!countN || !countT) return;
+  countN.textContent = n;
+  countT.textContent = t + (suffix ? ' ' + suffix : '');
 }
 
 function setToggle(groupKey, value) {
@@ -1884,8 +2510,8 @@ function resetGroup(g) {
     $('tracker-search').value = ''; $('tracker-company').value = ''; $('tracker-status').value = '';
     $('tracker-score-min').value = ''; $('tracker-score-max').value = '';
     $('tracker-date-from').value = ''; $('tracker-date-to').value = '';
-    $('tracker-sort').value = 'num-desc';
-    ['tracker-pdf', 'tracker-dossier'].forEach(k => {
+    $('tracker-sort').value = 'attention-desc';
+    ['tracker-gmail', 'tracker-pdf', 'tracker-dossier'].forEach(k => {
       toggleState[k] = '';
       document.querySelectorAll(`[data-group="${k}"] button`).forEach(b =>
         b.classList.toggle('active', b.dataset.v === ''));
@@ -1931,9 +2557,21 @@ function applyPreset(name) {
       $('tracker-status').value = 'Evaluated';
       $('tracker-score-min').value = '4';
       $('tracker-sort').value = 'score-desc';
+    } else if (name === 'tracker-all-active') {
+      $('tracker-status').value = '';
+      $('tracker-sort').value = 'attention-desc';
+    } else if (name === 'tracker-interviews') {
+      $('tracker-status').value = 'Interviewing';
+      $('tracker-sort').value = 'attention-desc';
+    } else if (name === 'tracker-oa') {
+      $('tracker-status').value = 'Screening (OA)';
+      $('tracker-sort').value = 'attention-desc';
     } else if (name === 'tracker-manual') {
       $('tracker-search').value = 'manual_review';
       $('tracker-sort').value = 'score-desc';
+    } else if (name === 'tracker-gmail-attention') {
+      setToggle('tracker-gmail', 'attention');
+      $('tracker-sort').value = 'num-desc';
     } else if (name === 'tracker-missing-pdf') {
       setToggle('tracker-pdf', 'no');
     } else if (name === 'tracker-missing-dossier') {
@@ -2271,14 +2909,450 @@ bindFilters(['report-search', 'report-legit', 'report-score-min', 'report-score-
  'report-date-from', 'report-date-to', 'report-sort'], renderReports, 'report');
 
 // ===== Tracker =====
-const trackerCompanies = unique(D.applications.map(a => a.company));
+const trackerCompanies = unique([
+  ...D.applications.map(a => a.company),
+  ...gmailSignals.map(signal => signal.company).filter(Boolean),
+]);
 setHtml($('tracker-company'), optionsHtml(trackerCompanies));
-const statusSet = unique(D.applications.map(a => a.status));
+const statusSet = ['Offered', 'Interviewing', 'Screening (OA)', 'Referred', 'Applied', 'Evaluated', 'Rejected'];
 setHtml($('tracker-status'), optionsHtml(statusSet));
 
 function quickDecisionFor(row) {
   const report = row.reportPath ? reportByPath.get(row.reportPath) : null;
   return report?.decision || '';
+}
+
+function signalTrackerKey(company, role) {
+  return `${normKey(company)}::${normKey(role)}`;
+}
+
+function signalAppNum(signal) {
+  return String(signal.applicationNum || signal.appNum || signal.trackerNum || signal.num || '').trim();
+}
+
+function signalEventType(signal) {
+  return normKey(signal.eventType || signal.type || signal.status || 'gmail signal').replace(/\s+/g, '_');
+}
+
+function signalDate(signal) {
+  return signal.eventDate || signal.date || signal.receivedAt || signal.scannedAt || '';
+}
+
+function signalSummary(signal) {
+  return signal.summary || signal.recommendedAction || signal.action || signal.subject || signal.snippet || '';
+}
+
+function signalId(signal) {
+  return signal.id || signal.messageId || signal.threadId || JSON.stringify(signal);
+}
+
+function isAttentionSignal(signal) {
+  const event = signalEventType(signal);
+  const priority = normKey(signal.priority || signal.urgency || '');
+  const action = signal.recommendedAction || signal.action || signal.dueDate || '';
+  return priority === 'urgent' ||
+    priority === 'attention' ||
+    Boolean(action) ||
+    ['action_required', 'oa', 'online_assessment', 'interview', 'offer', 'responded'].includes(event);
+}
+
+function compareSignals(a, b) {
+  return String(signalDate(b)).localeCompare(String(signalDate(a)));
+}
+
+const gmailSignalsByNum = new Map();
+const gmailSignalsByRole = new Map();
+for (const signal of gmailSignals) {
+  const appNum = signalAppNum(signal);
+  if (appNum) {
+    if (!gmailSignalsByNum.has(appNum)) gmailSignalsByNum.set(appNum, []);
+    gmailSignalsByNum.get(appNum).push(signal);
+  }
+  const key = signalTrackerKey(signal.company || '', signal.role || '');
+  if (key !== '::') {
+    if (!gmailSignalsByRole.has(key)) gmailSignalsByRole.set(key, []);
+    gmailSignalsByRole.get(key).push(signal);
+  }
+}
+for (const list of [...gmailSignalsByNum.values(), ...gmailSignalsByRole.values()]) {
+  list.sort(compareSignals);
+}
+
+function gmailSignalsFor(row) {
+  const byNum = gmailSignalsByNum.get(String(row.num)) || [];
+  const byRole = gmailSignalsByRole.get(signalTrackerKey(row.company, row.role)) || [];
+  const seen = new Set();
+  return [...byNum, ...byRole]
+    .filter((signal) => {
+      const id = signalId(signal);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .sort(compareSignals);
+}
+
+function statusFromSignal(signal) {
+  const event = signalEventType(signal);
+  if (event === 'offer') return 'Offer';
+  if (event === 'interview') return 'Interview';
+  if (event === 'rejected' || event === 'rejection') return 'Rejected';
+  return 'Applied';
+}
+
+function gmailOnlyTrackerRows() {
+  const matched = new Set();
+  for (const row of D.applications) {
+    for (const signal of gmailSignalsFor(row)) matched.add(signalId(signal));
+  }
+
+  const grouped = new Map();
+  for (const signal of gmailSignals) {
+    if (matched.has(signalId(signal))) continue;
+    const key = signalTrackerKey(signal.company || '', signal.role || '');
+    if (key === '::') continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(signal);
+  }
+
+  return [...grouped.entries()].map(([key, signals]) => {
+    signals.sort(compareSignals);
+    const signal = primarySignal(signals) || signals[0] || {};
+    const [company, role] = key.split('::');
+    return {
+      num: `gmail:${key}`,
+      date: String(signalDate(signal) || '').slice(0, 10),
+      company: signal.company || company,
+      role: signal.role || role || 'Unknown role',
+      score: '',
+      status: statusFromSignal(signal),
+      pdf: '',
+      reportPath: '',
+      notes: 'Synced from Gmail signals',
+      source: 'gmail',
+    };
+  });
+}
+
+function renderGmailSignalsCell(signals) {
+  if (!signals.length) return '<span class="doc-status">—</span>';
+  return `<div class="gmail-signal-list">${signals.slice(0, 2).map((signal) => {
+    const event = signalEventType(signal);
+    const date = signalDate(signal);
+    const summary = signalSummary(signal);
+    return `
+      <div class="gmail-signal-item">
+        <div class="gmail-signal-meta">
+          <span class="${badgeClass(event || 'gmail_signal')}">${escapeHtml((event || 'gmail_signal').replace(/_/g, ' '))}</span>
+          ${date ? `<span class="doc-status">${escapeHtml(String(date).slice(0, 10))}</span>` : ''}
+        </div>
+        ${summary ? `<div class="gmail-signal-text" title="${escapeHtml(summary)}">${escapeHtml(summary.slice(0, 105))}${summary.length > 105 ? '…' : ''}</div>` : ''}
+      </div>`;
+  }).join('')}${signals.length > 2 ? `<span class="doc-status">+${signals.length - 2} more</span>` : ''}</div>`;
+}
+
+const TERMINAL_TRACKER_STATUSES = new Set(['Rejected', 'Discarded', 'SKIP']);
+const STAGE_ORDER = ['Offered', 'Interviewing', 'Screening (OA)', 'Referred', 'Applied', 'Evaluated', 'Rejected'];
+const HOT_EVENT_TYPES = new Set(['offer', 'interview', 'oa', 'online_assessment', 'action_required', 'responded']);
+
+function isActiveTrackerRow(row) {
+  return !TERMINAL_TRACKER_STATUSES.has(row.status);
+}
+
+function parseDateValue(value) {
+  if (!value) return null;
+  const date = new Date(String(value).slice(0, 10) + 'T00:00:00');
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function todayDate() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function daysSince(value) {
+  const date = parseDateValue(value);
+  if (!date) return null;
+  return Math.floor((todayDate() - date) / (1000 * 60 * 60 * 24));
+}
+
+function formatDateShort(value) {
+  const date = parseDateValue(value);
+  if (!date) return '—';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+function formatRelativeDate(value) {
+  const days = daysSince(value);
+  if (days == null) return '—';
+  if (days <= 0) return 'today';
+  if (days === 1) return '1d ago';
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+function gmailRefreshText() {
+  if (!gmailRefresh) return 'Gmail status: static export, live sync not included';
+  const rows = gmailRefresh.signalSummary?.rows ?? gmailSignals.length;
+  const errors = gmailRefresh.signalSummary?.errors ?? gmailSignalErrors.length;
+  const when = gmailRefresh.attemptedAt ? ` · last synced ${formatRelativeDate(gmailRefresh.attemptedAt)}` : '';
+  const suffix = `${rows} signal${rows === 1 ? '' : 's'}${errors ? `, ${errors} parse error${errors === 1 ? '' : 's'}` : ''}`;
+  if (gmailRefresh.status === 'ok') return `Gmail connected${when} · ${suffix}`;
+  if (gmailRefresh.status === 'failed') return `Gmail sync failed${when} · ${gmailRefresh.message || 'check terminal'}`;
+  return `Gmail sync paused${when} · ${suffix}`;
+}
+
+function gmailRefreshClassName() {
+  return `tracker-refresh is-${gmailRefresh?.status || 'unknown'}`;
+}
+
+function companyDisplayName(company) {
+  return (company || '').trim().toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'unknown_company';
+}
+
+function companyInitials(company) {
+  const words = normKey(company).split(' ').filter(Boolean);
+  if (words.length === 0) return '—';
+  return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase();
+}
+
+function primarySignal(signals) {
+  return signals.find(isAttentionSignal) || signals[0] || null;
+}
+
+function signalContact(signal) {
+  return signal?.recentContact || signal?.contact || signal?.contactName || signal?.senderName || signal?.fromName || signal?.sender || signal?.from || '';
+}
+
+function signalEmailCount(signals) {
+  const explicit = signals.map((signal) => Number(signal.emailCount || signal.threadMessageCount || signal.messageCount)).find(Number.isFinite);
+  return explicit ?? signals.length;
+}
+
+function signalThreadUrl(signal) {
+  return signal?.threadUrl || signal?.gmailUrl || signal?.url || signal?.messageUrl || '';
+}
+
+function signalLatestDate(row, signals) {
+  const signal = primarySignal(signals);
+  return signalDate(signal || {}) || row.date;
+}
+
+function renderSignalEmail(signal) {
+  const sender = signalContact(signal) || signal.from || 'Email';
+  const date = signalDate(signal);
+  const subject = signal.subject || signal.displayTitle || signalSummary(signal);
+  const snippet = signal.snippet || signal.summary || signal.recommendedAction || '';
+  return `
+    <div class="flow-email-item">
+      <div class="flow-email-meta">
+        <span>${escapeHtml(sender)}</span>
+        <span>${escapeHtml(formatRelativeDate(date))}</span>
+      </div>
+      <div class="flow-email-subject">${escapeHtml(subject || 'Gmail signal')}</div>
+      ${snippet ? `<div class="flow-email-snippet">${escapeHtml(snippet)}</div>` : ''}
+    </div>`;
+}
+
+function attentionFor(row, signals) {
+  const signal = primarySignal(signals);
+  const event = signal ? signalEventType(signal) : '';
+  const dueDate = signal?.dueDate || signal?.deadline || '';
+  if (event === 'offer' || row.status === 'Offer') {
+    return { title: 'Decision point', detail: 'Offer on the table', hot: true, rank: 100 };
+  }
+  if (event === 'interview' || row.status === 'Interview') {
+    return { title: 'Interview active', detail: 'Stay ready for scheduling and follow-up', hot: true, rank: 90 };
+  }
+  if (event === 'oa' || event === 'online_assessment') {
+    const dueDays = daysSince(dueDate);
+    if (dueDate && dueDays != null && dueDays > 0) {
+      return { title: 'OA overdue', detail: `Deadline was ${formatDateShort(dueDate)}`, hot: true, rank: 95 };
+    }
+    return { title: 'OA active', detail: dueDate ? `Deadline ${formatDateShort(dueDate)}` : 'Assessment signal detected', hot: true, rank: 82 };
+  }
+  if (event === 'action_required') {
+    return { title: 'Needs action', detail: signalSummary(signal) || 'Fresh hiring action detected', hot: true, rank: 88 };
+  }
+  if (event === 'responded' || row.status === 'Responded') {
+    return { title: 'Recruiter replied', detail: signalSummary(signal) || 'Review latest thread', hot: true, rank: 80 };
+  }
+  const staleDays = daysSince(signalLatestDate(row, signals));
+  if (row.status === 'Applied' && staleDays != null && staleDays >= 7) {
+    return { title: 'Needs follow-up', detail: `No update for ${staleDays} days`, hot: true, rank: 62 };
+  }
+  return { title: 'Monitoring', detail: 'No immediate action detected', hot: false, rank: 20 };
+}
+
+function stageFor(row, signals) {
+  const signal = primarySignal(signals);
+  const event = signal ? signalEventType(signal) : '';
+  if (event === 'offer' || row.status === 'Offer') return 'Offered';
+  if (event === 'interview' || row.status === 'Interview') return 'Interviewing';
+  if (event === 'oa' || event === 'online_assessment') return 'Screening (OA)';
+  if (event === 'referred') return 'Referred';
+  if (event === 'rejected' || event === 'rejection') return 'Rejected';
+  if (row.status === 'Applied' || row.status === 'Responded') return 'Applied';
+  if (row.status === 'Rejected' || row.status === 'Discarded' || row.status === 'SKIP') return 'Rejected';
+  return 'Evaluated';
+}
+
+function trackerFlowRow(row) {
+  const signals = gmailSignalsFor(row);
+  const signal = primarySignal(signals);
+  const attention = attentionFor(row, signals);
+  const latestDate = signalLatestDate(row, signals);
+  return {
+    ...row,
+    signals,
+    signal,
+    attention,
+    stage: stageFor(row, signals),
+    latestDate,
+    latestDays: daysSince(latestDate),
+    emailCount: signalEmailCount(signals),
+    contact: signalContact(signal),
+    scoreValue: parseScore(row.score),
+    active: isActiveTrackerRow(row),
+  };
+}
+
+function trackerSortRows(rows) {
+  const sortMode = val('tracker-sort');
+  if (sortMode === 'attention-desc') {
+    return [...rows].sort((a, b) =>
+      b.attention.rank - a.attention.rank ||
+      STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage) ||
+      String(b.latestDate).localeCompare(String(a.latestDate)) ||
+      (b.scoreValue ?? -Infinity) - (a.scoreValue ?? -Infinity)
+    );
+  }
+  return applySort(rows, sortMode, {
+    score: a => a.scoreValue,
+    date: a => a.latestDate || '',
+    company: a => norm(a.company),
+    role: a => norm(a.role),
+    status: a => a.stage
+  });
+}
+
+function renderOpportunityCard(row) {
+  const threadUrl = signalThreadUrl(row.signal);
+  const dossierUrl = row.reportPath ? `../${row.reportPath}` : '';
+  const step = row.attention.hot ? row.attention.detail : suggestedNextStep(row);
+  return `
+    <article class="opportunity-card">
+      <div class="flow-company">
+        <span class="${badgeClass(row.stage)}">${escapeHtml(row.stage)}</span>
+        <h4>${escapeHtml(row.company || companyDisplayName(row.company))}</h4>
+        <div class="flow-sub">${escapeHtml(row.role)}</div>
+      </div>
+      <div class="flow-attention ${row.attention.hot ? 'is-hot' : ''}">
+        <div class="flow-main">${escapeHtml(row.attention.title)}</div>
+        <div class="flow-sub">${escapeHtml(row.attention.detail)}</div>
+      </div>
+      <div class="opportunity-step">Next step: ${escapeHtml(step)}</div>
+      <div class="flow-sub">${escapeHtml(row.contact || 'No recent contact')} · ${escapeHtml(formatRelativeDate(row.latestDate))} · ${escapeHtml(String(row.emailCount))} email${row.emailCount === 1 ? '' : 's'}</div>
+      <div class="opportunity-actions">
+        ${threadUrl ? `<a class="action-link" href="${escapeHtml(threadUrl)}" target="_blank" rel="noreferrer">Open thread</a>` : ''}
+        ${dossierUrl ? `<a class="action-link" href="${escapeHtml(dossierUrl)}" target="_blank" rel="noreferrer">View dossier</a>` : ''}
+        <button type="button" class="action-btn" data-stage-filter="${escapeHtml(row.stage)}">Show stage</button>
+      </div>
+    </article>`;
+}
+
+function suggestedNextStep(row) {
+  if (row.attention.title === 'Needs follow-up') return 'Draft a short follow-up before this goes stale';
+  if (row.stage === 'Interviewing') return 'Stay ready for scheduling and follow-up';
+  if (row.stage === 'Screening (OA)') return row.attention.detail;
+  if (row.signals.length) return 'Open the latest thread and confirm the next requirement';
+  if ((row.scoreValue ?? 0) >= 4) return 'Review dossier and decide whether to apply';
+  return 'Keep monitoring until a stronger signal appears';
+}
+
+function renderPipelineOverview(rows) {
+  const stageLabels = ['Applied', 'Screening (OA)', 'Interviewing', 'Offered', 'Rejected', 'Evaluated'];
+  const activeStage = val('tracker-status');
+  setHtml($('tracker-pipeline-overview'), stageLabels.map((stage) => {
+    const count = countWhere(rows, (row) => row.stage === stage);
+    const label = stage === 'Screening (OA)' ? 'OA / Assessments' : stage;
+    return `
+      <button type="button" class="pipeline-stage-card ${activeStage === stage ? 'is-active' : ''}" data-stage-filter="${escapeHtml(stage)}">
+        <strong>${count}</strong>
+        <span>${escapeHtml(label)}</span>
+      </button>`;
+  }).join(''));
+  $('tracker-pipeline-overview').querySelectorAll('[data-stage-filter]').forEach((button) => {
+    button.onclick = () => {
+      $('tracker-status').value = button.dataset.stageFilter;
+      resetPage('tracker');
+      renderTracker();
+    };
+  });
+}
+
+function wireStageFilterButtons(root) {
+  root.querySelectorAll('[data-stage-filter]').forEach((button) => {
+    button.onclick = () => {
+      $('tracker-status').value = button.dataset.stageFilter;
+      resetPage('tracker');
+      renderTracker();
+    };
+  });
+}
+
+function renderTrackerFlowCard(row) {
+  const emailText = row.signals.length
+    ? `${row.emailCount} ${row.emailCount === 1 ? 'email' : 'emails'}`
+    : '0 emails';
+  const contact = row.contact || 'No recent contact';
+  const sourceLabel = row.source === 'gmail'
+    ? 'Synced from your inbox'
+    : row.signals.length
+      ? 'Synced from your tracker and inbox'
+      : 'Synced from your tracker';
+  const thread = row.signals.length ? `Latest thread ${formatRelativeDate(row.latestDate)}` : 'No inbox match yet';
+  const threadUrl = signalThreadUrl(row.signal);
+  const dossierUrl = row.reportPath ? `../${row.reportPath}` : '';
+  const signalDetails = row.signals.length
+    ? `<details class="flow-email-details">
+        <summary>Latest activity</summary>
+        <div class="flow-email-list">${row.signals.slice(0, 5).map(renderSignalEmail).join('')}</div>
+      </details>`
+    : '';
+  return `
+    <article class="tracker-flow-card">
+      <div class="company-logo" aria-hidden="true">${escapeHtml(companyInitials(row.company))}</div>
+      <div class="flow-company">
+        <div class="flow-title-line">
+          <strong>${escapeHtml(row.company || companyDisplayName(row.company))}</strong>
+          <span class="${badgeClass(row.stage)}">${escapeHtml(row.stage)}</span>
+          ${row.attention.hot ? `<span class="${badgeClass('gmail_attention')}">${escapeHtml(row.attention.title)}</span>` : ''}
+        </div>
+        <div class="flow-role-inline">${escapeHtml(row.role)}</div>
+        <div class="flow-sub">${escapeHtml(sourceLabel)}</div>
+      </div>
+      <div class="flow-contact">
+        <div class="flow-main">${escapeHtml(contact)}</div>
+        <div class="flow-sub">${escapeHtml(thread)} · ${escapeHtml(emailText)}</div>
+      </div>
+      <div class="flow-attention ${row.attention.hot ? 'is-hot' : ''}">
+        <div class="flow-main">${escapeHtml(row.attention.title)}</div>
+        <div class="flow-sub">Next step: ${escapeHtml(suggestedNextStep(row))}</div>
+      </div>
+      <div class="flow-updated">
+        <div class="flow-main">${escapeHtml(formatDateShort(row.latestDate))}</div>
+        <div class="flow-sub">${escapeHtml(formatRelativeDate(row.latestDate))}</div>
+      </div>
+      <div class="flow-actions">
+        ${threadUrl ? `<a class="action-link" href="${escapeHtml(threadUrl)}" target="_blank" rel="noreferrer">Open thread</a>` : ''}
+        ${dossierUrl ? `<a class="action-link" href="${escapeHtml(dossierUrl)}" target="_blank" rel="noreferrer">Dossier</a>` : ''}
+        <button type="button" class="action-btn" data-stage-filter="${escapeHtml(row.stage)}">Stage</button>
+      </div>
+      ${signalDetails}
+    </article>`;
 }
 
 function trackerRowKey(row) {
@@ -2383,75 +3457,69 @@ function renderTracker() {
   const sMax = num(val('tracker-score-max'));
   const dFrom = val('tracker-date-from');
   const dTo = val('tracker-date-to');
+  const gmailF = toggleState['tracker-gmail'];
   const pdfF = toggleState['tracker-pdf'];
   const docF = toggleState['tracker-dossier'];
 
-  let rows = D.applications.filter(a => {
+  const allRows = [...D.applications, ...gmailOnlyTrackerRows()].map(trackerFlowRow);
+  const activeRows = allRows.filter((row) => row.active);
+  const attentionRows = activeRows.filter((row) => row.attention.hot);
+  const interviewingRows = activeRows.filter((row) => row.stage === 'Interviewing');
+  const oaRows = activeRows.filter((row) => row.stage === 'Screening (OA)');
+
+  let rows = activeRows.filter(a => {
     if (company && a.company !== company) return false;
-    if (st && a.status !== st) return false;
-    const s = parseScore(a.score);
-    if (sMin != null && (s == null || s < sMin)) return false;
-    if (sMax != null && (s == null || s > sMax)) return false;
-    if (dFrom && a.date < dFrom) return false;
-    if (dTo && a.date > dTo) return false;
+    if (st && a.stage !== st) return false;
+    if (sMin != null && (a.scoreValue == null || a.scoreValue < sMin)) return false;
+    if (sMax != null && (a.scoreValue == null || a.scoreValue > sMax)) return false;
+    if (dFrom && a.latestDate < dFrom) return false;
+    if (dTo && a.latestDate > dTo) return false;
     const hasPdf = (a.pdf || '').includes('✅');
     if (pdfF === 'yes' && !hasPdf) return false;
     if (pdfF === 'no' && hasPdf) return false;
     if (docF === 'yes' && !a.reportPath) return false;
     if (docF === 'no' && a.reportPath) return false;
+    if (gmailF === 'has' && a.signals.length === 0) return false;
+    if (gmailF === 'attention' && !a.attention.hot) return false;
     if (!q) return true;
     const decision = quickDecisionFor(a);
-    return norm((a.company || '') + ' ' + (a.role || '') + ' ' + (a.status || '') + ' ' + decision + ' ' + (a.notes || '')).includes(q);
+    const signalText = a.signals.map((signal) => `${signalEventType(signal)} ${signalSummary(signal)} ${signalContact(signal)}`).join(' ');
+    return norm(`${a.company} ${a.role} ${a.stage} ${a.status} ${decision} ${a.notes} ${a.contact} ${signalText}`).includes(q);
   });
-  rows = applySort(rows, val('tracker-sort'), {
-    score: a => parseScore(a.score),
-    num: a => +a.num,
-    date: a => a.date || '',
-    company: a => norm(a.company),
-    role: a => norm(a.role),
-    status: a => norm(a.status)
-  });
-  setCount('tracker', rows.length, D.applications.length);
-  renderSummary('tracker-summary', [
-    { value: rows.length, label: 'Filtered rows' },
-    { value: formatNumber(averageScore(rows)), label: 'Average score' },
-    { value: countWhere(rows, (a) => quickDecisionFor(a) === 'manual_review'), label: 'Manual review' },
-    { value: topCount(rows, (a) => a.status || 'n/a'), label: 'Top status' },
-  ]);
-  pageState.tracker.window = pageWindow('tracker', rows);
-  renderPager('tracker', renderTracker);
-  const visibleRows = pageState.tracker.window.rows;
-  const html = visibleRows.map(a => {
-    const decision = quickDecisionFor(a);
-    return `
-      <tr>
-        <td class="num-cell">${escapeHtml(a.num)}</td>
-        <td>${escapeHtml(a.date)}</td>
-        <td class="wrap-cell"><span class="co">${escapeHtml(a.company)}</span></td>
-        <td class="wrap-cell role-cell">${escapeHtml(a.role)}</td>
-        <td><span class="${scoreClass(a.score)}">${escapeHtml(a.score)}</span></td>
-        <td><span class="${badgeClass(a.status)}">${escapeHtml(a.status)}</span></td>
-        <td>${decision ? `<span class="${badgeClass(decision)}">${escapeHtml(decision)}</span>` : '—'}</td>
-        <td class="center">${escapeHtml(a.pdf)}</td>
-        <td>${a.reportPath ? `<a href="../${escapeHtml(a.reportPath)}" target="_blank">→ open</a>` : '—'}</td>
-        <td>${renderFullEvaluationAction(a, decision)}</td>
-        <td class="wrap-cell notes-cell"><span title="${escapeHtml(a.notes || '')}">${escapeHtml((a.notes || '').slice(0, 190))}${a.notes && a.notes.length > 190 ? '…' : ''}</span></td>
-      </tr>
-    `;
-  }).join('');
-  setHtml(document.querySelector('#tracker-table tbody'), html);
-  document.querySelectorAll('.js-full-eval').forEach(button => {
-    button.onclick = () => {
-      const row = visibleRows.find(item => trackerRowKey(item) === button.dataset.key);
-      if (row) void startFullEvaluation(row);
-    };
-  });
-  // Reflect active sort dropdown in header arrows
-  const [sField, sDir] = val('tracker-sort').split('-');
-  document.querySelectorAll('#tracker-table .sortable').forEach(th => {
-    th.classList.remove('asc', 'desc');
-    if (th.dataset.key === sField) th.classList.add(sDir);
-  });
+  rows = trackerSortRows(rows);
+
+  const topRows = trackerSortRows(activeRows.filter((row) => row.attention.hot || row.stage === 'Interviewing' || row.stage === 'Screening (OA)' || row.signals.length > 0 || (row.scoreValue ?? 0) >= 4)).slice(0, 6);
+  $('tracker-account').textContent = D.profile?.email ? `Gmail: ${D.profile.email}` : 'Gmail: not connected';
+  $('tracker-refresh').textContent = gmailRefreshText();
+  $('tracker-refresh').className = gmailRefreshClassName();
+  $('tracker-attention-n').textContent = attentionRows.length;
+  $('tracker-interview-n').textContent = interviewingRows.length;
+  $('tracker-oa-n').textContent = oaRows.length;
+  $('tracker-active-n').textContent = activeRows.length;
+  $('tracker-flow-visible-n').textContent = rows.length;
+  $('tracker-flow-attention-n').textContent = countWhere(rows, (row) => row.attention.hot);
+  setCount('tracker', rows.length, activeRows.length);
+  renderPipelineOverview(activeRows);
+
+  setHtml($('tracker-action-center'), topRows.length
+    ? topRows.map(renderOpportunityCard).join('')
+    : '<article class="opportunity-card is-empty"><div class="tracker-empty-state">No active opportunities match the current signal rules.</div></article>');
+  wireStageFilterButtons($('tracker-action-center'));
+
+  const grouped = new Map();
+  for (const row of rows) {
+    if (!grouped.has(row.stage)) grouped.set(row.stage, []);
+    grouped.get(row.stage).push(row);
+  }
+  const stageNames = [...grouped.keys()].sort((a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b));
+  const html = stageNames.map((stage) => `
+    <section class="tracker-stage">
+      <div class="tracker-stage-head"><strong>${escapeHtml(stage)}</strong><span>${grouped.get(stage).length}</span></div>
+      ${grouped.get(stage).map(renderTrackerFlowCard).join('')}
+    </section>
+  `).join('') || '<div class="tracker-empty-state">No applications match the current filters.</div>';
+  setHtml($('tracker-flow-list'), html);
+  wireStageFilterButtons($('tracker-flow-list'));
 }
 document.querySelectorAll('#tracker-table .sortable').forEach(th => {
   th.onclick = () => {

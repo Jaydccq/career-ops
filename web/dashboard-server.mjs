@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
 import yaml from 'js-yaml';
 import { renderDashboardHtml } from './build-dashboard.mjs';
+import { formatRefreshStatus, runGmailRefresh } from '../scripts/refresh-gmail-signals.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -1747,6 +1748,8 @@ async function handleRequest(req, res) {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const { html } = renderDashboardHtml({
         extraHead: `<script>window.PDF_API_TOKEN=${JSON.stringify(API_TOKEN)};</script>`,
+        includeGmailSignals: true,
+        includeProfile: true,
       });
       sendText(res, 200, 'text/html; charset=utf-8', html);
       return;
@@ -1832,6 +1835,9 @@ export {
 };
 
 function startServer() {
+  const gmailRefresh = runGmailRefresh({ trigger: 'dashboard-start' });
+  console.log(`[dashboard] gmail refresh ${formatRefreshStatus(gmailRefresh)}`);
+
   const server = createServer((req, res) => {
     void handleRequest(req, res);
   });

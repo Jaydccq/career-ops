@@ -306,10 +306,31 @@ builtin_searches:
 # Companies whose career pages are checked directly.
 # scan_method: playwright (default), websearch, greenhouse_api
 # For Greenhouse companies, add api: field for faster structured JSON access.
+# For provider-backed boards, set api_provider. Supported: a16z.
+# Provider notes:
+#   - a16z uses the public A16Z portfolio jobs API.
+# Optional provider knobs:
+#   api_size: result count / page size
+#   api_filters: provider-native filters passed to the search payload.
+# Amazon Jobs is detected from https://www.amazon.jobs/en/search?... URLs and
+# defaults to US-only unless country: ALL or explicit country[] params are set.
 
 tracked_companies:
 
   # -- AI Labs & LLM providers --
+
+  - name: A16Z Portfolio Jobs
+    careers_url: https://jobs.a16z.com
+    api_provider: a16z
+    api_size: 15
+    notes: "Aggregate board across a16z portfolio companies. Start broad, then add api_filters once you confirm provider facet values."
+    enabled: false
+
+  - name: Amazon Jobs
+    careers_url: https://www.amazon.jobs/en/search?base_query=software+engineer
+    result_limit: 100
+    notes: "Detected as Amazon Jobs API. Defaults to US-only; set country: ALL for global results."
+    enabled: false
 
   - name: Anthropic
     careers_url: https://job-boards.greenhouse.io/anthropic

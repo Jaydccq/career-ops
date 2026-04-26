@@ -55,9 +55,9 @@ import { bridgeError } from "../runtime/errors.js";
 import { scoreAndFilter } from "./newgrad-scorer.js";
 import { recordNewGradSkillStats } from "./newgrad-skill-stats.js";
 import { scoreEnrichedRowValue } from "./newgrad-value-scorer.js";
-import { pickPipelineEntryUrl } from "./newgrad-links.js";
+import { pickPipelineEntryUrl, pipelineEntryUrlCandidates } from "./newgrad-links.js";
 import { formatPendingValueReasonsTag } from "./newgrad-pipeline-metadata.js";
-import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { loadEvaluatedJobIdentities } from "./evaluated-report-urls.js";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
@@ -78,6 +78,7 @@ import {
   readNewGradPendingEntries as readPendingNewGradEntries,
 } from "./newgrad-pending.js";
 import { readBuiltInPendingEntries as readPendingBuiltInEntries } from "./builtin-pending.js";
+import { jobCompanyRoleKey } from "./job-identity.js";
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
@@ -332,9 +333,9 @@ export function createClaudePipelineAdapter(
       mkdirSync(reportDir, { recursive: true });
 
       if (shouldRunQuickEvaluation(input)) {
-        const quickInput = prepareQuickEvaluationInput(input);
-        const quickLogPath = join(logsDir, `quick-${jobId}.log`);
         const quickConfig = loadNewGradScanConfig(config.repoRoot);
+        const quickInput = prepareQuickEvaluationInput(input, quickConfig);
+        const quickLogPath = join(logsDir, `quick-${jobId}.log`);
         writeFileSync(quickLogPath, "", "utf-8");
         appendJobLog(quickLogPath, "bridge", `job=${jobId} executor=${realExecutor} quick-eval`);
         appendJobLog(quickLogPath, "bridge", `url=${quickInput.url}`);
@@ -342,7 +343,7 @@ export function createClaudePipelineAdapter(
         const localQuickScreen = buildLocalQuickScreen({
           input: quickInput,
           quickConfig,
-          evaluatedReportUrls: loadEvaluatedReportUrls(config.repoRoot),
+          evaluatedReportIdentities: loadEvaluatedJobIdentities(config.repoRoot),
           jobId,
         });
 
@@ -910,7 +911,7 @@ export function createClaudePipelineAdapter(
       const negativeKeywords = loadNegativeKeywords(config.repoRoot);
       const trackedSet = loadTrackedCompanyRoles(config.repoRoot);
       const existingPipelineUrls = loadPipelineUrls(config.repoRoot);
-      const evaluatedReportUrls = loadEvaluatedReportUrls(config.repoRoot);
+      const evaluatedReportIdentities = loadEvaluatedJobIdentities(config.repoRoot);
 
       const entries: PipelineEntry[] = [];
       const candidates: PipelineEntry[] = [];
@@ -1009,9 +1010,16 @@ export function createClaudePipelineAdapter(
           valueReasons: valueScore.reasons,
           source: entrySource,
         };
-        const canonicalEntryUrl = canonicalizeJobUrl(entryUrl) ?? entryUrl;
+        const canonicalCandidateUrls = pipelineEntryUrlCandidates(
+          enrichedRow.detail,
+          enrichedRow.row.row,
+        ).map((url) => canonicalizeJobUrl(url) ?? url);
 
-        if (evaluatedReportUrls.has(canonicalEntryUrl)) {
+        const evaluatedCompanyRole = jobCompanyRoleKey(entry.company, entry.role);
+        if (
+          canonicalCandidateUrls.some((url) => evaluatedReportIdentities.urls.has(url)) ||
+          (evaluatedCompanyRole && evaluatedReportIdentities.companyRoles.has(evaluatedCompanyRole))
+        ) {
           skipRow("already_evaluated_report", enrichedRow, {
             score: scored.score,
             valueScore: valueScore.score,
@@ -1019,7 +1027,7 @@ export function createClaudePipelineAdapter(
           continue;
         }
 
-        if (existingPipelineUrls.has(canonicalEntryUrl)) {
+        if (canonicalCandidateUrls.some((url) => existingPipelineUrls.has(url))) {
           skipRow("already_in_pipeline", enrichedRow, {
             score: scored.score,
             valueScore: valueScore.score,
@@ -1078,7 +1086,9 @@ export function createClaudePipelineAdapter(
         }
 
         entries.push(entry);
-        existingPipelineUrls.add(canonicalEntryUrl);
+        for (const url of canonicalCandidateUrls) {
+          existingPipelineUrls.add(url);
+        }
         onProgress?.(processed, rows.length, enrichedRow);
       }
 
@@ -1184,8 +1194,14 @@ function shouldFallbackToFullEvalAfterQuickFailure(
   );
 }
 
-function prepareQuickEvaluationInput(input: EvaluationInput): EvaluationInput {
-  const recovered = recoverQuickStructuredSignalsFromPageText(input.pageText);
+function prepareQuickEvaluationInput(
+  input: EvaluationInput,
+  quickConfig: ReturnType<typeof loadNewGradScanConfig>,
+): EvaluationInput {
+  const recovered = recoverQuickStructuredSignalsFromPageText(
+    input.pageText,
+    quickConfig,
+  );
   if (!recovered) return input;
 
   return {
@@ -1327,6 +1343,7 @@ function mergeSignalArrays(
 
 function recoverQuickStructuredSignalsFromPageText(
   pageText: string | null | undefined,
+  quickConfig: ReturnType<typeof loadNewGradScanConfig>,
 ): StructuredJobSignals | null {
   const text = pageText?.trim();
   if (!text) return null;
@@ -1361,6 +1378,8 @@ function recoverQuickStructuredSignalsFromPageText(
     text,
     frontmatter.h1b,
     [...skillTags, ...recommendationTags],
+    quickConfig.hard_filters.sponsorship_positive_keywords ?? [],
+    quickConfig.hard_filters.no_sponsorship_keywords,
   );
 
   const recovered: StructuredJobSignals = {
@@ -1499,29 +1518,34 @@ function inferQuickSponsorshipSupport(
   text: string,
   frontmatterH1b: string | undefined,
   tags: readonly string[],
+  positiveKeywords: readonly string[] = [],
+  negativeKeywords: readonly string[] = [],
 ): "yes" | "no" | undefined {
   const normalized = normalizeQuickScreenText(text);
   const h1b = normalizeQuickScreenText(frontmatterH1b ?? "");
-  if (h1b === "yes" || h1b === "true") return "yes";
   if (h1b === "no" || h1b === "false") return "no";
-
-  if (
-    tags.some((tag) => normalizeQuickScreenText(tag) === "h1b sponsor likely") ||
-    normalized.includes("h1b sponsor likely") ||
-    normalized.includes("company h1b sponsorship") ||
-    normalized.includes("track record of offering h1b sponsorship")
-  ) {
-    return "yes";
-  }
 
   if (
     containsAnyPhrase(
       normalized,
+      negativeKeywords,
       EXTRA_NO_SPONSORSHIP_PHRASES,
       RESTRICTED_WORK_AUTHORIZATION_PHRASES,
     )
   ) {
     return "no";
+  }
+
+  if (h1b === "yes" || h1b === "true") return "yes";
+
+  if (
+    tags.some((tag) => normalizeQuickScreenText(tag) === "h1b sponsor likely") ||
+    normalized.includes("h1b sponsor likely") ||
+    normalized.includes("company h1b sponsorship") ||
+    normalized.includes("track record of offering h1b sponsorship") ||
+    containsAnyPhrase(normalized, positiveKeywords)
+  ) {
+    return "yes";
   }
 
   return undefined;
@@ -1530,7 +1554,7 @@ function inferQuickSponsorshipSupport(
 function buildLocalQuickScreen(args: {
   input: EvaluationInput;
   quickConfig: ReturnType<typeof loadNewGradScanConfig>;
-  evaluatedReportUrls: ReadonlySet<string>;
+  evaluatedReportIdentities: ReturnType<typeof loadEvaluatedJobIdentities>;
   jobId: string;
 }): QuickEvaluationJson | null {
   const signals = args.input.structuredSignals;
@@ -1546,7 +1570,7 @@ function buildLocalQuickScreen(args: {
 
   if (
     canonicalUrl &&
-    args.evaluatedReportUrls.has(canonicalUrl) &&
+    args.evaluatedReportIdentities.urls.has(canonicalUrl) &&
     !shouldBypassEvaluatedReportDuplicate(args.input)
   ) {
     blockers.push("already_evaluated_report_url");

@@ -25,6 +25,7 @@ npx playwright install chromium
 
 - `Evaluate this job URL with Career-Ops and run the full pipeline.`
 - `Scan my configured portals for new roles that match my profile.`
+- `Scan Gmail for application/interview/OA/offer signals and refresh the dashboard.`
 - `Generate the tailored ATS PDF for this role using Career-Ops.`
 - `Export the tailored CV as LaTeX/Overleaf .tex for this role.`
 
@@ -43,6 +44,7 @@ npx playwright install chromium
 | Built In scan | `modes/_shared.md` + `modes/builtin-scan.md` |
 | LinkedIn Jobs scan | `modes/_shared.md` + `modes/linkedin-scan.md` |
 | Indeed Jobs scan | `modes/_shared.md` + `modes/indeed-scan.md` |
+| Gmail application signal scan | `modes/_shared.md` + `modes/gmail-scan.md` |
 | PDF generation | `modes/_shared.md` + `modes/pdf.md` |
 | LaTeX / Overleaf CV export | `modes/_shared.md` + `modes/latex.md` |
 | Live application help | `modes/_shared.md` + `modes/apply.md` |

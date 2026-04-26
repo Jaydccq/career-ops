@@ -97,6 +97,25 @@ describe("newgrad-scan-history", () => {
     expect(seen.companyRoles.has("vizient|associate software engineer")).toBe(true);
   });
 
+  test("loadNewGradSeenKeys reads evaluated report identities", () => {
+    const repoRoot = makeRepoRoot();
+    mkdirSync(join(repoRoot, "reports"), { recursive: true });
+    writeFileSync(
+      join(repoRoot, "reports/001-acme-2026-04-26.md"),
+      [
+        "# Evaluation: Acme, Inc. — Software Engineer I",
+        "",
+        "**URL:** https://jobs.example.com/role/123?utm_source=linkedin",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const seen = loadNewGradSeenKeys(repoRoot);
+
+    expect(seen.urls.has("https://jobs.example.com/role/123")).toBe(true);
+    expect(seen.companyRoles.has("acme|software engineer i")).toBe(true);
+  });
+
   test("loadNewGradSeenKeys canonicalizes tracking params in scan history and pipeline", () => {
     const repoRoot = makeRepoRoot();
     writeFileSync(

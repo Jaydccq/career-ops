@@ -56,6 +56,10 @@ import {
   createScanRunRecorder,
   type ScanRunRecorder,
 } from "../bridge/src/adapters/newgrad-scan-run-log.ts";
+import {
+  filterKnownEvaluationCandidates,
+  loadEvaluationDedupeKeys,
+} from "./evaluation-dedupe.ts";
 
 const PROTOCOL_VERSION = "1.0.0";
 const DEFAULT_HOST = "127.0.0.1";
@@ -492,10 +496,22 @@ async function main(): Promise<void> {
       });
     }
 
-    const evaluationCandidates = dedupePipelineEntries([
+    const dedupedEvaluationCandidates = dedupePipelineEntries([
       ...bridgeCandidates,
       ...reviewCandidates,
-    ]).slice(
+    ]);
+    const filteredEvaluationCandidates = filterKnownEvaluationCandidates(
+      dedupedEvaluationCandidates,
+      loadEvaluationDedupeKeys(repoRoot),
+    );
+    if (filteredEvaluationCandidates.skipped > 0) {
+      console.log(`Skipped ${filteredEvaluationCandidates.skipped} already evaluated/tracked direct-evaluation candidates.`);
+      scanRun.increment("queueSkipped", filteredEvaluationCandidates.skipped);
+      scanRun.record("direct_evaluation_known_duplicates_skipped", {
+        skipped: filteredEvaluationCandidates.skipped,
+      });
+    }
+    const evaluationCandidates = filteredEvaluationCandidates.candidates.slice(
       0,
       options.evaluateLimit ?? undefined,
     );

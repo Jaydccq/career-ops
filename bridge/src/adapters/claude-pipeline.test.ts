@@ -193,6 +193,65 @@ test("enrichNewGradRows writes LinkedIn rows with linkedin-scan source tag", asy
   }
 });
 
+test("enrichNewGradRows skips rows when any apply-link alias is already in pipeline", async () => {
+  const repoRoot = makeRepoRoot();
+  try {
+    writeFileSync(
+      join(repoRoot, "data/pipeline.md"),
+      "- [ ] https://www.linkedin.com/jobs/view/4347121472/ — LinkedIn Alias Co | Software Engineer I (via linkedin-scan, score: 9/9)\n",
+      "utf-8",
+    );
+
+    const adapter = createClaudePipelineAdapter({
+      repoRoot,
+      claudeBin: "claude",
+      codexBin: "codex",
+      nodeBin: process.execPath,
+      realExecutor: "codex",
+      evaluationTimeoutSec: 60,
+      livenessTimeoutSec: 20,
+      allowDangerousClaudeFlags: true,
+    });
+
+    const result = await adapter.enrichNewGradRows([
+      makeEnrichedRow({
+        row: {
+          source: "linkedin.com",
+          title: "Software Engineer I",
+          company: "LinkedIn Alias Co",
+          applyUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          detailUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          salary: "$140,000 - $180,000",
+          qualifications: "TypeScript React Python Node AWS",
+        },
+        scored: {
+          score: 9,
+          maxScore: 9,
+          skillKeywordsMatched: ["typescript", "react", "python", "node"],
+        },
+        detail: {
+          title: "Software Engineer I",
+          company: "LinkedIn Alias Co",
+          originalPostUrl: "https://www.linkedin.com/jobs/view/4347121472/",
+          applyNowUrl: "https://job-boards.greenhouse.io/example/jobs/7839298?gh_jid=7839298",
+          applyFlowUrls: [
+            "https://job-boards.greenhouse.io/example/jobs/7839298?gh_jid=7839298",
+          ],
+        },
+      }),
+    ]);
+
+    expect(result.added).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.skipBreakdown?.already_in_pipeline).toBe(1);
+
+    const pipeline = readFileSync(join(repoRoot, "data/pipeline.md"), "utf-8");
+    expect(pipeline).not.toContain("job-boards.greenhouse.io/example/jobs/7839298");
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
 test("enrichNewGradRows preserves list salary in local JD cache when detail salary is missing", async () => {
   const repoRoot = makeRepoRoot();
   try {
@@ -449,43 +508,68 @@ test("quick eval failure fallback only allows high local value candidates", () =
 });
 
 test("prepareQuickEvaluationInput recovers structured signals from local JD cache text", () => {
-  const prepared = __internal.prepareQuickEvaluationInput({
-    url: "https://boards.greenhouse.io/embed/job_app?token=6359139003&utm_source=jobright",
-    title: "Early Career Software Engineer – Applied AI",
-    evaluationMode: "newgrad_quick",
-    structuredSignals: {
-      source: "jobright.ai",
-      company: "Wonderschool",
-      role: "Early Career Software Engineer – Applied AI",
-      sponsorshipSupport: "unknown",
+  const quickConfig = {
+    role_keywords: { positive: ["software engineer"], weight: 3 },
+    skill_keywords: { terms: ["typescript"], weight: 1, max_score: 4 },
+    freshness: { within_24h: 2, within_3d: 1, older: 0 },
+    list_threshold: 3,
+    pipeline_threshold: 7,
+    detail_value_threshold: 7,
+    compensation_min_usd: 90000,
+    hard_filters: {
+      blocked_companies: [],
+      exclude_no_sponsorship: true,
+      exclude_active_security_clearance: true,
+      max_years_experience: 2,
+      no_sponsorship_keywords: ["not eligible for sponsorship"],
+      sponsorship_positive_keywords: ["open to sponsoring"],
+      no_sponsorship_companies: [],
+      clearance_keywords: [],
+      active_security_clearance_companies: [],
     },
-    pageText: [
-      "---",
-      '"company": "Wonderschool"',
-      '"role": "Early Career Software Engineer – Applied AI"',
-      '"salary": "$100000-$120000/yr"',
-      '"h1b": "unknown"',
-      '"source": "newgrad-scan"',
-      "---",
-      "",
-      "Company H1B Sponsorship",
-      "Wonderschool has a track record of offering H1B sponsorships, with 1 in 2025.",
-      "",
-      "Requirements",
-      "- Strong foundation in programming languages (e.g., Python, JavaScript, or TypeScript)",
-      "- Basic understanding of cloud platforms like Google Cloud Platform and AWS",
-      "",
-      "Responsibilities",
-      "- Design, develop, and maintain robust software solutions with a focus on integrating AI capabilities",
-      "- Collaborate with product managers, designers, and engineers to define requirements",
-      "",
-      "Skill tags: Python, JavaScript, TypeScript, AWS, H1B Sponsor Likely",
-      "",
-      "Recommendation tags: Comp. & Benefits, H1B Sponsor Likely",
-      "",
-      "Taxonomy: Engineering and Development, Machine Learning, Artificial Intelligence Engineer",
-    ].join("\n"),
-  });
+    detail_concurrent_tabs: 3,
+    detail_delay_min_ms: 1000,
+    detail_delay_max_ms: 2000,
+  };
+  const prepared = __internal.prepareQuickEvaluationInput(
+    {
+      url: "https://boards.greenhouse.io/embed/job_app?token=6359139003&utm_source=jobright",
+      title: "Early Career Software Engineer – Applied AI",
+      evaluationMode: "newgrad_quick",
+      structuredSignals: {
+        source: "jobright.ai",
+        company: "Wonderschool",
+        role: "Early Career Software Engineer – Applied AI",
+        sponsorshipSupport: "unknown",
+      },
+      pageText: [
+        "---",
+        '"company": "Wonderschool"',
+        '"role": "Early Career Software Engineer – Applied AI"',
+        '"salary": "$100000-$120000/yr"',
+        '"h1b": "unknown"',
+        '"source": "newgrad-scan"',
+        "---",
+        "",
+        "Wonderschool is open to sponsoring qualified candidates for this role.",
+        "",
+        "Requirements",
+        "- Strong foundation in programming languages (e.g., Python, JavaScript, or TypeScript)",
+        "- Basic understanding of cloud platforms like Google Cloud Platform and AWS",
+        "",
+        "Responsibilities",
+        "- Design, develop, and maintain robust software solutions with a focus on integrating AI capabilities",
+        "- Collaborate with product managers, designers, and engineers to define requirements",
+        "",
+        "Skill tags: Python, JavaScript, TypeScript, AWS",
+        "",
+        "Recommendation tags: Comp. & Benefits",
+        "",
+        "Taxonomy: Engineering and Development, Machine Learning, Artificial Intelligence Engineer",
+      ].join("\n"),
+    },
+    quickConfig,
+  );
 
   expect(prepared.structuredSignals).toMatchObject({
     company: "Wonderschool",
@@ -603,7 +687,7 @@ test("quick evaluation pageText strips job-board verification shell excerpts", (
 test("buildLocalQuickScreen skips obvious hard blockers without invoking codex", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-skip-1",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -665,7 +749,7 @@ test("buildLocalQuickScreen skips obvious hard blockers without invoking codex",
 test("buildLocalQuickScreen does not block unknown sponsorship when salary meets 90k floor", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-sponsorship-unknown",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -721,7 +805,7 @@ test("buildLocalQuickScreen does not block unknown sponsorship when salary meets
 test("buildLocalQuickScreen annualizes hourly salaries before applying the 90k floor", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-hourly-salary",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -769,7 +853,7 @@ test("buildLocalQuickScreen annualizes hourly salaries before applying the 90k f
 test("buildLocalQuickScreen ignores penalty tokens when collecting positive reasons", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-skip-penalties",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -828,9 +912,12 @@ test("buildLocalQuickScreen ignores penalty tokens when collecting positive reas
 test("buildLocalQuickScreen skips canonical duplicates before model screening", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-skip-2",
-    evaluatedReportUrls: new Set([
-      "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/job/12218",
-    ]),
+    evaluatedReportIdentities: {
+      urls: new Set([
+        "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/job/12218",
+      ]),
+      companyRoles: new Set<string>(),
+    },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -876,9 +963,12 @@ test("buildLocalQuickScreen skips canonical duplicates before model screening", 
 test("buildLocalQuickScreen allows explicit policy reruns of evaluated URLs", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-rerun-duplicate",
-    evaluatedReportUrls: new Set([
-      "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/job/12218",
-    ]),
+    evaluatedReportIdentities: {
+      urls: new Set([
+        "https://ebqb.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/job/12218",
+      ]),
+      companyRoles: new Set<string>(),
+    },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -930,7 +1020,7 @@ test("buildLocalQuickScreen allows explicit policy reruns of evaluated URLs", ()
 test("buildLocalQuickScreen does not treat obtain-or-preferred clearance language as a hard blocker", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-clearance-soft",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {
@@ -977,7 +1067,7 @@ test("buildLocalQuickScreen does not treat obtain-or-preferred clearance languag
 test("buildLocalQuickScreen skips explicit TS/SCI clearance requirements", () => {
   const screen = __internal.buildLocalQuickScreen({
     jobId: "job-local-clearance-hard",
-    evaluatedReportUrls: new Set<string>(),
+    evaluatedReportIdentities: { urls: new Set<string>(), companyRoles: new Set<string>() },
     quickConfig: {
       role_keywords: { positive: ["software engineer"], weight: 3 },
       skill_keywords: {

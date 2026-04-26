@@ -210,3 +210,35 @@ export function pickPipelineEntryUrl(
     row.detailUrl
   );
 }
+
+export function pipelineEntryUrlCandidates(
+  detail: Pick<NewGradDetail, "originalPostUrl" | "applyNowUrl" | "applyFlowUrls">,
+  row: Pick<NewGradRow, "applyUrl" | "detailUrl">
+): string[] {
+  const picked = pickPipelineEntryUrl(detail, row);
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+
+  for (const candidate of [
+    picked,
+    detail.originalPostUrl,
+    detail.applyNowUrl,
+    ...(detail.applyFlowUrls ?? []),
+    row.applyUrl,
+    row.detailUrl,
+  ]) {
+    const normalized = normalizeUrlCandidate(candidate);
+    if (!normalized) continue;
+
+    const canonical = canonicalLinkedInJobViewUrl(normalized) ?? normalized;
+    if (canonical !== picked && scoreUrlCandidate(normalized) <= MIN_ACCEPTABLE_SCORE) {
+      continue;
+    }
+    if (seen.has(canonical)) continue;
+
+    seen.add(canonical);
+    candidates.push(canonical);
+  }
+
+  return candidates;
+}

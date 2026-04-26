@@ -28,6 +28,7 @@ describe("readBuiltInPendingEntries", () => {
         "- [x] https://builtin.com/job/done-role/333 | Checked Co | Software Engineer",
         "- [ ] https://builtin.com/job/tracked-role/444 | Tracker Co | Backend Engineer",
         "- [ ] https://builtin.com/job/evaluated-role/555?utm_campaign=scan | Evaluated Co | Platform Engineer",
+        "- [ ] https://builtin.com/job/evaluated-role-copy/556 | Evaluated Co | Platform Engineer",
         "- [ ] https://builtin.com/job/duplicate-role/666 | Fresh Co | Full Stack Engineer",
       ].join("\n"),
       "utf-8",

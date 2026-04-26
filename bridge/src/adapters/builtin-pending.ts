@@ -7,7 +7,7 @@ import type {
   NewGradScanConfig,
 } from "../contracts/newgrad.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
-import { loadEvaluatedReportUrls } from "./evaluated-report-urls.js";
+import { loadEvaluatedJobIdentities } from "./evaluated-report-urls.js";
 import { jobCompanyRoleKey, normalizeJobUrl } from "./job-identity.js";
 import { parsePendingValueReasons } from "./newgrad-pipeline-metadata.js";
 import {
@@ -43,7 +43,7 @@ export function readBuiltInPendingEntries(
   const tracked = loadTrackedCompanyRoles(repoRoot);
   const negativeKeywords = loadNegativeKeywords(repoRoot);
   const scanConfig = loadNewGradScanConfig(repoRoot);
-  const evaluatedReportUrls = loadEvaluatedReportUrls(repoRoot);
+  const evaluatedReportIdentities = loadEvaluatedJobIdentities(repoRoot);
   const seenUrls = new Set<string>();
   const seenCompanyRoles = new Set<string>();
   const entries: BuiltInPendingEntry[] = [];
@@ -63,7 +63,13 @@ export function readBuiltInPendingEntries(
     if (seenCompanyRoles.has(companyRoleKey)) continue;
 
     const canonicalUrl = normalizeJobUrl(url);
-    if (seenUrls.has(canonicalUrl) || evaluatedReportUrls.has(canonicalUrl)) continue;
+    if (
+      seenUrls.has(canonicalUrl) ||
+      evaluatedReportIdentities.urls.has(canonicalUrl) ||
+      evaluatedReportIdentities.companyRoles.has(companyRoleKey)
+    ) {
+      continue;
+    }
 
     seenUrls.add(canonicalUrl);
     seenCompanyRoles.add(companyRoleKey);

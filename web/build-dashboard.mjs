@@ -96,19 +96,74 @@ export function parseKeywordStats() {
   }
 }
 
-export function buildDashboardData() {
+export function parseGmailSignals(filePath = join(ROOT, 'data', 'gmail-signals.jsonl')) {
+  const raw = readOr(filePath);
+  const result = { rows: [], errors: [] };
+  if (!raw.trim()) return result;
+
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      result.rows = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch (error) {
+      result.errors.push({ line: 1, error: error.message });
+    }
+    return result;
+  }
+
+  raw.split('\n').forEach((line, index) => {
+    const text = line.trim();
+    if (!text || text.startsWith('#')) return;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object') result.rows.push(parsed);
+    } catch (error) {
+      result.errors.push({ line: index + 1, error: error.message });
+    }
+  });
+  return result;
+}
+
+export function parseProfile(filePath = join(ROOT, 'config', 'profile.yml')) {
+  const raw = readOr(filePath);
+  const emailMatch = raw.match(/^\s*email:\s*["']?([^"'\n#]+)["']?/m);
+  return {
+    email: emailMatch ? emailMatch[1].trim() : ''
+  };
+}
+
+export function parseGmailRefreshStatus(filePath = join(ROOT, 'data', 'gmail-refresh-status.json')) {
+  const raw = readOr(filePath).trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    return {
+      status: 'failed',
+      message: `Could not read Gmail refresh status: ${error.message}`,
+      signalSummary: null,
+    };
+  }
+}
+
+export function buildDashboardData({ includeGmailSignals = false, includeProfile = false } = {}) {
   return {
     generated: new Date().toISOString(),
+    profile: includeProfile ? parseProfile() : { email: '' },
     reports: parseReports(),
     applications: parseApplications(),
     pipeline: parsePipeline(),
     scanHistory: parseScanHistory(),
-    keywordStats: parseKeywordStats()
+    keywordStats: parseKeywordStats(),
+    gmailSignals: includeGmailSignals ? parseGmailSignals() : { rows: [], errors: [] },
+    gmailRefresh: includeGmailSignals ? parseGmailRefreshStatus() : null
   };
 }
 
-export function renderDashboardHtml({ extraHead = '' } = {}) {
-  const data = buildDashboardData();
+export function renderDashboardHtml({ extraHead = '', includeGmailSignals = false, includeProfile = false } = {}) {
+  const data = buildDashboardData({ includeGmailSignals, includeProfile });
   const template = readFileSync(join(__dirname, 'template.html'), 'utf8');
   const withData = template.replace(
     '/*__DATA__*/',

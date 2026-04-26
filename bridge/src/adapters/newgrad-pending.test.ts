@@ -201,13 +201,14 @@ describe("readNewGradPendingEntries", () => {
     expect(result.entries[0]!.company).toBe("One Co");
   });
 
-  test("reads value score metadata and value reasons, and skips URLs already evaluated in reports", () => {
+  test("reads value score metadata and skips roles already evaluated in reports", () => {
     const repoRoot = makeRepoRoot();
     mkdirSync(join(repoRoot, "reports"), { recursive: true });
     writeFileSync(
       join(repoRoot, "data/pipeline.md"),
       [
         "- [ ] https://jobs.example.com/evaluated?utm_source=scan — Done Co | Software Engineer (via newgrad-scan, score: 9/9, value: 8.4/10)",
+        "- [ ] https://jobs.example.com/different-url — Done Co | Software Engineer (via newgrad-scan, score: 9/9, value: 8.4/10)",
         "- [ ] https://jobs.example.com/fresh?utm_campaign=scan — Fresh Co | Software Engineer (via newgrad-scan, score: 8/9, value: 7.5/10) [value-reasons:strong_match_score|salary_meets_minimum]",
       ].join("\n"),
       "utf-8",
