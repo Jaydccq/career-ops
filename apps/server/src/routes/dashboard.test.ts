@@ -160,6 +160,23 @@ describe("dashboard routes", () => {
     }
   });
 
+  it("rendered dashboard HTML contains no legacy token/URL references (commit-4 regression)", async () => {
+    const { fastify } = buildServer({
+      config: makeConfig(tmpRepoRoot),
+      adapter: makeAdapter(),
+    });
+    try {
+      const res = await fastify.inject({ method: "GET", url: "/dashboard/" });
+      expect(res.statusCode).toBe(200);
+      // Inline JS must not reference the legacy bridge port or header.
+      expect(res.body).not.toContain("127.0.0.1:47329");
+      expect(res.body).not.toContain("x-career-ops-pdf-token");
+      expect(res.body).not.toContain("PDF_API_TOKEN");
+    } finally {
+      await fastify.close();
+    }
+  });
+
   it("GET /dashboard/api/health (commit-3 path) is NOT in the auth allowlist — returns 401 without a token", async () => {
     const { fastify } = buildServer({
       config: makeConfig(tmpRepoRoot),

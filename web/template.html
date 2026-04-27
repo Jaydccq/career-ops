@@ -2235,9 +2235,7 @@ const generatedApplyDocs = {};
 const applyDocStatus = {};
 const applyMarkStatus = {};
 const fullEvalStatus = {};
-const PDF_API_BASE = location.protocol === 'http:' || location.protocol === 'https:'
-  ? ''
-  : 'http://127.0.0.1:47329';
+const DASHBOARD_TOKEN = document.querySelector('meta[name="career-ops-token"]')?.content || '';
 let lastApplyRowsByKey = new Map();
 function loadApplyDone() {
   try {
@@ -2662,17 +2660,17 @@ function setApplyMarkStatus(rowKey, message) {
 }
 
 async function postDashboardApi(path, payload) {
-  const response = await fetch(`${PDF_API_BASE}${path}`, {
+  const response = await fetch(`/dashboard${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-career-ops-pdf-token': window.PDF_API_TOKEN || '',
+      'X-Career-Ops-Token': DASHBOARD_TOKEN,
     },
     body: JSON.stringify(payload),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok === false) {
-    throw new Error(body.error || `PDF service returned ${response.status}`);
+    throw new Error(body.error || `Dashboard API returned ${response.status}`);
   }
   return body;
 }
@@ -2780,7 +2778,7 @@ function renderApplyNext() {
       const nextApplied = !row.localDone;
       setApplyMarkStatus(row.key, nextApplied ? 'Saving to tracker...' : 'Removing local mark...');
       renderApplyNext();
-      if (window.PDF_API_TOKEN) {
+      if (DASHBOARD_TOKEN) {
         try {
           const result = await postDashboardApi('/api/apply-status', { num: row.num, applied: nextApplied });
           const trackerRow = D.applications.find((item) => item.num === row.num);
@@ -3385,8 +3383,8 @@ function renderFullEvaluationAction(row, decision) {
   const key = trackerRowKey(row);
   const status = fullEvalStatus[key];
   const canRun = decision === 'manual_review' && row.reportPath;
-  const disabledReason = !window.PDF_API_TOKEN
-    ? 'Start with npm run dashboard'
+  const disabledReason = !DASHBOARD_TOKEN
+    ? 'Start with npm run server'
     : !row.reportPath
       ? 'No dossier'
       : '';
