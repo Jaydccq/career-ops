@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -231,5 +232,368 @@ describe("dashboard routes", () => {
     } finally {
       await fastify.close();
     }
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  /dashboard/api/* — JSON API endpoints (commit 3)                  */
+  /* ------------------------------------------------------------------ */
+
+  describe("GET /dashboard/api/health", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "GET",
+          url: "/dashboard/api/health",
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 200 + downloadsDir override when authenticated", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: { downloadsDir: "/tmp/test-downloads" },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "GET",
+          url: "/dashboard/api/health",
+          headers: { "x-career-ops-token": TOKEN },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          ok: true,
+          downloadsDir: "/tmp/test-downloads",
+        });
+      } finally {
+        await fastify.close();
+      }
+    });
+  });
+
+  describe("POST /dashboard/api/apply-docs/generate", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-docs/generate",
+          payload: { company: "Acme", role: "SWE" },
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 400 when company is missing", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          generateDocumentImpl: async () => {
+            throw new Error("should not be called when company missing");
+          },
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-docs/generate",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: { role: "SWE" },
+        });
+        expect(res.statusCode).toBe(400);
+        expect(res.json()).toEqual({ ok: false, error: "missing company" });
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 200 + doc fixture when authenticated and stub is wired", async () => {
+      const fixture = {
+        id: "abc123",
+        type: "cv",
+        filename: "cv-acme-swe.pdf",
+        outputPath: "/tmp/cv-acme-swe.pdf",
+      };
+      const calls: unknown[] = [];
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          generateDocumentImpl: async (body) => {
+            calls.push(body);
+            return fixture;
+          },
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-docs/generate",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: { type: "cv", company: "Acme", role: "SWE" },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true, doc: fixture });
+        expect(calls).toHaveLength(1);
+      } finally {
+        await fastify.close();
+      }
+    });
+  });
+
+  describe("POST /dashboard/api/apply-docs/download", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-docs/download",
+          payload: { id: "abc" },
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 200 + savedPath when stub is wired", async () => {
+      const fixture = {
+        id: "abc",
+        type: "cv",
+        filename: "cv.pdf",
+        outputPath: "/tmp/x/cv.pdf",
+        savedPath: "/Users/test/Downloads/cv.pdf",
+      };
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          copyToDownloadsImpl: async (id) => {
+            expect(id).toBe("abc");
+            return fixture;
+          },
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-docs/download",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: { id: "abc" },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true, doc: fixture });
+      } finally {
+        await fastify.close();
+      }
+    });
+  });
+
+  describe("POST /dashboard/api/apply-status", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-status",
+          payload: { num: 1, applied: true },
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 200 with status + changed when stub is wired", async () => {
+      const calls: unknown[] = [];
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          setApplicationStatusImpl: async (body) => {
+            calls.push(body);
+            return { status: "Applied", changed: true };
+          },
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/apply-status",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: { num: 7, applied: true },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          ok: true,
+          status: "Applied",
+          changed: true,
+        });
+        expect(calls).toEqual([{ num: 7, applied: true }]);
+      } finally {
+        await fastify.close();
+      }
+    });
+  });
+
+  describe("POST /dashboard/api/full-evaluation", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/full-evaluation",
+          payload: {
+            reportPath: "reports/001-acme-2026-04-27.md",
+            company: "Acme",
+            role: "SWE",
+          },
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 202 + bridge result and calls postBridge with /v1/evaluate", async () => {
+      // queueFullEvaluation (in web/dashboard-server.mjs) resolves reportPath
+      // relative to its own ROOT — the actual worktree root, not tmpRepoRoot.
+      // Write a fixture report into the real reports/ dir so the helper finds
+      // it; remove it after the test.
+      const realRepoRoot = resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../..",
+      );
+      const realReportsDir = join(realRepoRoot, "reports");
+      const fixtureFilename = "999-fulleval-fixture-2026-04-27.md";
+      const fixtureAbs = join(realReportsDir, fixtureFilename);
+      const reportsDirCreated = !existsSync(realReportsDir);
+      mkdirSync(realReportsDir, { recursive: true });
+      writeFileSync(
+        fixtureAbs,
+        "# Fixture\n\n**URL:** https://acme.example/jobs/999\n",
+        "utf8",
+      );
+
+      const calls: { path: string; body: unknown }[] = [];
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          postBridgeImpl: async (path, body) => {
+            calls.push({ path, body });
+            return { jobId: "job-xyz" };
+          },
+          bridgeBase: "http://test-bridge.local",
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/full-evaluation",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: {
+            reportPath: `reports/${fixtureFilename}`,
+            company: "Acme",
+            role: "SWE",
+          },
+        });
+        expect(res.statusCode).toBe(202);
+        expect(res.json()).toEqual({
+          ok: true,
+          jobId: "job-xyz",
+          bridgeBase: "http://test-bridge.local",
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.path).toBe("/v1/evaluate");
+      } finally {
+        await fastify.close();
+        rmSync(fixtureAbs, { force: true });
+        if (reportsDirCreated) rmSync(realReportsDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("POST /dashboard/api/full-evaluation/status", () => {
+    it("returns 401 without the auth token", async () => {
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/full-evaluation/status",
+          payload: { jobId: "job-xyz" },
+        });
+        expect(res.statusCode).toBe(401);
+      } finally {
+        await fastify.close();
+      }
+    });
+
+    it("returns 200 + job snapshot when stub is wired", async () => {
+      const snapshot = {
+        id: "job-xyz",
+        phase: "completed",
+        updatedAt: "2026-04-27T18:00:00.000Z",
+        result: {
+          reportPath: "reports/001-acme-2026-04-27.md",
+          pdfPath: null,
+          trackerMerged: true,
+          summary: { score: 4.2, recommendation: "apply" },
+        },
+      };
+      const { fastify } = buildServer({
+        config: makeConfig(tmpRepoRoot),
+        adapter: makeAdapter(),
+        dashboardOverrides: {
+          getBridgeImpl: async (path) => {
+            expect(path).toBe("/v1/jobs/job-xyz");
+            return snapshot;
+          },
+        },
+      });
+      try {
+        const res = await fastify.inject({
+          method: "POST",
+          url: "/dashboard/api/full-evaluation/status",
+          headers: { "x-career-ops-token": TOKEN },
+          payload: { jobId: "job-xyz" },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as {
+          ok: boolean;
+          job: { jobId: string; phase: string; result: unknown };
+        };
+        expect(body.ok).toBe(true);
+        expect(body.job.jobId).toBe("job-xyz");
+        expect(body.job.phase).toBe("completed");
+      } finally {
+        await fastify.close();
+      }
+    });
   });
 });

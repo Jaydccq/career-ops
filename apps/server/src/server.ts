@@ -42,7 +42,11 @@ import { bridgeError, httpStatusFor, toBridgeError } from "./runtime/errors.js";
 import { assertProtocol, failure, success } from "./runtime/envelope.js";
 import { createInMemoryJobStore } from "./runtime/job-store.js";
 import { createEvaluationWorkerPool } from "./runtime/evaluation-worker-pool.js";
-import { isPublicDashboardPath, registerDashboardRoutes } from "./routes/dashboard.js";
+import {
+  type DashboardRouteOptions,
+  isPublicDashboardPath,
+  registerDashboardRoutes,
+} from "./routes/dashboard.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Zod schemas — runtime validation that matches the static contracts        */
@@ -144,6 +148,12 @@ class RateLimiter {
 export interface BuildServerArgs {
   config: BridgeConfig;
   adapter: PipelineAdapter;
+  /**
+   * Test-only overrides for dashboard route DI hooks. Production code
+   * leaves this unset so the routes use the .mjs defaults (real PDF
+   * generation, real bridge HTTP, real applications.md path).
+   */
+  dashboardOverrides?: Omit<DashboardRouteOptions, "token" | "repoRoot">;
 }
 
 export function buildServer(args: BuildServerArgs) {
@@ -951,6 +961,7 @@ export function buildServer(args: BuildServerArgs) {
   void registerDashboardRoutes(fastify, {
     token: config.token,
     repoRoot: config.repoRoot,
+    ...(args.dashboardOverrides ?? {}),
   });
 
   return { fastify, store };
