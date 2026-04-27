@@ -32,7 +32,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { renderDashboardHtml } from "../../../../web/build-dashboard.mjs";
 // @ts-expect-error — .mjs module without types; runtime resolution only.
 // eslint-disable-next-line import/no-unresolved
-import * as dashboardServerImpl from "../../../../web/dashboard-server.mjs";
+import * as dashboardServerImpl from "../../../../web/dashboard-handlers.mjs";
 
 const {
   APPLICATIONS_PATH: DEFAULT_APPLICATIONS_PATH,

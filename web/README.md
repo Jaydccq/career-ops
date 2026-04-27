@@ -1,18 +1,20 @@
 # Career-Ops Dashboard
 
 A local dashboard for browsing reports, tracker, pipeline, and scan history.
-It is served from this repository so Apply Next actions can reuse the local
-Node/Playwright PDF generators.
+It is served by the bridge from this repository so Apply Next actions can
+reuse the local Node/Playwright PDF generators.
 
 ## Usage
 
 ```bash
-npm run dashboard       # start local dashboard server
-bun run dashboard       # same script through Bun
-bun run dashborad       # typo-compatible alias
+npm run server          # start the bridge (also serves the dashboard)
+pnpm run server         # same via pnpm
 ```
 
-Then open the printed local URL, usually `http://127.0.0.1:47329/`.
+Then open `http://127.0.0.1:47319/dashboard/`.
+
+The legacy `npm run dashboard` / `bun run dashborad` scripts now just print
+this URL — there is no separate dashboard server process anymore.
 
 ## What it shows
 
@@ -27,25 +29,29 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
 
 ## How it works
 
-1. `dashboard-server.mjs` serves `template.html` with fresh data from the repo.
+1. The bridge serves `template.html` (via `apps/server/src/routes/dashboard.ts`)
+   with fresh data from the repo at `/dashboard/`.
 2. `build-dashboard.mjs` provides the shared parser/renderer for tracker,
-   reports, pipeline, scan history, and keyword stats.
-3. Apply Next PDF buttons call the local server, which reuses
+   reports, pipeline, scan history, and keyword stats. `dashboard-handlers.mjs`
+   exports the helpers (PDF generation, apply-status mutation, full-evaluation
+   queue) that the bridge route wires into Fastify.
+3. Apply Next PDF buttons call `/dashboard/api/apply-docs/*`, which reuses
    `generate-pdf.mjs` and `generate-cover-letter.mjs`, creates PDFs under
    `output/`, and copies them into `~/Downloads` when the download button is
    clicked.
 4. Tracker rows read quick-screen decisions from report metadata such as
    `**Decision:** manual_review`. `manual_review` rows show a **Full Eval**
-   button when the local dashboard server is running. The button queues a
-   default bridge evaluation, so `npm run server` must also be running.
+   button when the bridge is running. The button queues a default bridge
+   evaluation, so `npm run server` must be running.
 5. Gmail signals are optional derived facts from read-only mailbox review. If
    `data/gmail-signals.jsonl` exists, Tracker matches records by
    `applicationNum` or exact company+role. Unmatched signals render as
    Gmail-only rows so companies discovered from the inbox still appear in the
    pipeline. Expanded rows show short email evidence, not full raw bodies.
-6. Every local dashboard start runs `scripts/refresh-gmail-signals.mjs` once
-   before serving the page. The script records its result in the gitignored
-   `data/gmail-refresh-status.json`.
+6. The Gmail refresh hook that used to run on dashboard startup is not yet
+   migrated to the bridge. Run `bun run gmail:scan` (or `npm run gmail:update`)
+   manually when you want fresh signals; the script writes
+   `data/gmail-refresh-status.json` and `data/gmail-signals.jsonl`.
 
 For a connector-assisted mailbox scan, run `/career-ops gmail-scan` inside
 Codex.
@@ -67,14 +73,14 @@ The same Google Cloud project must have Gmail API enabled. If the scan reports
 that Gmail API has not been used or is disabled, enable Gmail API in that
 project, wait for propagation, then run `bun run gmail:scan` again.
 
-After `gmail:auth`, every `bun run dashboard` startup attempts a fresh Gmail API
-scan through `scripts/gmail-oauth-refresh.mjs`. To override the scanner command:
+After `gmail:auth`, run a fresh Gmail API scan manually whenever you want to
+refresh signals:
 
 ```bash
-CAREER_OPS_GMAIL_REFRESH_COMMAND='["node","scripts/gmail-oauth-refresh.mjs"]' bun run dashboard
+bun run gmail:scan
 ```
 
-Use `CAREER_OPS_DASHBOARD_REFRESH_GMAIL=0 bun run dashboard` to skip the hook.
+The bridge does not auto-run this on startup yet.
 
 The `Apply Next` tab also stores a local completion marker in browser
 `localStorage`. That marker is a dashboard convenience only; canonical tracker
@@ -92,7 +98,8 @@ npm run dashboard:build
 ```
 
 Static export intentionally omits local profile email and Gmail signal data.
-Run `npm run dashboard` for the private, fully enriched local view.
+Run `npm run server` and open `http://127.0.0.1:47319/dashboard/` for the
+private, fully enriched local view.
 
 Run it after:
 
@@ -100,6 +107,5 @@ Run it after:
 - `node merge-tracker.mjs` runs (applications.md updates)
 - scanner runs (scan-history.tsv updates)
 
-The static snapshot can still browse embedded data, but PDF generation requires
-the local dashboard server. Full-evaluation queueing also requires the local
-dashboard server plus the bridge.
+The static snapshot can still browse embedded data, but PDF generation and
+full-evaluation queueing both require the bridge to be running.
