@@ -1860,6 +1860,14 @@ npm run verify
   - Two test files (`merge-tracker.test.ts`, `batch-runner.e2e.test.ts`) had `REPO_ROOT = resolve(import.meta.dirname, "../../..")` updated to `"../../../.."` due to extra dir-depth from the move.
   - `verify-pipeline.mjs` and `scripts/bridge-start.mjs` switched from `npm --prefix bridge` to `pnpm --filter`. Any CI without pnpm/corepack would break — sweep in Stage 6.
   - `web/dashboard-server.mjs` line 31 still references `bridge/.bridge-token` — intentionally left for Stage 3 to absorb.
+- 2026-04-27 (Stage 3 complete on `feat/client-app-restructure`):
+  - Commit 1 `7fe6375`: pure refactor — added 7 named exports + DI parameterization to web/dashboard-server.mjs.
+  - Commit 2 `5f22096`: HTML + reports routes + auth allowlist (3 paths). +6 tests (247 → 253).
+  - Commit 3 `4d28975`: 6 dashboard API endpoints with DI hooks. +13 tests (253 → 266).
+  - Commit 4 `90aa06a`: dashboard JS uses bridge token + relative URLs. +1 regression test (266 → 267).
+  - Commit 5 `deef483`: git mv web/dashboard-server.mjs → web/dashboard-handlers.mjs; new stub at original path; root scripts echo new URL; gmail-refresh startup hook intentionally NOT migrated.
+  - Commit 6 `<sha>`: live smoke verified (HTML 200, API 401/200, bridge 200, 1 meta tag) + extension build green.
+  - Out of scope (deferred): gmail-refresh startup hook, in-process loopback (currently fetches itself over 127.0.0.1), dashboard-server.mjs body fully removed.
 
 ## Final Outcome
 
