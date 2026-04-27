@@ -38,7 +38,13 @@
     "ext:build": "pnpm --filter @career-ops/extension run build",
     "server": "node scripts/bridge-start.mjs",
     "server:dev": "pnpm --filter @career-ops/extension run build && pnpm run server",
-    "ext:launcher": "node scripts/extension-launcher.mjs"
+    "ext:launcher": "node scripts/extension-launcher.mjs",
+    "app:install": "node scripts/install-launch-agent.mjs",
+    "app:uninstall": "node scripts/uninstall-launch-agent.mjs",
+    "app:status": "node scripts/app-status.mjs",
+    "app:logs": "node scripts/app-logs.mjs",
+    "app:logs:err": "node scripts/app-logs.mjs --err",
+    "app:restart": "launchctl kickstart -k gui/$(id -u)/io.hongxi.career-ops"
   },
   "keywords": [
     "ai",
