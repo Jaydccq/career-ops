@@ -20,6 +20,7 @@
   "dependencies": {
     "@career-ops/shared": "workspace:*",
     "fastify": "^5.8.4",
+    "js-yaml": "^4.1.1",
     "nanoid": "^5.1.7",
     "yaml": "^2.8.3",
     "zod": "^3.25.76"

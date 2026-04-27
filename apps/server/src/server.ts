@@ -42,6 +42,7 @@ import { bridgeError, httpStatusFor, toBridgeError } from "./runtime/errors.js";
 import { assertProtocol, failure, success } from "./runtime/envelope.js";
 import { createInMemoryJobStore } from "./runtime/job-store.js";
 import { createEvaluationWorkerPool } from "./runtime/evaluation-worker-pool.js";
+import { isPublicDashboardPath, registerDashboardRoutes } from "./routes/dashboard.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Zod schemas — runtime validation that matches the static contracts        */
@@ -165,6 +166,7 @@ export function buildServer(args: BuildServerArgs) {
   /* -- global auth hook -------------------------------------------------- */
 
   fastify.addHook("preHandler", async (req, reply) => {
+    if (isPublicDashboardPath(req)) return;
     const token = req.headers[AUTH_HEADER];
     if (typeof token !== "string" || token !== config.token) {
       const err = bridgeError(
@@ -939,6 +941,16 @@ export function buildServer(args: BuildServerArgs) {
     }
 
     reply.raw.end();
+  });
+
+  /* -- dashboard routes (HTML + reports) -------------------------------- */
+  // Routes are registered synchronously inside this async helper before any
+  // await, so the returned promise resolves once they're all attached. We
+  // intentionally do not await here since buildServer is sync; Fastify's
+  // route table is updated by the time registerDashboardRoutes returns.
+  void registerDashboardRoutes(fastify, {
+    token: config.token,
+    repoRoot: config.repoRoot,
   });
 
   return { fastify, store };
