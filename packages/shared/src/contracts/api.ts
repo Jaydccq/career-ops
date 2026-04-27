@@ -104,7 +104,7 @@ export interface HealthResult {
   bridgeVersion: string;
   execution: {
     /** Bridge adapter mode. */
-    mode: "fake" | "real" | "sdk";
+    mode: "fake" | "real";
     /** Which CLI powers real mode, if applicable. */
     realExecutor: "claude" | "codex" | null;
   };

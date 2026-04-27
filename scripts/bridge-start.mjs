@@ -25,12 +25,6 @@ const MODES = {
       CAREER_OPS_REAL_EXECUTOR: "codex",
     },
   },
-  sdk: {
-    label: "sdk",
-    env: {
-      CAREER_OPS_BRIDGE_MODE: "sdk",
-    },
-  },
 };
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,8 +35,7 @@ function usage() {
 Modes:
   fake
   real-claude
-  real-codex
-  sdk`);
+  real-codex`);
 }
 
 const args = process.argv.slice(2);

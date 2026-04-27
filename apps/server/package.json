@@ -18,7 +18,6 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.87.0",
     "@career-ops/shared": "workspace:*",
     "fastify": "^5.8.4",
     "nanoid": "^5.1.7",

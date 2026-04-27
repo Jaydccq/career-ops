@@ -63,8 +63,7 @@ export interface NewGradPendingCacheWarmResult {
 export type BridgePreset =
   | "fake"
   | "real-claude"
-  | "real-codex"
-  | "sdk";
+  | "real-codex";
 
 /* -------------------------------------------------------------------------- */
 /*  popup -> background                                                       */

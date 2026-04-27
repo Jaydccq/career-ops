@@ -12,7 +12,6 @@ import type { PipelineAdapter, PipelineConfig } from "./contracts/pipeline.js";
 import { loadConfig } from "./runtime/config.js";
 import { createFakePipelineAdapter } from "./adapters/fake-pipeline.js";
 import { createClaudePipelineAdapter } from "./adapters/claude-pipeline.js";
-import { createSdkPipelineAdapter } from "./adapters/sdk-pipeline.js";
 import { buildServer } from "./server.js";
 
 function toPipelineConfig(
@@ -43,9 +42,6 @@ async function main(): Promise<void> {
       break;
     case "real":
       adapter = createClaudePipelineAdapter(pipelineCfg);
-      break;
-    case "sdk":
-      adapter = createSdkPipelineAdapter(pipelineCfg);
       break;
   }
 
