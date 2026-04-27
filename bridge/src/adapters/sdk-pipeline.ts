@@ -96,6 +96,7 @@ import { readBuiltInPendingEntries as readPendingBuiltInEntries } from "./builti
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { jobCompanyRoleKey } from "./job-identity.js";
+import { readAutofillProfile, readAutofillResume } from "./autofill-profile.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Zod schema for structured evaluation output                                */
@@ -580,6 +581,14 @@ export function createSdkPipelineAdapter(
 
     async backfillNewGradPendingCache(entries) {
       return backfillPendingNewGradCache(config.repoRoot, entries);
+    },
+
+    async readAutofillProfile() {
+      return readAutofillProfile(config.repoRoot);
+    },
+
+    async readAutofillResume() {
+      return readAutofillResume(config.repoRoot);
     },
   };
 }

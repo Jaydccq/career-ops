@@ -28,7 +28,23 @@ const SETUP_REQUIRED_EXIT = 78;
 
 const DEFAULT_QUERIES = [
   'in:anywhere newer_than:12m {from:hire.lever.co from:greenhouse-mail.io from:ashbyhq.com from:smartrecruiters.com from:talent.icims.com from:myworkday.com from:greenhouse.io from:lever.co from:workday.com}',
-  'in:anywhere newer_than:12m (application OR applied OR interview OR assessment OR "online assessment" OR recruiter OR "schedule" OR offer OR rejection)',
+  'in:anywhere newer_than:12m -category:promotions -category:social {"thank you for applying" "received your application" "your application" "application status" "application for" "interview invitation" "schedule interview" "your interview" "online assessment" "coding challenge" hackerrank codesignal "offer letter" "job offer" "employment offer" "not moving forward" "not selected" "talent acquisition"}',
+];
+
+const TRUSTED_RECRUITING_DOMAINS = [
+  'hire.lever.co',
+  'greenhouse-mail.io',
+  'greenhouse.io',
+  'ashbyhq.com',
+  'smartrecruiters.com',
+  'talent.icims.com',
+  'icims.com',
+  'myworkday.com',
+  'workday.com',
+  'lever.co',
+  'workablemail.com',
+  'jobvite.com',
+  'bamboohr.com',
 ];
 
 const GENERIC_SENDER_NAMES = new Set([
@@ -43,7 +59,137 @@ const GENERIC_SENDER_NAMES = new Set([
   'no-reply',
   'candidate experience',
   'human resources',
+  'marketing',
+  'email',
+  'mailer',
+  'newsletter',
+  'news',
+  'updates',
+  'customer service',
 ]);
+
+const PERSONAL_HIRING_CONTEXT_PATTERNS = [
+  /\bthank you for applying\b/i,
+  /\b(?:we|i|our team)\s+(?:have\s+)?received your application\b/i,
+  /\byour application (?:for|to|with|has|was|is|status|update|received|submitted)\b/i,
+  /\bapplication status\b/i,
+  /\bapplication (?:for|to|with)\b/i,
+  /\b(?:job|employment) offer\b/i,
+  /\boffer letter\b/i,
+  /\bextend(?:ing)? (?:you )?an offer\b/i,
+  /\binterview schedul(?:e|ing|ed)\b/i,
+  /\binterview (?:invitation|schedule|scheduled|with|for|availability)\b/i,
+  /\byour interview\b/i,
+  /\bschedule (?:an? |your |the )?(?:interview|call|phone screen)\b/i,
+  /\bself-schedule\b/i,
+  /\bphone screen\b/i,
+  /\btechnical screen\b/i,
+  /\bonline assessment\b/i,
+  /\bcoding challenge\b/i,
+  /\bhackerrank\b/i,
+  /\bcodesignal\b/i,
+  /\bnot moving forward\b/i,
+  /\bwill not be moving forward\b/i,
+  /\bnot selected\b/i,
+  /\bdecided not to proceed\b/i,
+  /\bposition has been filled\b/i,
+  /\btalent acquisition\b/i,
+  /\bhiring team\b/i,
+  /\bwould like to (?:speak|schedule|connect)\b/i,
+  /\bnext steps? (?:for|in)\b/i,
+];
+
+const APPLICATION_RECEIPT_PATTERNS = [
+  /\bthank you for applying\b/i,
+  /\bthanks for applying\b/i,
+  /\breceived your application\b/i,
+  /\bwe have received your application\b/i,
+  /\byour application has been received\b/i,
+  /\bsubmitted your application\b/i,
+];
+
+const APPLICATION_REVIEW_ONLY_PATTERNS = [
+  /\bcurrently reviewing\b/i,
+  /\bwill be reviewed\b/i,
+  /\bwill review\b/i,
+  /\breviewing (?:all|your|resumes|applications|your background)\b/i,
+  /\bwill evaluate\b/i,
+  /\bcarefully evaluate\b/i,
+  /\bif your application (?:seems|is|looks)\b/i,
+  /\bif (?:we|our team) (?:believe|find|determine)\b/i,
+  /\bwe will contact you\b/i,
+  /\bwe will be in touch\b/i,
+  /\bwe will reach out\b/i,
+];
+
+const APPLICATION_OWNED_CONTEXT_PATTERNS = [
+  /\bthank you for applying\b/i,
+  /\b(?:we|i|our team)\s+(?:have\s+)?received your application\b/i,
+  /\byour application (?:for|to|with|has|was|is|status|update|received|submitted)\b/i,
+  /\bapplication status\b/i,
+  /\bapplication (?:for|to|with)\b/i,
+  /\b(?:job|employment) offer\b/i,
+  /\boffer letter\b/i,
+  /\bextend(?:ing)? (?:you )?an offer\b/i,
+  /\binterview invitation\b/i,
+  /\byour interview\b/i,
+  /\binterview is scheduled\b/i,
+  /\bmeeting is scheduled\b/i,
+  /\bonline assessment\b/i,
+  /\bcoding challenge\b/i,
+  /\bhackerrank\b/i,
+  /\bcodesignal\b/i,
+  /\bnot moving forward\b/i,
+  /\bwill not be moving forward\b/i,
+  /\bnot selected\b/i,
+  /\bdecided not to proceed\b/i,
+  /\bposition has been filled\b/i,
+];
+
+const DIRECT_SIGNAL_CONTEXT_PATTERNS = [
+  /\bthank you for applying\b/i,
+  /\breceived your application\b/i,
+  /\byour application (?:has|was|is|status|update|received|submitted)\b/i,
+  /\bapplication status\b/i,
+  /\binterview invitation\b/i,
+  /\byour interview\b/i,
+  /\binterview is scheduled\b/i,
+  /\bmeeting is scheduled\b/i,
+  /\bonline assessment\b/i,
+  /\bcoding challenge\b/i,
+  /\boffer letter\b/i,
+  /\b(?:job|employment) offer\b/i,
+  /\bnot moving forward\b/i,
+  /\bnot selected\b/i,
+  /\bdecided not to proceed\b/i,
+];
+
+const WEAK_HIRING_CONTEXT_PATTERNS = [
+  /\b(?:candidate|recruiter|recruiting|careers?|hiring|position|role|job|opening|applicant)\b/i,
+  /\b(?:software|data|machine learning|ai|backend|frontend|full stack|platform|systems?) engineer\b/i,
+];
+
+const NEWSLETTER_NOISE_PATTERNS = [
+  /\btalent community\b/i,
+  /\bcareer opportunities\b/i,
+  /\bupdates from\b/i,
+  /\bemail banner\b/i,
+  /\bweekly roundup\b/i,
+  /\bmorning coffees?\b/i,
+  /\bsunday ['’]?spresso\b/i,
+];
+
+const MARKETING_NOISE_PATTERNS = [
+  /\bview in browser\b/i,
+  /\bunsubscribe\b/i,
+  /\b(?:sale|discount|coupon|promo|promotion|deal|savings|shop now|book today)\b/i,
+  /\b\d+%\s*off\b/i,
+  /\b(?:cash back|bonus points|credit card|account activity|rewards?)\b/i,
+  /\b(?:member exclusive|exclusive offer|offer ends|final hours|last call)\b/i,
+  /\b(?:daily digest|weekly digest|newsletter)\b/i,
+  /\br\/[a-z0-9_]+\b/i,
+  /\b(?:usage alert|billing cycle|rent|payment|statement|order)\b/i,
+];
 
 function usage() {
   return `career-ops Gmail OAuth scanner
@@ -396,6 +542,49 @@ function parseEmail(raw = '') {
   return { name: raw.replace(/<[^>]+>/g, '').trim(), email: raw.includes('@') ? raw.trim() : '' };
 }
 
+function emailDomain(email = '') {
+  return (email.split('@')[1] || '').trim().toLowerCase();
+}
+
+function hasAnyPattern(patterns, text = '') {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function isTrustedRecruitingSender(from = {}) {
+  const domain = emailDomain(from.email || '');
+  if (domain && TRUSTED_RECRUITING_DOMAINS.some((trusted) => domain === trusted || domain.endsWith(`.${trusted}`))) {
+    return true;
+  }
+  return /\b(recruiting|talent acquisition|candidate experience|careers)\b/i.test(`${from.name || ''} ${from.email || ''}`);
+}
+
+function hasPersonalHiringContext(text = '') {
+  return hasAnyPattern(PERSONAL_HIRING_CONTEXT_PATTERNS, text);
+}
+
+function hasApplicationOwnedContext(text = '') {
+  return hasAnyPattern(APPLICATION_OWNED_CONTEXT_PATTERNS, text);
+}
+
+function hasDirectSignalContext(text = '') {
+  return hasAnyPattern(DIRECT_SIGNAL_CONTEXT_PATTERNS, text);
+}
+
+function isApplicationReviewOnly(text = '') {
+  return hasAnyPattern(APPLICATION_RECEIPT_PATTERNS, text) &&
+    hasAnyPattern(APPLICATION_REVIEW_ONLY_PATTERNS, text);
+}
+
+function hasWeakHiringContext(text = '') {
+  return hasAnyPattern(WEAK_HIRING_CONTEXT_PATTERNS, text);
+}
+
+function isLikelyMailboxNoise({ text = '', from = {} } = {}) {
+  if (hasAnyPattern(NEWSLETTER_NOISE_PATTERNS, text) && !hasDirectSignalContext(text)) return true;
+  if (isTrustedRecruitingSender(from)) return false;
+  return hasAnyPattern(MARKETING_NOISE_PATTERNS, text) && !hasApplicationOwnedContext(text);
+}
+
 function titleCase(value = '') {
   return value
     .split(/[\s_-]+/)
@@ -407,7 +596,7 @@ function titleCase(value = '') {
 }
 
 function domainCompany(email = '') {
-  const domain = email.split('@')[1]?.toLowerCase() || '';
+  const domain = emailDomain(email);
   const root = domain.split('.').filter(Boolean)[0] || '';
   if (!root || ['gmail', 'google', 'greenhouse-mail', 'hire', 'lever', 'ashbyhq', 'myworkday', 'smartrecruiters', 'icims'].includes(root)) {
     return '';
@@ -415,9 +604,19 @@ function domainCompany(email = '') {
   return titleCase(root.replace(/[-_]+/g, ' '));
 }
 
+function senderNameCompany(name = '') {
+  const cleanedName = name.trim();
+  if (!cleanedName || GENERIC_SENDER_NAMES.has(cleanedName.toLowerCase())) return '';
+  return cleanCompany(firstPattern([
+    /\bfrom\s+([A-Z][A-Za-z0-9&' -]{2,70})$/i,
+    /\bat\s+([A-Z][A-Za-z0-9&' -]{2,70})$/i,
+  ], cleanedName)) || '';
+}
+
 function cleanCompany(value = '') {
   return value
     .replace(/^(the\s+)?/i, '')
+    .replace(/^(?:an?\s+)?unattended mailbox\b.*$/i, '')
     .replace(/\s+(team|careers|recruiting|talent|inc\.?|llc|corp\.?)$/i, '')
     .replace(/[.,:;]+$/g, '')
     .trim();
@@ -438,15 +637,57 @@ function firstPattern(patterns, text) {
   return '';
 }
 
-export function classifyEvent({ subject = '', text = '' }) {
-  const haystack = `${subject}\n${text}`.toLowerCase();
-  if (/\b(offer|offered|offer letter|congratulations)\b/.test(haystack)) return 'offer';
-  if (/\b(unfortunately|not moving forward|will not be moving forward|not selected|decided not to proceed|filled the position|closed the role)\b/.test(haystack)) return 'rejected';
-  if (/\b(interview|meeting is scheduled|self-schedule|schedule the call|google meet|exploratory call|phone screen|onsite|technical screen)\b/.test(haystack)) return 'interview';
-  if (/\b(online assessment|assessment|coding challenge|hackerrank|codesignal|oa\b|complete your test)\b/.test(haystack)) return 'online_assessment';
-  if (/\b(action required|please complete|deadline|due by|requires your attention)\b/.test(haystack)) return 'action_required';
-  if (/\b(received your application|thank you for applying|application received|we received your application|submitted your application)\b/.test(haystack)) return 'applied';
-  if (/\b(recruiter|talent acquisition|next step|invite you|would like to speak)\b/.test(haystack)) return 'responded';
+function isGenericCompany(value = '') {
+  return !value ||
+    /^(jobvite|ats|greenhouse|workday|myworkday|rippling|unknown company)$/i.test(value) ||
+    /^(?:an?\s+)?unattended mailbox\b/i.test(value) ||
+    /\b(position|role|job|opening)\s+at\b/i.test(value);
+}
+
+function isGenericRole(value = '') {
+  return !value ||
+    value.length > 90 ||
+    /\b(application has been received|your application seems|we will contact you|requirements of the|needs of the team|role\. in the meantime|world who help|first 90 days)\b/i.test(value);
+}
+
+export function classifyEvent({ subject = '', text = '', from = {} }) {
+  const haystack = `${subject}\n${text}`;
+  const lower = haystack.toLowerCase();
+  const trustedSender = isTrustedRecruitingSender(from);
+  const personalHiringContext = hasPersonalHiringContext(haystack);
+  const weakHiringContext = hasWeakHiringContext(haystack);
+  const hiringContext = personalHiringContext || (trustedSender && weakHiringContext);
+
+  if (hasAnyPattern(NEWSLETTER_NOISE_PATTERNS, subject) && !hasDirectSignalContext(subject)) return '';
+  if (!hiringContext || isLikelyMailboxNoise({ text: haystack, from })) return '';
+
+  if (/\b(offer letter|job offer|employment offer|extend(?:ing)? (?:you )?an offer|offer for (?:the )?(?:position|role|job|opening))\b/.test(lower)) {
+    return 'offer';
+  }
+  if (/\b(unfortunately|not moving forward|will not be moving forward|not selected|decided not to proceed|filled the position|closed the role|position has been filled)\b/.test(lower)) {
+    return 'rejected';
+  }
+  if (isApplicationReviewOnly(haystack)) {
+    return 'applied';
+  }
+  if (/\b(interview invitation|your interview|interview schedul(?:e|ing|ed)|interview is scheduled|meeting is scheduled|self-schedule|schedule (?:an? |your |the )?(?:interview|call|phone screen)|google meet|exploratory call|phone screen|onsite|technical screen)\b/.test(lower)) {
+    return 'interview';
+  }
+  if (/\b(online assessment|coding challenge|hackerrank|codesignal|oa\b|complete your test|assessment for (?:the )?(?:position|role|job))\b/.test(lower)) {
+    return 'online_assessment';
+  }
+  if (/\b(action required|please complete|deadline|due by|requires your attention)\b/.test(lower)) {
+    return 'action_required';
+  }
+  if (/\b(received your application|thank you for applying|application received|we received your application|submitted your application)\b/.test(lower)) {
+    return 'applied';
+  }
+  if (/\bapplication status\b/.test(lower)) {
+    return 'responded';
+  }
+  if (/\b(talent acquisition|next step|invite you|would like to speak|would like to schedule|would like to connect)\b/.test(lower)) {
+    return 'responded';
+  }
   return '';
 }
 
@@ -456,22 +697,39 @@ export function extractSignalFromMessage(message) {
   const subject = headers.subject || '';
   const bodyText = compactText(collectTextParts(message.payload).join('\n'), 4000);
   const searchText = `${subject}\n${bodyText}`;
-  const eventType = classifyEvent({ subject, text: bodyText });
+  const eventType = classifyEvent({ subject, text: bodyText, from });
   if (!eventType) return null;
 
-  const company = cleanCompany(firstPattern([
-    /\bat\s+([A-Z][A-Za-z0-9&' -]{2,70}?)(?:\.|,|\n|\s{2,}|$)/,
+  const companyCandidates = [
+    cleanCompany(firstPattern([
+      /application for\s+.+?\s+at\s+([A-Z][A-Za-z0-9&' -]{2,90}?)(?:\.|,|!|\n|\s{2,}|$)/i,
+      /(?:thank you|thanks) for applying to\s+([A-Z][A-Za-z0-9&' -]{2,90}?)(?:\.|,|!|\||\n|\s{2,}|$)/i,
+      /interest in\s+(?:a career with|joining)?\s*([A-Z][A-Za-z0-9&' -]{2,90}?)(?:\.|,|!|\n|\s{2,}|$)/i,
+      /(?:position|role|job|opening|interview)\s+(?:at|with)\s+([A-Z][A-Za-z0-9&' -]{2,90}?)(?:\.|,|!|\n|\s{2,}|$)/i,
+      /-\s*([A-Z][A-Za-z0-9&' -]{2,90}?)(?:\.|,|!|\n|\s{2,}|$)/i,
+    ], searchText)),
+    cleanCompany(firstPattern([
     /applying to\s+(?:the\s+)?(?:.+?)\s+at\s+([A-Z][A-Za-z0-9&' -]{2,70}?)(?:\.|,|\n|\s{2,}|$)/i,
     /application (?:to|with)\s+([A-Z][A-Za-z0-9&' -]{2,70}?)(?:\.|,|\n|\s{2,}|$)/i,
     /career opportunities at\s+([A-Z][A-Za-z0-9&' -]{2,70}?)(?:\.|,|\n|\s{2,}|$)/i,
     /from\s+([A-Z][A-Za-z0-9&' -]{2,70}?)(?:\.|,|\n|\s{2,}|$)/i,
-  ], searchText)) || domainCompany(from.email) || cleanCompany(from.name);
+    ], searchText)),
+    domainCompany(from.email),
+    senderNameCompany(from.name),
+  ].filter((candidate) => !isGenericCompany(candidate));
+  const company = companyCandidates[0] || '';
 
-  const role = cleanRole(firstPattern([
-    /(?:the|for the)\s+([A-Z][A-Za-z0-9,&/()' .+-]{3,90})\s+(?:position|role|job|opening)/i,
-    /application for\s+([A-Z][A-Za-z0-9,&/()' .+-]{3,90})/i,
-    /applying to\s+(?:the\s+)?([A-Z][A-Za-z0-9,&/()' .+-]{3,90})\s+at\s+/i,
-  ], searchText)) || 'Software Engineer';
+  const roleCandidates = [
+    cleanRole(firstPattern([
+      /application for\s+(?:our\s+)?([A-Z][A-Za-z0-9,&/()' .+-]{3,90}?)\s+at\s+[A-Z]/i,
+      /(?:our|the)\s+([A-Z][A-Za-z0-9,&/()' .+-]{3,90}?)\s+(?:position|role|job|opening)/i,
+      /(?:the|for the)\s+([A-Z][A-Za-z0-9,&/()' .+-]{3,90})\s+(?:position|role|job|opening)/i,
+      /application for\s+([A-Z][A-Za-z0-9,&/()' .+-]{3,90})/i,
+      /applying to\s+(?:the\s+)?([A-Z][A-Za-z0-9,&/()' .+-]{3,90})\s+at\s+/i,
+    ], searchText)),
+  ].filter((candidate) => !isGenericRole(candidate));
+  const extractedRole = roleCandidates[0] || '';
+  const role = extractedRole || 'Unknown Role';
 
   const genericName = GENERIC_SENDER_NAMES.has(from.name.toLowerCase());
   const recentContact = !genericName && from.name ? from.name : domainCompany(from.email) || 'no reply';
@@ -520,9 +778,34 @@ function signalKey(signal) {
     [signal.company, signal.role, signal.eventType, signal.eventDate].map((v) => String(v || '').toLowerCase()).join('|');
 }
 
+function normalizeEventType(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (normalized === 'oa') return 'online_assessment';
+  if (normalized === 'rejection') return 'rejected';
+  return normalized;
+}
+
+export function isValidStoredSignal(signal = {}) {
+  const expectedEvent = normalizeEventType(signal.eventType || signal.type || signal.status || '');
+  if (!expectedEvent) return false;
+  if (isGenericCompany(signal.company || '') || isGenericRole(signal.role || '')) return false;
+  const from = parseEmail(signal.sender || signal.from || '');
+  const subject = signal.subject || '';
+  const text = [
+    signal.summary,
+    signal.snippet,
+    signal.recommendedAction,
+    signal.action,
+  ].filter(Boolean).join('\n');
+  const actualEvent = normalizeEventType(classifyEvent({ subject, text, from }));
+  return Boolean(actualEvent) && actualEvent === expectedEvent;
+}
+
 export function mergeSignals(existing, next) {
   const byKey = new Map();
-  for (const signal of existing) byKey.set(signalKey(signal), signal);
+  for (const signal of existing) {
+    if (isValidStoredSignal(signal)) byKey.set(signalKey(signal), signal);
+  }
   for (const signal of next) byKey.set(signalKey(signal), { ...byKey.get(signalKey(signal)), ...signal });
   return [...byKey.values()].sort((a, b) => String(b.receivedAt || b.eventDate || '').localeCompare(String(a.receivedAt || a.eventDate || '')));
 }
@@ -550,11 +833,14 @@ async function runScan(options) {
     }
   }
 
-  const merged = mergeSignals(parseGmailSignals(), signals);
+  const existingSignals = parseGmailSignals();
+  const retainedExistingCount = existingSignals.filter(isValidStoredSignal).length;
+  const merged = mergeSignals(existingSignals, signals);
   if (!options.dryRun) writeSignals(merged);
 
   console.log(`[gmail-oauth] scanned ${seen.size} messages`);
   console.log(`[gmail-oauth] extracted ${signals.length} signals`);
+  console.log(`[gmail-oauth] retained ${retainedExistingCount}/${existingSignals.length} existing signals after strict validation`);
   console.log(`[gmail-oauth] ${options.dryRun ? 'would write' : 'wrote'} ${merged.length} total signals to ${SIGNALS_PATH}`);
   if (existsSync(SIGNALS_PATH)) {
     console.log(`[gmail-oauth] current signal file mtime ${statSync(SIGNALS_PATH).mtime.toISOString()}`);

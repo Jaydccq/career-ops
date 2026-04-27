@@ -436,6 +436,12 @@ function completedEvaluations(result) {
 
 function recoveryCommand(label, output) {
   const lower = output.toLowerCase();
+  if (lower.includes("chrome not connected") || lower.includes("cdp websocket closed")) {
+    return "bb-browser daemon shutdown && bb-browser tab list";
+  }
+  if (lower.includes("bb-browser is not available") || lower.includes("spawn bb-browser enoent")) {
+    return "add /Users/hongxichen/.npm-global/bin to the host scheduler PATH";
+  }
   if (lower.includes("linkedin") && (lower.includes("login") || lower.includes("checkpoint"))) {
     return "bb-browser open https://www.linkedin.com/login";
   }
@@ -459,11 +465,18 @@ function recoveryCommand(label, output) {
 
 function blockedReason(output) {
   const lower = output.toLowerCase();
+  if (lower.includes("chrome not connected") || lower.includes("cdp websocket closed")) return "browser";
+  if (lower.includes("bb-browser is not available") || lower.includes("spawn bb-browser enoent")) return "browser";
   if (lower.includes("login")) return "login";
   if (lower.includes("checkpoint")) return "checkpoint";
   if (lower.includes("rate limit") || lower.includes("429")) return "rate_limit";
   if (lower.includes("verification") || lower.includes("security check")) return "verification";
-  if (lower.includes("parse") || lower.includes("did not contain a jobs array")) return "parsing";
+  if (
+    lower.includes("failed to parse") ||
+    lower.includes("parse error") ||
+    lower.includes("parsing failed") ||
+    lower.includes("did not contain a jobs array")
+  ) return "parsing";
   if (lower.includes("timed out")) return "timeout";
   return "";
 }
@@ -490,6 +503,7 @@ async function writeSummary(results, bridgeState) {
   const summaryPath = join(automationDir, `hourly-scan-${stamp}.md`);
   const totalCompleted = results.reduce((total, result) => total + completedEvaluations(result), 0);
   const blockers = results
+    .filter((result) => !result.ok)
     .map((result) => ({
       label: result.label,
       reason: blockedReason(result.outputTail),

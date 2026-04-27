@@ -23,6 +23,7 @@ import type {
   PhaseTransition,
 } from "./jobs.js";
 import type { BridgeError } from "./envelope.js";
+import type { AutofillProfile, AutofillResumeFile } from "./autofill.js";
 import type {
   BuiltInPendingResult,
   NewGradRow,
@@ -184,6 +185,19 @@ export interface PipelineAdapter {
   backfillNewGradPendingCache(
     entries: readonly NewGradPendingCacheBackfillInput[],
   ): Promise<NewGradPendingCacheBackfillResult>;
+
+  /**
+   * Read the safe profile fields used by the browser extension's
+   * click-to-fill application form helper. Pure filesystem read.
+   */
+  readAutofillProfile(): Promise<AutofillProfile>;
+
+  /**
+   * Read the configured resume file for the browser extension's explicit
+   * click-to-attach helper. Pure filesystem read; the extension still never
+   * submits or advances an application.
+   */
+  readAutofillResume(): Promise<AutofillResumeFile>;
 }
 
 /* -------------------------------------------------------------------------- */

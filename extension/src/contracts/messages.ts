@@ -20,6 +20,7 @@
  */
 
 import type {
+  AutofillProfile,
   EvaluationInput,
   EvaluationResult,
   JobEvent,
@@ -108,6 +109,10 @@ export type PopupRequest =
   | { kind: "readReport"; reportNum: number }
   /** Ask background to merge tracker additions via the bridge. */
   | { kind: "mergeTracker"; dryRun?: boolean }
+  /** Read safe profile fields for click-to-fill application forms. */
+  | { kind: "getAutofillProfile" }
+  /** Read the configured resume PDF for explicit click-to-attach. */
+  | { kind: "getAutofillResume" }
   /** Trigger list page extraction on the active newgrad-jobs.com tab. */
   | { kind: "newgradExtractList" }
   /** Read unchecked newgrad-scan candidates from data/pipeline.md. */
@@ -170,6 +175,10 @@ export type PopupResponse =
   | { kind: "readReport"; ok: false; error: BridgeError }
   | { kind: "mergeTracker"; ok: true; result: MergeReport }
   | { kind: "mergeTracker"; ok: false; error: BridgeError }
+  | { kind: "getAutofillProfile"; ok: true; result: AutofillProfile }
+  | { kind: "getAutofillProfile"; ok: false; error: BridgeError }
+  | { kind: "getAutofillResume"; ok: true; result: import("./bridge-wire.js").AutofillResumeFile }
+  | { kind: "getAutofillResume"; ok: false; error: BridgeError }
   | { kind: "newgradExtractList"; ok: true; result: { rows: NewGradRow[]; pageInfo: { currentPage: number; totalRows: number } } }
   | { kind: "newgradExtractList"; ok: false; error: BridgeError }
   | { kind: "newgradPending"; ok: true; result: NewGradPendingResult }

@@ -13,7 +13,7 @@
  * to the background service worker, same as the old popup.
  */
 
-import type { JobPhase } from "../contracts/bridge-wire.js";
+import type { AutofillProfile, AutofillProfileField, JobPhase } from "../contracts/bridge-wire.js";
 import {
   type BridgePreset,
   PHASE_ORDER,
@@ -23,6 +23,22 @@ import {
   presetFromHealth,
   scoreColor,
 } from "../shared/utils.js";
+import { AUTOFILL_CONTROL_SELECTOR } from "../shared/autofill-option-scoring.js";
+import {
+  autofillInputKind,
+  controlLabel,
+  isAutofillCandidate,
+  normalizeAutofillLabel,
+  type AutofillControl,
+} from "../shared/autofill-dom.js";
+import {
+  bestSelectOption,
+  checkboxShouldBeChecked,
+  optionMatchesAnswer,
+  resumeFileControls,
+  scanAutofillMatches,
+  type AutofillMatch,
+} from "../shared/autofill-matcher.js";
 
 declare const __EXTENSION_VERSION__: string;
 const PANEL_ID = "career-ops-panel-root";
@@ -179,24 +195,25 @@ function buildStyles(): string {
   return `
 :host {
   all: initial;
-  --bg: #10120f;
-  --surface: #171915;
-  --surface-raised: #1f231d;
-  --surface-soft: #151713;
-  --field: #0b0d0b;
-  --border: #32382f;
-  --border-strong: #4a5345;
-  --text: #eef2ea;
-  --muted: #a3ad9e;
-  --dim: #6f796a;
-  --accent: #37d7d2;
-  --accent-strong: #8df0ed;
-  --accent-ink: #071212;
-  --lime: #c8f05a;
-  --ok: #62d883;
-  --warn: #efc75e;
-  --err: #ff7668;
-  --shadow: rgba(0,0,0,0.46);
+  --bg: #f4f8f3;
+  --surface: #ffffff;
+  --surface-raised: #eef7ef;
+  --surface-soft: #f7fbf6;
+  --field: #fbfdf9;
+  --border: #dce7d9;
+  --border-strong: #c2d2bf;
+  --text: #162015;
+  --muted: #5f6f5d;
+  --dim: #81907e;
+  --accent: #16a765;
+  --accent-strong: #0f8f56;
+  --accent-soft: #e3f6ea;
+  --accent-ink: #ffffff;
+  --lime: #79b83f;
+  --ok: #16a765;
+  --warn: #b7791f;
+  --err: #d8463f;
+  --shadow: rgba(35,55,31,0.16);
   --font: "Aptos", "Fira Sans", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: "Fira Code", "SFMono-Regular", ui-monospace, Menlo, monospace;
   --r-sm: 4px;
@@ -207,13 +224,11 @@ function buildStyles(): string {
 
 .panel-container {
   width: 380px;
-  background:
-    linear-gradient(180deg, rgba(55,215,210,0.08), transparent 72px),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  box-shadow: 0 18px 54px var(--shadow);
+  box-shadow: 0 22px 64px var(--shadow);
   font-size: 13px;
   font-family: var(--font);
   line-height: 1.45;
@@ -221,7 +236,7 @@ function buildStyles(): string {
   display: flex;
   flex-direction: column;
   max-height: 80vh;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .drag-bar {
@@ -230,7 +245,7 @@ function buildStyles(): string {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(23,25,21,0.96);
+  background: rgba(255,255,255,0.96);
   cursor: grab;
   user-select: none;
   border-bottom: 1px solid var(--border);
@@ -249,8 +264,8 @@ function buildStyles(): string {
 .drag-bar h1 {
   margin: 2px 0 0;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 680;
+  font-size: 15px;
+  font-weight: 760;
   letter-spacing: 0;
   line-height: 1.1;
 }
@@ -271,6 +286,7 @@ function buildStyles(): string {
   border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 10px;
+  box-shadow: 0 1px 2px rgba(35,55,31,0.08);
 }
 .health .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
 .health[data-state="ok"] .dot { background: var(--ok); }
@@ -309,33 +325,42 @@ function buildStyles(): string {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: 0 8px 22px rgba(35,55,31,0.10);
 }
 
 .section-title {
   color: var(--dim);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 760;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .hidden { display: none !important; }
 
-.capture-url { color: var(--muted); font-size: 11px; word-break: break-all; }
-.capture-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.capture-url {
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 8px;
+}
+.capture-title { color: var(--text); font-size: 13px; font-weight: 720; }
 .capture-detection { color: var(--muted); font-size: 11px; }
 
 .cta {
   appearance: none;
   min-height: 34px;
-  background: transparent;
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 7px 10px;
   font-family: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 720;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
@@ -350,6 +375,7 @@ function buildStyles(): string {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
+  box-shadow: 0 8px 18px rgba(22,167,101,0.22);
 }
 .cta.primary:hover {
   background: var(--accent-strong);
@@ -374,7 +400,7 @@ function buildStyles(): string {
 .phase-list li {
   color: var(--muted);
   border-left: 2px solid var(--border);
-  padding: 2px 0 2px 8px;
+  padding: 3px 0 3px 8px;
 }
 .phase-list li.active { color: var(--text); border-left-color: var(--accent); font-weight: 650; }
 .phase-list li.completed { color: var(--ok); border-left-color: var(--ok); }
@@ -382,7 +408,15 @@ function buildStyles(): string {
 
 .result { font-size: 13px; font-weight: 500; }
 .result .score { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
-.result-tldr { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.result-tldr {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 8px;
+}
 .result-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .error-code { color: var(--err); font-family: var(--mono); font-size: 11px; }
@@ -394,8 +428,8 @@ function buildStyles(): string {
 }
 
 .offline-banner {
-  background: rgba(255,118,104,0.12);
-  border: 1px solid rgba(255,118,104,0.42);
+  background: #fff4f2;
+  border: 1px solid #f0b8b2;
   border-radius: var(--r-sm);
   padding: 8px 10px;
   color: var(--err);
@@ -420,13 +454,13 @@ function buildStyles(): string {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  padding: 7px 10px;
+  padding: 8px 10px;
   font-family: var(--mono);
   font-size: 11px;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.setup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(55,215,210,0.14); }
+.setup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .mode-summary {
   display: flex;
@@ -455,11 +489,11 @@ function buildStyles(): string {
   border-radius: var(--r-sm);
   cursor: pointer;
   font-size: 11px;
-  padding: 5px 4px;
+  padding: 7px 8px;
   transition: background 120ms ease, color 120ms ease;
 }
 .recent-item:last-child { border-bottom: none; }
-.recent-item:hover { background: rgba(55,215,210,0.06); }
+.recent-item:hover { background: var(--surface-soft); }
 .recent-item:hover .company { color: var(--accent-strong); }
 .recent-item .company { color: var(--text); font-weight: 650; }
 .recent-item .role { color: var(--muted); margin-left: 4px; }
@@ -483,7 +517,7 @@ function buildStyles(): string {
   background: var(--surface-soft);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  padding: 6px 8px;
+  padding: 7px 8px;
 }
 .metric.ok { color: var(--ok); }
 .metric.warn { color: var(--warn); }
@@ -494,9 +528,7 @@ function buildStyles(): string {
   gap: 8px;
 }
 .source-card {
-  background:
-    linear-gradient(135deg, rgba(200,240,90,0.10), transparent 42%),
-    var(--surface-soft);
+  background: var(--surface-soft);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 8px;
@@ -513,8 +545,8 @@ function buildStyles(): string {
   align-items: center;
   min-height: 22px;
   padding: 3px 7px;
-  background: rgba(55,215,210,0.12);
-  border: 1px solid rgba(55,215,210,0.36);
+  background: var(--accent-soft);
+  border: 1px solid #b9e8cb;
   border-radius: 999px;
   color: var(--accent-strong);
   font-family: var(--mono);
@@ -551,7 +583,7 @@ function buildStyles(): string {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  background: rgba(238,242,234,0.03);
+  background: var(--surface-soft);
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   font-size: 11px;
@@ -579,7 +611,7 @@ function buildStyles(): string {
   margin-top: 6px;
 }
 .newgrad-eval-item {
-  background: rgba(238,242,234,0.03);
+  background: var(--surface-soft);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 6px 8px;
@@ -609,6 +641,33 @@ function buildStyles(): string {
   gap: 6px;
   flex-wrap: wrap;
 }
+.autofill-summary {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 7px 8px;
+}
+.autofill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.autofill-chip {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  padding: 4px 7px;
+}
+.autofill-chip[data-confidence="low"] {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
 .footer {
   color: var(--dim);
   font-size: 10px;
@@ -635,7 +694,7 @@ function buildHTML(): string {
   <div class="drag-bar" id="drag-bar">
     <div class="brand-lockup">
       <div class="brand-kicker">career-ops</div>
-      <h1>Signal desk</h1>
+      <h1>Job assistant</h1>
     </div>
     <div class="drag-actions">
       <div class="health" id="health" data-state="unknown">
@@ -672,6 +731,18 @@ function buildHTML(): string {
       <div class="section-title">No job posting detected</div>
       <p class="muted-body">This page doesn't look like a job posting. If it is, you can still evaluate it.</p>
       <button class="cta" id="evaluate-anyway-btn">Evaluate anyway</button>
+    </div>
+    <div id="autofill" class="section hidden">
+      <div class="section-title">Application autofill</div>
+      <div class="autofill-summary" id="autofill-summary">Load your local profile to preview fillable fields.</div>
+      <div class="autofill-list" id="autofill-list"></div>
+      <div class="action-row">
+        <button class="cta" id="autofill-refresh-btn">Preview fields</button>
+        <button class="cta primary" id="autofill-fill-btn" disabled>Autofill current page</button>
+      </div>
+      <div class="fine-print">
+        Click-to-fill only. It may attach your configured resume, but never submits or advances applications.
+      </div>
     </div>
     <div id="running" class="section hidden">
       <div class="section-title">Running evaluation</div>
@@ -716,7 +787,7 @@ function buildHTML(): string {
             <button class="cta keyword-chip" data-builtin-keyword="Machine Learning Engineer">ML Engineer</button>
           </div>
           <div class="help-text">
-            Opens Built In engineering results across all locations. Adjust filters there, then Scan & Score.
+            Opens Built In engineering results across all locations. Adjust filters there, then scan when ready.
           </div>
         </div>
       </div>
@@ -777,6 +848,11 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   const setupSaveBtn = $("setup-save-btn") as HTMLButtonElement;
   const captureEl = $("capture");
   const notDetectedEl = $("not-detected");
+  const autofillEl = $("autofill");
+  const autofillSummaryEl = $("autofill-summary");
+  const autofillListEl = $("autofill-list");
+  const autofillRefreshBtn = $("autofill-refresh-btn") as HTMLButtonElement;
+  const autofillFillBtn = $("autofill-fill-btn") as HTMLButtonElement;
   const runningEl = $("running");
   const doneEl = $("done");
   const errorEl = $("error");
@@ -896,6 +972,9 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
   let jobPollTimer: number | null = null;
   let batchEvaluationPollTimer: number | null = null;
   let batchEvaluationPollInFlight = false;
+  let autofillProfile: AutofillProfile | null = null;
+  let autofillResumeFile: File | null = null;
+  let lastAutofillMatches: AutofillMatch[] = [];
 
   function trackerButtonLabel(result: { trackerMerged?: boolean; trackerMergeSummary?: { added?: number; updated?: number } }): string {
     if (!result?.trackerMerged) return "Save to tracker";
@@ -916,6 +995,9 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     doneEl.classList.toggle("hidden", state !== "done");
     errorEl.classList.toggle("hidden", state !== "error");
     newgradScanEl.classList.toggle("hidden", state !== "newgradScan");
+    if (state === "setup" || state === "running" || state === "done" || state === "error" || state === "newgradScan") {
+      autofillEl.classList.add("hidden");
+    }
   }
 
   function stopJobPolling(): void {
@@ -953,6 +1035,10 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     if (labelEl) labelEl.textContent = label;
   }
 
+  function setOfflineBanner(message: string): void {
+    offlineBanner.textContent = message;
+  }
+
   function sendMsg(msg: any): Promise<any> {
     if (!isExtensionRuntimeAvailable()) {
       return Promise.resolve(extensionContextInvalidatedResponse());
@@ -973,6 +1059,180 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     });
   }
 
+  async function loadAutofillProfile(): Promise<void> {
+    autofillRefreshBtn.disabled = true;
+    autofillSummaryEl.textContent = "Reading local profile...";
+    const res = await sendMsg({ kind: "getAutofillProfile" });
+    autofillRefreshBtn.disabled = false;
+    if (!res?.ok) {
+      autofillSummaryEl.textContent = res?.error?.code === "UNAUTHORIZED"
+        ? "Bridge token invalid. Paste the current token above."
+        : (res?.error?.message ?? "Profile unavailable.");
+      autofillFillBtn.disabled = true;
+      return;
+    }
+    autofillProfile = res.result as AutofillProfile;
+    renderAutofillPreview();
+  }
+
+  function renderAutofillPreview(): void {
+    while (autofillListEl.firstChild) autofillListEl.removeChild(autofillListEl.firstChild);
+    if (!autofillProfile) {
+      autofillSummaryEl.textContent = "Load your local profile to preview fillable fields.";
+      autofillFillBtn.disabled = true;
+      return;
+    }
+    lastAutofillMatches = scanAutofillMatches(autofillProfile, document);
+    const totalControls = Array.from(document.querySelectorAll(AUTOFILL_CONTROL_SELECTOR))
+      .filter((el) => isAutofillCandidate(el)).length
+      + resumeFileControls(document).length;
+    const sourceText = autofillProfile.sources.length ? autofillProfile.sources.join(" + ") : "local profile";
+    autofillSummaryEl.textContent =
+      lastAutofillMatches.length > 0
+        ? `${lastAutofillMatches.length}/${totalControls} empty fields matched from ${sourceText}.`
+        : `No empty supported fields matched from ${sourceText}.`;
+    for (const match of lastAutofillMatches.slice(0, 12)) {
+      const chip = document.createElement("span");
+      chip.className = "autofill-chip";
+      chip.dataset.confidence = match.confidence >= 0.82 ? "high" : "low";
+      chip.title = match.label;
+      chip.textContent = match.field.label;
+      autofillListEl.appendChild(chip);
+    }
+    autofillFillBtn.disabled = lastAutofillMatches.length === 0;
+  }
+
+  async function setControlValue(control: AutofillControl, field: AutofillProfileField): Promise<boolean> {
+    const value = valueForControl(control, field);
+    const inputKind = autofillInputKind(control);
+    if (field.key === "resumeFile") {
+      if (!(control instanceof HTMLInputElement) || inputKind !== "file") return false;
+      const file = await loadAutofillResumeFile();
+      if (!file) return false;
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      control.files = dataTransfer.files;
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    }
+    if (inputKind === "button") {
+      if (!optionMatchesAnswer(control, field, document)) return false;
+      control.click();
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    }
+    if ((inputKind === "radio" || inputKind === "checkbox") && !(control instanceof HTMLInputElement)) {
+      if (inputKind === "radio" && !optionMatchesAnswer(control, field, document)) return false;
+      if (inputKind === "checkbox" && !checkboxShouldBeChecked(control, field, document)) return false;
+      control.click();
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    }
+    if (control instanceof HTMLInputElement) {
+      const type = control.type.toLowerCase();
+      if (type === "radio") {
+        if (!optionMatchesAnswer(control, field, document)) return false;
+        control.checked = true;
+        control.dispatchEvent(new Event("click", { bubbles: true }));
+        control.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }
+      if (type === "checkbox") {
+        if (!checkboxShouldBeChecked(control, field, document)) return false;
+        control.checked = true;
+        control.dispatchEvent(new Event("click", { bubbles: true }));
+        control.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      }
+    }
+    if (control instanceof HTMLSelectElement) {
+      const option = bestSelectOption(control, field, value);
+      if (!option) return false;
+      control.value = option.value;
+    } else if (control instanceof HTMLInputElement && control.type.toLowerCase() === "number") {
+      const numericValue = salaryNumber(value);
+      if (!numericValue) return false;
+      control.value = numericValue;
+    } else if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+      control.value = value;
+    } else {
+      return false;
+    }
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+
+  async function loadAutofillResumeFile(): Promise<File | null> {
+    if (autofillResumeFile) return autofillResumeFile;
+    const res = await sendMsg({ kind: "getAutofillResume" });
+    if (!res?.ok) {
+      autofillSummaryEl.textContent = res?.error?.message ?? "Resume unavailable.";
+      return null;
+    }
+    const resume = res.result as { filename: string; mimeType: string; dataBase64: string };
+    const bytes = Uint8Array.from(atob(resume.dataBase64), (char) => char.charCodeAt(0));
+    autofillResumeFile = new File([bytes], resume.filename, { type: resume.mimeType || "application/pdf" });
+    return autofillResumeFile;
+  }
+
+  function valueForControl(control: AutofillControl, field: AutofillProfileField): string {
+    if (field.key === "phoneNational") return field.value.replace(/\D/g, "");
+    if (field.key === "state" && !(control instanceof HTMLSelectElement)) {
+      const normalized = normalizeAutofillLabel(field.value);
+      const fullName = US_STATE_NAMES[normalized];
+      const maxLength = control instanceof HTMLInputElement ? control.maxLength : -1;
+      const label = normalizeAutofillLabel(controlLabel(control, document));
+      if (maxLength > 0 && maxLength <= 2) return field.value.toUpperCase();
+      if (/\b(abbrev|abbreviation|code)\b/.test(label)) return field.value.toUpperCase();
+      return fullName ? titleCase(fullName) : field.value;
+    }
+    return field.value;
+  }
+
+  const US_STATE_NAMES: Record<string, string> = {
+    al: "alabama", ak: "alaska", az: "arizona", ar: "arkansas", ca: "california",
+    co: "colorado", ct: "connecticut", de: "delaware", fl: "florida", ga: "georgia",
+    hi: "hawaii", id: "idaho", il: "illinois", in: "indiana", ia: "iowa",
+    ks: "kansas", ky: "kentucky", la: "louisiana", me: "maine", md: "maryland",
+    ma: "massachusetts", mi: "michigan", mn: "minnesota", ms: "mississippi",
+    mo: "missouri", mt: "montana", ne: "nebraska", nv: "nevada", nh: "new hampshire",
+    nj: "new jersey", nm: "new mexico", ny: "new york", nc: "north carolina",
+    nd: "north dakota", oh: "ohio", ok: "oklahoma", or: "oregon", pa: "pennsylvania",
+    ri: "rhode island", sc: "south carolina", sd: "south dakota", tn: "tennessee",
+    tx: "texas", ut: "utah", vt: "vermont", va: "virginia", wa: "washington",
+    wv: "west virginia", wi: "wisconsin", wy: "wyoming", dc: "district of columbia",
+  };
+
+  function titleCase(value: string): string {
+    return value.replace(/\b[a-z]/g, (char) => char.toUpperCase());
+  }
+
+  function salaryNumber(value: string): string {
+    const match = value.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)\s*([kKmM])?/);
+    if (!match) return "";
+    const raw = Number(match[1]);
+    if (!Number.isFinite(raw)) return "";
+    const suffix = match[2]?.toLowerCase();
+    const multiplier = suffix === "m" ? 1_000_000 : suffix === "k" ? 1_000 : 1;
+    return String(Math.round(raw * multiplier));
+  }
+
+  async function fillAutofillMatches(): Promise<void> {
+    if (!autofillProfile) return;
+    lastAutofillMatches = scanAutofillMatches(autofillProfile, document);
+    let filled = 0;
+    let skipped = 0;
+    for (const match of lastAutofillMatches) {
+      if (await setControlValue(match.control, match.field)) filled += 1;
+      else skipped += 1;
+    }
+    renderAutofillPreview();
+    autofillSummaryEl.textContent = `Filled ${filled} fields. Skipped ${skipped}. Review before submitting.`;
+  }
+
   // pct, scoreColor imported from shared/utils
 
   function renderModePanel(health?: any, state: "unknown" | "offline" = "unknown"): void {
@@ -989,7 +1249,7 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       : state;
   }
 
-  async function refreshHealth(): Promise<void> {
+  async function refreshHealth(): Promise<boolean> {
     setHealth("unknown", "checking…");
     const res = await sendMsg({ kind: "getHealth" });
     if (res?.ok) {
@@ -1005,11 +1265,22 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
           setHealth("warn", "v" + __EXTENSION_VERSION__ + " ≠ bridge v" + res.result.bridgeVersion);
         }
       } catch { /* skip */ }
+      return true;
     } else {
-      setHealth("bad", res?.error?.code ?? "offline");
+      const code = res?.error?.code ?? "offline";
+      if (code === "UNAUTHORIZED") {
+        setHealth("bad", "token");
+        setOfflineBanner("Bridge is running, but the saved token is invalid. Paste the current bridge token below.");
+        show("setup");
+        setupTokenInput.focus();
+      } else {
+        setHealth("bad", code);
+        setOfflineBanner("Bridge not reachable. Run: cd bridge && npm run start");
+      }
       offlineBanner.classList.remove("hidden");
       currentBridgePreset = null;
       renderModePanel(undefined, "offline");
+      return false;
     }
   }
 
@@ -1077,6 +1348,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
         : "not a job posting (heuristic)";
     captureDetectionEl.textContent = label;
     captureDetectionEl.style.color = "";
+    autofillEl.classList.remove("hidden");
+    void loadAutofillProfile();
     if (cap.detection?.label === "not_job_posting") { show("notDetected"); return; }
     show("captured");
   }
@@ -1841,6 +2114,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       openBuiltInKeywordSearch(keyword);
     });
   }
+  autofillRefreshBtn.addEventListener("click", () => void loadAutofillProfile());
+  autofillFillBtn.addEventListener("click", () => void fillAutofillMatches());
   evaluateBtn.addEventListener("click", () => void onEvaluateClick());
   evaluateAnywayBtn.addEventListener("click", () => {
     if (capturedData) { show("captured"); void onEvaluateClick(); }
@@ -1857,8 +2132,8 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
     setupSaveBtn.disabled = false;
     if (!res?.ok) { renderError(res?.error?.code ?? "BAD_REQUEST", res?.error?.message ?? "failed"); return; }
     setupTokenInput.value = "";
-    void refreshHealth();
-    await runCapture();
+    const healthOk = await refreshHealth();
+    if (healthOk) await runCapture();
   });
   mergeTrackerBtn.addEventListener("click", async () => {
     mergeTrackerBtn.disabled = true;
@@ -1888,7 +2163,11 @@ function initPanel(shadow: ShadowRoot, root: HTMLElement): void {
       setupTokenInput.focus();
       return;
     }
-    void refreshHealth();
+    const healthOk = await refreshHealth();
+    if (!healthOk) {
+      void loadRecentJobs();
+      return;
+    }
     await runCapture();
 
     // Detect supported scan sources and show scan UI instead of single-JD flow

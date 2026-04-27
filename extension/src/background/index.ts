@@ -170,6 +170,10 @@ async function handleRequest(req: PopupRequest): Promise<PopupResponse> {
         return await handleReadReport(req.reportNum);
       case "mergeTracker":
         return await handleMergeTracker(req.dryRun);
+      case "getAutofillProfile":
+        return await handleGetAutofillProfile();
+      case "getAutofillResume":
+        return await handleGetAutofillResume();
       case "newgradExtractList":
         return await handleNewGradExtractList();
       case "newgradPending":
@@ -246,6 +250,22 @@ async function handleSetModePreference(
   };
 }
 
+async function handleGetAutofillProfile(): Promise<PopupResponse> {
+  const { client, error } = await authenticatedClient();
+  if (error) return { kind: "getAutofillProfile", ok: false, error };
+  const res = await client.getAutofillProfile();
+  if (res.ok) return { kind: "getAutofillProfile", ok: true, result: res.result };
+  return { kind: "getAutofillProfile", ok: false, error: res.error };
+}
+
+async function handleGetAutofillResume(): Promise<PopupResponse> {
+  const { client, error } = await authenticatedClient();
+  if (error) return { kind: "getAutofillResume", ok: false, error };
+  const res = await client.getAutofillResume();
+  if (res.ok) return { kind: "getAutofillResume", ok: true, result: res.result };
+  return { kind: "getAutofillResume", ok: false, error: res.error };
+}
+
 async function handleGetHealth(): Promise<PopupResponse> {
   const { client, error } = await authenticatedClient();
   if (error) return { kind: "getHealth", ok: false, error };
@@ -299,6 +319,11 @@ function sleep(ms: number): Promise<void> {
 
 type CaptureLogger = (event: string, payload: Record<string, unknown>) => void;
 
+function isScriptingPermissionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /cannot access|missing host permission|extension manifest must request permission|cannot be scripted/i.test(message);
+}
+
 function scoreCapturedTab(captured: CapturedTab): number {
   const base = captured.pageText.length;
   const bonus =
@@ -340,6 +365,7 @@ async function captureTabContext(
   };
 
   let captured: CapturedTab | undefined;
+  let permissionError: unknown = null;
   try {
     const first = await injectTop();
     dbg("inject.top.first", {
@@ -368,6 +394,7 @@ async function captureTabContext(
     }
   } catch (err) {
     dbg("inject.top.throw", { err: String(err) });
+    if (isScriptingPermissionError(err)) permissionError = err;
   }
 
   if (!captured || captured.pageText.length < 400) {
@@ -404,10 +431,12 @@ async function captureTabContext(
       }
     } catch (err) {
       dbg("inject.allFrames.throw", { err: String(err) });
+      if (isScriptingPermissionError(err)) permissionError = err;
     }
   }
 
   if (!captured) {
+    if (permissionError) throw permissionError;
     dbg("final.fallback.empty", {});
     if (!options.returnEmptyFallback) return undefined;
     return {
@@ -807,33 +836,7 @@ async function handleCapture(): Promise<PopupResponse> {
       },
     };
   }
-  // Permission pre-check. For hosts outside the manifest's baseline
-  // host_permissions, we need a user-granted origin before
-  // chrome.scripting.executeScript can run. We surface this as a
-  // BAD_REQUEST with detail.permissionRequired so the panel can show
-  // the grant-tab CTA without the user seeing a generic INTERNAL.
   const perm = resolvePermissionOrigin(tab.url);
-  if (perm) {
-    const alreadyGranted = await chrome.permissions.contains({
-      origins: [perm.pattern],
-    });
-    if (!alreadyGranted) {
-      return {
-        kind: "captureActiveTab",
-        ok: false,
-        error: {
-          code: "BAD_REQUEST",
-          message: `authorization needed for ${perm.label}`,
-          detail: {
-            permissionRequired: true,
-            origin: perm.pattern,
-            label: perm.label,
-            isFamily: perm.isFamily,
-          },
-        },
-      };
-    }
-  }
   const tabId = tab.id;
   // Diagnostics: dump every boundary crossing so when something fails
   // we can tell WHICH layer died (permission state vs injection
@@ -857,12 +860,33 @@ async function handleCapture(): Promise<PopupResponse> {
   } catch (err) {
     dbg("perm.getAll.error", { err: String(err) });
   }
-  const captured = await captureTabContext(
-    tabId,
-    { url: tab.url, title: tab.title ?? "" },
-    dbg,
-    { returnEmptyFallback: true },
-  );
+  let captured: CapturedTab | undefined;
+  try {
+    captured = await captureTabContext(
+      tabId,
+      { url: tab.url, title: tab.title ?? "" },
+      dbg,
+      { returnEmptyFallback: true },
+    );
+  } catch (err) {
+    if (perm && isScriptingPermissionError(err)) {
+      return {
+        kind: "captureActiveTab",
+        ok: false,
+        error: {
+          code: "BAD_REQUEST",
+          message: `authorization needed for ${perm.label}`,
+          detail: {
+            permissionRequired: true,
+            origin: perm.pattern,
+            label: perm.label,
+            isFamily: perm.isFamily,
+          },
+        },
+      };
+    }
+    throw err;
+  }
   return { kind: "captureActiveTab", ok: true, result: captured! };
 }
 

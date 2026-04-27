@@ -151,6 +151,10 @@ function setHealth(state: "unknown" | "ok" | "bad" | "warn", label: string): voi
   healthSrEl.textContent = `Bridge status: ${label}`;
 }
 
+function setOfflineBanner(message: string): void {
+  offlineBannerEl.textContent = message;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Bridge chip toggle                                                        */
 /* -------------------------------------------------------------------------- */
@@ -226,8 +230,9 @@ async function init(): Promise<void> {
   }
 
   // Phase 2: Health, capture, and recent jobs are independent — fire all at once.
-  void refreshHealth();
+  const healthOk = await refreshHealth();
   void loadRecentJobs();
+  if (!healthOk) return;
   await runCapture();
 }
 
@@ -242,13 +247,13 @@ async function onSetupSaveClick(): Promise<void> {
   }
   // Token saved — move into the normal flow.
   setupTokenInput.value = "";
-  void refreshHealth();
-  await runCapture();
+  const healthOk = await refreshHealth();
+  if (healthOk) await runCapture();
 }
 
 declare const __EXTENSION_VERSION__: string;
 
-async function refreshHealth(): Promise<void> {
+async function refreshHealth(): Promise<boolean> {
   setHealth("unknown", "checking\u2026");
   const res = await sendRequest({ kind: "getHealth" });
   if (res.ok) {
@@ -264,11 +269,21 @@ async function refreshHealth(): Promise<void> {
         setHealth("warn", `v${__EXTENSION_VERSION__} \u2260 bridge v${res.result.bridgeVersion}`);
       }
     } catch { /* unparseable version, skip warning */ }
+    return true;
   } else {
-    setHealth("bad", res.error.code);
+    if (res.error.code === "UNAUTHORIZED") {
+      setHealth("bad", "token");
+      setOfflineBanner("Bridge is running, but the saved token is invalid. Paste the current bridge token below.");
+      show("setup");
+      setupTokenInput.focus();
+    } else {
+      setHealth("bad", res.error.code);
+      setOfflineBanner("Bridge not reachable. Run: cd bridge && npm run start");
+    }
     offlineBannerEl.classList.remove("hidden");
     currentBridgePreset = null;
     renderModePanel(undefined, "offline");
+    return false;
   }
 }
 

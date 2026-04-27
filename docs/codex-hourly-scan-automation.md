@@ -21,39 +21,65 @@ CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan:dry
 The dry command still runs scanner read paths, but it skips bridge startup,
 write-path evaluation, tracker maintenance, and dashboard rebuild.
 
+## Host scheduler setup
+
+Codex cron runs with restricted automation permissions and may report
+`approval_policy=never`, `connect EPERM`, or `listen EPERM`. Use macOS
+`launchd` for the live scan so bridge, DNS, `tsx`, and browser/CDP access run
+in the normal local user environment:
+
+```bash
+scripts/install-hourly-scan-launchd.zsh
+```
+
+The installed launch agent runs at the top of every hour. The checked-in
+`scripts/hourly-job-scan.mjs` keeps the actual weekday 08:00-22:00
+America/New_York guard, so off-window launches exit without scanning.
+
+The launch agent writes logs to:
+
+```text
+data/automation/launchd-hourly-scan.out.log
+data/automation/launchd-hourly-scan.err.log
+```
+
+`scripts/run-hourly-scan-host.zsh` starts/reuses the real Codex bridge, preflights
+`bb-browser`, and runs:
+
+```bash
+npm run auto:hourly-scan
+```
+
 ## Codex App setup
+
+Use Codex Automation as a reporting layer after the host scheduler, not as the
+live scanner.
 
 1. Open Codex Automations.
 2. Create a new project-scoped automation for this `career-ops` project.
 3. Choose the local project checkout as the run location. Do not use a worktree
    for this workflow because the scanners depend on local browser state and
    write normal project artifacts.
-4. Set the schedule to weekdays, hourly, 08:00 through 22:00,
+4. Set the schedule to weekdays, hourly, shortly after the host scan,
    America/New_York. If the UI only accepts cron syntax, use:
 
    ```text
-   0 8-22 * * 1-5
+   20 8-22 * * 1-5
    ```
 
 5. Use this prompt:
 
    ```text
-   In this project, run:
+   Check the latest Career-Ops hourly scan result in the local checkout. Do not run npm run auto:hourly-scan from this Codex cron context if the session has approval_policy=never or sandbox networking/IPC restrictions, because that environment cannot access the local bridge/browser reliably.
 
-   npm run auto:hourly-scan
-
-   Use the local project checkout, not a worktree. Do not submit any job applications. Do not click Apply, Easy Apply, Save, job alert, resume upload, or final submit controls.
-
-   The goal is to scan the newest jobs from the configured Career-Ops sources, enrich matching roles, run capped newgrad_quick evaluations, update tracker/report artifacts through the existing pipeline, rebuild the dashboard, and summarize the run.
-
-   After the command finishes, report:
+   Inspect data/automation/hourly-scan-*.md and report the newest summary:
    1. Which sources ran
    2. How many evaluations completed
-   3. Any source blocked by login, checkpoint, rate limit, verification, or parsing error
+   3. Any source blocked by login, checkpoint, rate limit, verification, parsing, browser/CDP, bridge, DNS, or sandbox execution error
    4. The newest high-fit roles worth reviewing
    5. The summary file path under data/automation
 
-   If a source fails because manual login or verification is required, do not try to bypass it. Report the exact recovery command.
+   If the newest summary reports sandbox EPERM, bridge_unavailable_preview, DNS ENOTFOUND, or tsx IPC failures, state that the Codex cron context is not suitable for live scanning and that the host-side scheduler/terminal run must execute npm run auto:hourly-scan. Never submit applications or click Apply, Easy Apply, Save, job alerts, resume upload, or final submit controls.
    ```
 
 ## What the command does

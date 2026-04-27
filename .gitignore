@@ -67,6 +67,8 @@ extension/package-lock.json
 batch/.bridge-prompt-*.md
 data/newgrad-skill-stats.json
 data/browser-profiles/
+data/automation/*.lock
+data/automation/*.log
 
 batch/.report-number-reservations
 docs/exec-plans/*

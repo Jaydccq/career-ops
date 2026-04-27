@@ -235,7 +235,7 @@ console.log('\n3B. Dashboard Gmail signal parsing');
 try {
   const { parseGmailSignals, parseProfile, parseGmailRefreshStatus } = await import(pathToFileURL(join(ROOT, 'web/build-dashboard.mjs')).href);
   const { parseRefreshCommand, summarizeGmailSignals } = await import(pathToFileURL(join(ROOT, 'scripts/refresh-gmail-signals.mjs')).href);
-  const { extractSignalFromMessage, isGmailApiSetupError, mergeSignals, parseOAuthCallback, readOAuthClient } = await import(pathToFileURL(join(ROOT, 'scripts/gmail-oauth-refresh.mjs')).href);
+  const { classifyEvent, extractSignalFromMessage, isGmailApiSetupError, isValidStoredSignal, mergeSignals, parseOAuthCallback, readOAuthClient } = await import(pathToFileURL(join(ROOT, 'scripts/gmail-oauth-refresh.mjs')).href);
   const tmp = mkdtempSync(join(tmpdir(), 'career-ops-gmail-signals-'));
   const fixture = join(tmp, 'gmail-signals.jsonl');
   const profileFixture = join(tmp, 'profile.yml');
@@ -265,30 +265,92 @@ try {
   const refreshStatus = parseGmailRefreshStatus(statusFixture);
   const refreshCommand = parseRefreshCommand('["node","scripts/gmail-oauth-refresh.mjs"]');
   const signalSummary = summarizeGmailSignals(fixture);
-  const extracted = extractSignalFromMessage({
-    id: 'gmail-msg-1',
-    threadId: 'gmail-thread-1',
+  const encodeGmailPart = (text) => Buffer.from(text, 'utf8')
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const gmailMessage = ({ id, from, subject, snippet, text }) => ({
+    id,
+    threadId: `${id}-thread`,
     internalDate: String(Date.parse('2026-04-24T20:00:00Z')),
-    snippet: 'Your meeting is scheduled for April 29, 2026 at 3:15 PM PDT.',
+    snippet,
     payload: {
       headers: [
-        { name: 'From', value: 'Richard Barella from Arista Networks <notifications@arista.com>' },
-        { name: 'Subject', value: 'Interview invitation for Application Engineer position' },
+        { name: 'From', value: from },
+        { name: 'Subject', value: subject },
         { name: 'Date', value: 'Fri, 24 Apr 2026 20:00:00 +0000' },
       ],
-      parts: [{
-        mimeType: 'text/plain',
-        body: {
-          data: Buffer.from('Thank you for applying to the Application Engineer position at Arista Networks. Your meeting is scheduled.', 'utf8')
-            .toString('base64')
-            .replace(/=/g, '')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_'),
-        },
-      }],
+      parts: [{ mimeType: 'text/plain', body: { data: encodeGmailPart(text) } }],
     },
   });
+  const extracted = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-1',
+    from: 'Richard Barella from Arista Networks <notifications@arista.com>',
+    subject: 'Interview invitation for Application Engineer position',
+    snippet: 'Your meeting is scheduled for April 29, 2026 at 3:15 PM PDT.',
+    text: 'Thank you for applying to the Application Engineer position at Arista Networks. Your meeting is scheduled.',
+  }));
+  const marketingOffer = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-marketing',
+    from: 'Marketing <marketing@jetblue.com>',
+    subject: 'Ends Soon: Earn 70,000 bonus points. See if you pre-qualify.',
+    snippet: 'Apply for the JetBlue Plus Card. Offer ends soon.',
+    text: 'Apply for the JetBlue Plus Card. Terms apply. Offer Ends Soon after qualifying account activity.',
+  }));
+  const redditDigest = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-reddit',
+    from: 'Reddit <noreply@redditmail.com>',
+    subject: '"Marriott General Accountant interview -- no hotel experience"',
+    snippet: 'r/marriott discussion about an interview.',
+    text: 'r/marriott: I landed an interview for a General Accountant role at Marriott and want advice.',
+  }));
+  const talentNewsletter = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-talent-newsletter',
+    from: 'Talent Northern Trust <talent@ntrs.com>',
+    subject: 'Talent Community updates from Northern Trust. Opportunities and more...',
+    snippet: 'Northern Trust Career Opportunities email banner.',
+    text: 'Northern Trust Career Opportunities email banner. Read interview tips and see what is new in our talent community.',
+  }));
+  const jobviteApplicationReview = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-jobvite-review',
+    from: 'Davis Wright Tremaine LLP Recruiting Team <notification@jobvite.com>',
+    subject: 'Your application for AI Developer at Davis Wright Tremaine LLP',
+    snippet: 'We have received your application and our hiring team is currently reviewing all applications.',
+    text: 'Dear Hongxi, Thank you for your interest in a career with Davis Wright Tremaine LLP! We have received your application for our AI Developer position. Our hiring team is currently reviewing all applications.',
+  }));
+  const conditionalInterviewReceipt = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-conditional-interview',
+    from: 'no-reply@us.greenhouse-mail.io',
+    subject: 'Thank you for applying to DeepIntent',
+    snippet: 'Your application has been received. If your application seems like a good match we will contact you soon to schedule an interview.',
+    text: 'Hongxi, Thanks for applying to DeepIntent. Your application has been received. If your application seems like a good match for the position we will contact you soon to schedule an interview.',
+  }));
+  const careersNewsletter = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-careers-newsletter',
+    from: 'Sarah Butcher <emails@efinancialcareers.com>',
+    subject: "Sunday 'Spresso: All our Morning Coffees are here",
+    snippet: 'Your weekly roundup of all the latest news and advice.',
+    text: 'Your weekly roundup of all the latest news and advice about compensation, hiring, job offers, and interviews.',
+  }));
+  const realOffer = extractSignalFromMessage(gmailMessage({
+    id: 'gmail-msg-offer',
+    from: 'Recruiting <recruiting@example.com>',
+    subject: 'Offer letter for Software Engineer position',
+    snippet: 'We are pleased to extend you an offer.',
+    text: 'Congratulations, we are pleased to extend you an offer for the Software Engineer position at Example Co.',
+  }));
   const mergedSignals = mergeSignals([{ id: 'gmail-msg-1:interview', company: 'Old' }], [extracted]);
+  const storedMarketingValid = isValidStoredSignal({
+    eventType: 'offer',
+    sender: 'Marketing <marketing@jetblue.com>',
+    subject: 'Ends Soon: Earn 70,000 bonus points. See if you pre-qualify.',
+    summary: 'Apply for the JetBlue Plus Card. Offer Ends Soon after qualifying account activity.',
+  });
+  const bareOfferClassified = classifyEvent({
+    subject: 'Exclusive intro offer: Up to 4% cash back plus a $200 bonus.',
+    text: 'Automatically earn unlimited cash back with this AAA Cashback Card. View in browser.',
+  });
   const redirectUri = 'http://127.0.0.1:54609/oauth2callback';
   const emptyCallback = parseOAuthCallback('/oauth2callback', redirectUri, 'expected-state');
   const validCallback = parseOAuthCallback('/oauth2callback?state=expected-state&code=abc123', redirectUri, 'expected-state');
@@ -318,6 +380,20 @@ try {
     extracted?.eventType === 'interview' &&
     extracted?.company === 'Arista Networks' &&
     extracted?.role === 'Application Engineer' &&
+    marketingOffer === null &&
+    redditDigest === null &&
+    talentNewsletter === null &&
+    careersNewsletter === null &&
+    jobviteApplicationReview?.eventType === 'applied' &&
+    jobviteApplicationReview?.company === 'Davis Wright Tremaine LLP' &&
+    jobviteApplicationReview?.role === 'AI Developer' &&
+    conditionalInterviewReceipt?.eventType === 'applied' &&
+    conditionalInterviewReceipt?.company === 'DeepIntent' &&
+    realOffer?.eventType === 'offer' &&
+    realOffer?.company === 'Example Co' &&
+    realOffer?.role === 'Software Engineer' &&
+    storedMarketingValid === false &&
+    bareOfferClassified === '' &&
     mergedSignals.length === 1 &&
     mergedSignals[0].company === 'Arista Networks' &&
     emptyCallback.status === 'waiting' &&

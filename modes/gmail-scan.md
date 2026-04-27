@@ -38,10 +38,13 @@ Start with broad ATS/recruiting senders:
 in:anywhere newer_than:12m {from:hire.lever.co from:greenhouse-mail.io from:ashbyhq.com from:smartrecruiters.com from:talent.icims.com from:myworkday.com from:greenhouse.io from:lever.co from:workday.com}
 ```
 
-Then run targeted keyword searches for missed direct-recruiter messages:
+Then run targeted keyword searches for missed direct-recruiter messages. Keep
+these phrase-based and exclude obvious promotional/social categories; do not
+scan for bare words like `offer` or `application` because those match ordinary
+marketing mail:
 
 ```text
-in:anywhere newer_than:12m (application OR applied OR interview OR assessment OR "online assessment" OR recruiter OR "schedule" OR offer OR rejection)
+in:anywhere newer_than:12m -category:promotions -category:social {"thank you for applying" "received your application" "your application" "application status" "application for" "interview invitation" "schedule interview" "your interview" "online assessment" "coding challenge" hackerrank codesignal "offer letter" "job offer" "employment offer" "not moving forward" "not selected" "talent acquisition"}
 ```
 
 Use company-specific searches when the dashboard already has partial rows or the
@@ -67,6 +70,12 @@ user names examples.
 5. Normalize company, role, recent contact, event type, event date, received
    timestamp, short summary, message id, thread id, confidence, and optional
    recommended action.
+   Before writing, require a real hiring context such as `your application`,
+   `thank you for applying`, `interview invitation`, `online assessment`,
+   `offer letter`, `job offer`, a rejection phrase tied to the application, or
+   a trusted ATS/recruiting sender. Promotional offers, newsletters, Reddit
+   digests, utility alerts, rent/payment notices, and shopping mail must not
+   produce signals.
 6. Merge with existing signals by stable id:
 
 ```text

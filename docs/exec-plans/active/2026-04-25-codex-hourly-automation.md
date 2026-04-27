@@ -173,6 +173,192 @@ through 22:00 America/New_York, and document the Codex App setup steps.
   `sc=0kf:explvl(ENTRY_LEVEL);`, plus a score-only Indeed smoke test. The smoke
   test parsed 16 rows from the supplied URL, kept 5 under the test limit,
   promoted 1, filtered 4, and called no bridge write endpoints.
+- 2026-04-27 08:02Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The plain command exited at the schedule guard
+  because it was outside the America/New_York window, so reran
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan` to exercise the
+  requested scan path. The run wrote
+  `data/automation/hourly-scan-2026-04-27T08-02-15-633Z.md`, attempted `scan`,
+  `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0 evaluations.
+  Bridge was unavailable, so writes/evaluations were disabled with recovery
+  `npm run ext:bridge`; API/Built In fetches failed on DNS `ENOTFOUND`, and
+  browser-backed `tsx` scanners failed with `listen EPERM` in this sandbox.
+- 2026-04-27 10:03Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The plain command exited at the schedule guard
+  because it was outside the America/New_York window, so reran
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan`. The catch-up run
+  wrote `data/automation/hourly-scan-2026-04-27T10-03-07-150Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`).
+- 2026-04-27 11:03Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The plain command exited at the schedule guard
+  because it was 07:03 America/New_York, so reran
+  `CAREER_OPS_SCAN_IGNORE_WINDOW=1 npm run auto:hourly-scan`. The catch-up run
+  wrote `data/automation/hourly-scan-2026-04-27T11-03-16-362Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 12:02Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The run was inside the configured weekday window,
+  wrote `data/automation/hourly-scan-2026-04-27T12-02-38-323Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 13:02Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The run was inside the configured weekday window,
+  wrote `data/automation/hourly-scan-2026-04-27T13-02-46-179Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 14:02Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The run was inside the configured weekday window,
+  wrote `data/automation/hourly-scan-2026-04-27T14-02-08-657Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 15:01Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The run was inside the configured weekday window,
+  wrote `data/automation/hourly-scan-2026-04-27T15-01-09-672Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 16:02Z: Ran `npm run auto:hourly-scan` from the local checkout for
+  the job-search automation. The run was inside the configured weekday window,
+  wrote `data/automation/hourly-scan-2026-04-27T16-02-49-713Z.md`, requested
+  `scan`, `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0
+  evaluations. Bridge was unavailable, so writes/evaluations were disabled with
+  recovery `npm run ext:bridge`; direct scan ran in dry-run preview mode and
+  hit DNS `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`,
+  `builtin`, `linkedin`, and `indeed` failed before scanning because `tsx`
+  could not create its local IPC pipe in the sandbox (`listen EPERM`). Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 16:29Z: Starting another scheduled job-search automation run from
+  the local checkout. Goal: run `npm run auto:hourly-scan`, scan configured
+  sources read-only with respect to applications, use existing pipeline
+  enrichment/evaluation paths when available, rebuild/report via the checked-in
+  automation, then record sources, completed evaluations, blockers, high-fit
+  roles, and the `data/automation` summary path. Success criteria: command
+  exits or reports a concrete blocker, no Apply/Easy Apply/Save/job-alert/
+  resume-upload/final-submit controls are used, the summary artifact is
+  inspected, and this plan records the outcome. Assumptions: preserve unrelated
+  dirty worktree changes and do not bypass login/checkpoint/verification
+  blockers. Uncertainties: bridge availability, DNS/network availability, and
+  sandbox IPC behavior may match prior failed hourly runs.
+- 2026-04-27 16:30Z: Ran `npm run auto:hourly-scan` from the local checkout.
+  The run wrote
+  `data/automation/hourly-scan-2026-04-27T16-30-21-960Z.md`, requested `scan`,
+  `newgrad`, `builtin`, `linkedin`, and `indeed`, and completed 0 evaluations.
+  Bridge was unavailable, so writes/evaluations were disabled with recovery
+  `npm run ext:bridge`; direct scan ran in dry-run preview mode and hit DNS
+  `ENOTFOUND` for Ashby/Greenhouse/Built In hosts; `newgrad`, `builtin`,
+  `linkedin`, and `indeed` failed before scanning because `tsx` could not
+  create its local IPC pipe in the sandbox (`listen EPERM`). No login,
+  checkpoint, rate-limit, verification, or parsing blocker was detected in the
+  captured output tails, and no high-fit roles were found. Ran
+  `npm run dashboard:build` afterward to refresh `web/index.html`; it wrote the
+  dashboard with 365 reports, 256 applications, 551 pipeline rows, and 1368
+  scan-history rows.
+- 2026-04-27 16:38Z: After the user started `npm run ext:bridge`, checked
+  bridge reachability from the Codex sandbox. Unauthenticated `curl` could
+  receive a 401 from `127.0.0.1:47319`, but Node `fetch` failed with
+  `connect EPERM 127.0.0.1:47319`, and sending the real
+  `bridge/.bridge-token` through curl was also blocked. Conclusion: opening
+  the bridge is necessary but not sufficient for sandboxed automation; live
+  write/evaluation runs must execute outside the restricted sandbox or they
+  will still report `bridge_unavailable_preview`.
+- 2026-04-27 16:43Z: Reran `npm run auto:hourly-scan` outside the sandbox with
+  the existing real/codex bridge. The run wrote
+  `data/automation/hourly-scan-2026-04-27T16-43-09-948Z.md`, detected
+  `existing_real_codex`, added 30 direct-scan offers, completed 3 evaluations,
+  and rebuilt the dashboard with 368 reports, 257 applications, 581 pipeline
+  rows, and 1410 scan-history rows. Newgrad also reached JobRight and enriched
+  10 promoted rows, but all 10 were skipped by existing value/dedupe rules.
+  Built In, LinkedIn, and Indeed then failed because `bb-browser` Chrome/CDP was
+  disconnected, with recovery `bb-browser daemon shutdown && bb-browser tab
+  list`.
+- 2026-04-27 16:56Z: Restarted `bb-browser` with `bb-browser daemon shutdown`
+  and `bb-browser tab list`, then reran only
+  `CAREER_OPS_SCAN_SOURCES=builtin,linkedin,indeed npm run auto:hourly-scan`
+  outside the sandbox. The run wrote
+  `data/automation/hourly-scan-2026-04-27T16-56-08-591Z.md`; Built In parsed 2
+  rows and promoted 0, LinkedIn parsed 74 raw / 71 unique rows, promoted 55,
+  added 6 pipeline candidates, and completed 3 evaluations, and Indeed parsed
+  16 rows, promoted 2, enriched 2, and skipped both by value/experience rules.
+  High-fit evaluations from the LinkedIn run were Jobs via Dice Jr Gen-AI
+  Engineer at 4.2/5 and Adobe Machine Learning Engineer at 4.4/5. Verification
+  passed with the existing RemoteHunter and Anduril duplicate warnings, and
+  the dashboard rebuilt with 371 reports, 260 applications, 587 pipeline rows,
+  and 1414 scan-history rows.
+- 2026-04-27: Tightened hourly summary blocker detection so successful sources
+  are not reported as blockers merely because their output contains `parsed=`.
+  Added explicit Chrome/CDP recovery mapping to
+  `bb-browser daemon shutdown && bb-browser tab list`.
+- 2026-04-27: Updated the active Codex Automation `job-search` prompt and
+  `docs/codex-hourly-scan-automation.md` so hourly runs request approved
+  non-sandbox/local command execution when needed. The prompt now explicitly
+  treats `connect EPERM`, `listen EPERM`, and `tsx` IPC pipe failures as
+  sandbox execution failures requiring one non-sandbox rerun before reporting,
+  and it reports browser/CDP, bridge, DNS, and sandbox blockers separately.
+- 2026-04-27: A later automation run still reported
+  `approval_policy=never`, so prompt-only non-sandbox escalation cannot work in
+  Codex cron. Re-scoped Codex Automation to reporting only and added host-side
+  launchd scripts: `scripts/run-hourly-scan-host.zsh` for the real scan and
+  `scripts/install-hourly-scan-launchd.zsh` to install
+  `com.career-ops.hourly-scan`. Updated `docs/codex-hourly-scan-automation.md`
+  so live scanning is owned by launchd while Codex cron inspects the newest
+  `data/automation/hourly-scan-*.md` summary afterward.
+- 2026-04-27: Installed `com.career-ops.hourly-scan` under the user launchd
+  domain and verified it can run `npm run auto:hourly-scan` outside the Codex
+  sandbox. The first launchd run detected `existing_real_codex`, completed 2
+  direct-scan evaluations, ran Newgrad through enrichment, and rebuilt the
+  dashboard. Built In, LinkedIn, and Indeed failed because launchd did not
+  include `/Users/hongxichen/.npm-global/bin` in PATH for `bb-browser`; updated
+  the launchd installer and host runner PATH and added an explicit
+  `spawn bb-browser ENOENT` blocker classification.
+- 2026-04-27: Reinstalled and verified launchd after adding
+  `/Users/hongxichen/.npm-global/bin` to PATH. The successful host-side run
+  wrote `data/automation/hourly-scan-2026-04-27T17-32-54-871Z.md`, detected
+  `existing_real_codex`, ran `scan`, `newgrad`, `builtin`, `linkedin`, and
+  `indeed` without sandbox/bridge/tsx/DNS blockers, completed 3 LinkedIn
+  evaluations, rebuilt the dashboard with 376 reports, 264 applications, 593
+  pipeline rows, and 1416 scan-history rows, and left only existing duplicate
+  warnings in `npm run verify`.
 
 ## Key decisions
 
@@ -183,6 +369,16 @@ through 22:00 America/New_York, and document the Codex App setup steps.
 - Do not start a local listening bridge from Codex Automation by default. The
   automation sandbox can reject `listen()` with `EPERM`, so scheduled runs
   should either reuse an already-running bridge or fall back to preview mode.
+- A bridge running in a normal terminal does not guarantee sandboxed Codex
+  automation can use it: the sandbox can also reject Node `connect()` calls to
+  `127.0.0.1:47319`. Full live runs need an approved/non-sandbox execution
+  path.
+- The Codex Automation prompt should request non-sandbox/local command
+  execution for `npm run auto:hourly-scan` and classify sandbox `EPERM` errors
+  separately from bridge/login/parser blockers.
+- Codex cron cannot perform the live scan when its run context has
+  `approval_policy=never`; use host launchd for the real command and keep Codex
+  Automation as a summary/notification layer.
 - Wait up to `CAREER_OPS_SCAN_BRIDGE_WAIT_MS` for bridge readiness so a bridge
   started immediately before the automation run does not cause a false preview
   fallback.

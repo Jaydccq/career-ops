@@ -84,6 +84,7 @@ import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
 import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
 import { writeJdFile } from "../lib/write-jd-file.js";
+import { readAutofillProfile, readAutofillResume } from "./autofill-profile.js";
 
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 100;
@@ -1152,6 +1153,14 @@ export function createClaudePipelineAdapter(
 
     async backfillNewGradPendingCache(entries) {
       return backfillPendingNewGradCache(config.repoRoot, entries);
+    },
+
+    async readAutofillProfile() {
+      return readAutofillProfile(config.repoRoot);
+    },
+
+    async readAutofillResume() {
+      return readAutofillResume(config.repoRoot);
     },
   };
 }

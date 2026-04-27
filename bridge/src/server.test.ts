@@ -95,6 +95,22 @@ function makeAdapter(
     async backfillNewGradPendingCache() {
       return { updated: 0, skipped: 0, outcomes: [] };
     },
+    async readAutofillProfile() {
+      return {
+        generatedAt: "2026-04-26T00:00:00.000Z",
+        sources: ["test"],
+        warnings: [],
+        fields: [],
+      };
+    },
+    async readAutofillResume() {
+      return {
+        filename: "test-resume.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 4,
+        dataBase64: "dGVzdA==",
+      };
+    },
     ...overrides,
   };
 }
@@ -224,6 +240,122 @@ describe("bridge server Built In pending endpoint", () => {
           lineNumber: 42,
         },
       ]);
+    } finally {
+      await fastify.close();
+    }
+  });
+});
+
+describe("bridge server autofill profile endpoint", () => {
+  it("returns the adapter-provided autofill profile", async () => {
+    const { fastify } = buildServer({
+      config: makeConfig(),
+      adapter: makeAdapter(
+        async (): Promise<EvaluationResult> => {
+          throw new Error("not expected");
+        },
+        {
+          async readAutofillProfile() {
+            return {
+              generatedAt: "2026-04-26T01:02:03.000Z",
+              sources: ["config/profile.yml", "cv.md"],
+              warnings: [],
+              fields: [
+                {
+                  key: "email",
+                  label: "Email",
+                  value: "candidate@example.com",
+                  source: "config/profile.yml",
+                  confidence: 0.96,
+                  aliases: ["email", "email address"],
+                  sensitive: true,
+                },
+              ],
+            };
+          },
+        },
+      ),
+    });
+
+    try {
+      const res = await fastify.inject({
+        method: "POST",
+        url: "/v1/autofill/profile",
+        headers: { [AUTH_HEADER]: TOKEN },
+        payload: {
+          protocol: PROTOCOL_VERSION,
+          requestId: "autofill-profile-test",
+          clientTimestamp: new Date().toISOString(),
+          payload: {},
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<Response<{
+        fields: Array<{ key: string; value: string; sensitive?: boolean }>;
+        sources: string[];
+      }>>();
+      expect(body.ok).toBe(true);
+      if (!body.ok) throw new Error("expected success response");
+      expect(body.result.sources).toEqual(["config/profile.yml", "cv.md"]);
+      expect(body.result.fields[0]).toMatchObject({
+        key: "email",
+        value: "candidate@example.com",
+        sensitive: true,
+      });
+    } finally {
+      await fastify.close();
+    }
+  });
+
+  it("returns the adapter-provided resume file", async () => {
+    const { fastify } = buildServer({
+      config: makeConfig(),
+      adapter: makeAdapter(
+        async (): Promise<EvaluationResult> => {
+          throw new Error("not expected");
+        },
+        {
+          async readAutofillResume() {
+            return {
+              filename: "Hongxi_Chen_full_stack.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 123,
+              dataBase64: "JVBERi0=",
+            };
+          },
+        },
+      ),
+    });
+
+    try {
+      const res = await fastify.inject({
+        method: "POST",
+        url: "/v1/autofill/resume",
+        headers: { [AUTH_HEADER]: TOKEN },
+        payload: {
+          protocol: PROTOCOL_VERSION,
+          requestId: "autofill-resume-test",
+          clientTimestamp: new Date().toISOString(),
+          payload: {},
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<Response<{
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+        dataBase64: string;
+      }>>();
+      expect(body.ok).toBe(true);
+      if (!body.ok) throw new Error("expected success response");
+      expect(body.result).toMatchObject({
+        filename: "Hongxi_Chen_full_stack.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 123,
+        dataBase64: "JVBERi0=",
+      });
     } finally {
       await fastify.close();
     }

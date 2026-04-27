@@ -26,6 +26,8 @@ import {
   type NewGradPendingResult,
   type NewGradPendingCacheBackfillInput,
   type NewGradPendingCacheBackfillResult,
+  type AutofillProfile,
+  type AutofillResumeFile,
 } from "../contracts/bridge-wire.js";
 import {
   PROTOCOL_VERSION,
@@ -55,6 +57,8 @@ export function bridgeClient(
   getTracker(limit: number): Promise<EnvelopedResponse<TrackerListResult>>;
   getReport(num: number): Promise<EnvelopedResponse<ReportReadResult>>;
   mergeTracker(dryRun: boolean): Promise<EnvelopedResponse<MergeReport>>;
+  getAutofillProfile(): Promise<EnvelopedResponse<AutofillProfile>>;
+  getAutofillResume(): Promise<EnvelopedResponse<AutofillResumeFile>>;
   getNewGradPending(limit: number): Promise<EnvelopedResponse<NewGradPendingResult>>;
   backfillNewGradPendingCache(
     entries: NewGradPendingCacheBackfillInput[],
@@ -258,6 +262,32 @@ export function bridgeClient(
           body: JSON.stringify(env),
         },
         env.requestId
+      );
+    },
+
+    async getAutofillProfile() {
+      const env = envelope({});
+      return jsonRequest<AutofillProfile>(
+        "/v1/autofill/profile",
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(env),
+        },
+        env.requestId,
+      );
+    },
+
+    async getAutofillResume() {
+      const env = envelope({});
+      return jsonRequest<AutofillResumeFile>(
+        "/v1/autofill/resume",
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(env),
+        },
+        env.requestId,
       );
     },
 

@@ -4,6 +4,14 @@
 
 The file contains one JSON object per line. It should store derived hiring facts only, not raw email bodies.
 
+Scanner rule: a signal must have real hiring context before it is written.
+Bare words such as `offer`, `application`, `interview`, or `hiring` are not
+enough by themselves. Valid evidence includes a personal application phrase,
+interview/assessment scheduling, a job or employment offer phrase, rejection
+language tied to an application, or a trusted ATS/recruiting sender. Marketing
+offers, newsletters, Reddit digests, utility alerts, rent/payment notices, and
+shopping mail should be ignored.
+
 Recommended fields:
 
 ```json

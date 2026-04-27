@@ -3289,7 +3289,14 @@ function renderPipelineOverview(rows) {
       $('tracker-status').value = button.dataset.stageFilter;
       resetPage('tracker');
       renderTracker();
+      focusTrackerFlowList();
     };
+  });
+}
+
+function focusTrackerFlowList() {
+  requestAnimationFrame(() => {
+    $('tracker-flow-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
@@ -3299,6 +3306,7 @@ function wireStageFilterButtons(root) {
       $('tracker-status').value = button.dataset.stageFilter;
       resetPage('tracker');
       renderTracker();
+      focusTrackerFlowList();
     };
   });
 }

@@ -34,6 +34,7 @@ import type {
   TrackerRow,
 } from "../contracts/jobs.js";
 import type { BridgeError } from "../contracts/envelope.js";
+import type { AutofillProfile, AutofillResumeFile } from "../contracts/autofill.js";
 import type {
   NewGradRow,
   EnrichedRow,
@@ -286,6 +287,51 @@ export function createFakePipelineAdapter(
           status: "updated" as const,
           localJdPath: `jds/fake-${entry.lineNumber}.txt`,
         })),
+      };
+    },
+
+    async readAutofillProfile(): Promise<AutofillProfile> {
+      return {
+        generatedAt: nowIso(),
+        sources: ["fake"],
+        warnings: [],
+        fields: [
+          {
+            key: "fullName",
+            label: "Full name",
+            value: "Career Ops Candidate",
+            source: "derived",
+            confidence: 0.9,
+            aliases: ["full name", "legal name", "name"],
+          },
+          {
+            key: "email",
+            label: "Email",
+            value: "candidate@example.com",
+            source: "derived",
+            confidence: 0.9,
+            aliases: ["email", "email address"],
+            sensitive: true,
+          },
+          {
+            key: "resumeFile",
+            label: "Resume",
+            value: "fake-resume.pdf",
+            source: "derived",
+            confidence: 0.9,
+            aliases: ["resume", "cv"],
+            sensitive: true,
+          },
+        ],
+      };
+    },
+
+    async readAutofillResume(): Promise<AutofillResumeFile> {
+      return {
+        filename: "fake-resume.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 0,
+        dataBase64: "",
       };
     },
   };

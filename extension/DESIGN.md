@@ -2,41 +2,45 @@
 
 ## Aesthetic Direction
 
-Signal Desk UI. The extension should feel like a compact task-control surface:
-sharp, readable, slightly editorial, and built for quick judgment inside a
-crowded browser page. It keeps a dark overlay base for host-page contrast, but
-uses brighter signal colors, stronger section rhythm, and fewer generic stacked
-card cues than the earlier industrial dark panel.
+Friendly job assistant UI. The extension should feel close to lightweight
+job-search tools like Simplify: approachable, fast to scan, and centered on the
+next action. It uses a warm light shell, white task surfaces, green primary
+actions, clear status chips, and compact tracker rows.
+
+The reference is product quality, not branding. Do not copy Simplify assets,
+logos, names, or proprietary layouts. Borrow the useful qualities: low friction,
+obvious primary actions, soft feedback, and a calm workflow.
 
 ## Color Tokens
 
-| Token             | Value     | Usage                             |
-|-------------------|-----------|-----------------------------------|
-| `--bg`            | `#10120f` | Panel background                  |
-| `--surface`       | `#171915` | Main functional sections          |
-| `--surface-raised`| `#1f231d` | Hover and raised controls         |
-| `--surface-soft`  | `#151713` | Status strips and nested controls |
-| `--field`         | `#0b0d0b` | Inputs and code blocks            |
-| `--text`          | `#eef2ea` | Primary text                      |
-| `--muted`         | `#a3ad9e` | Secondary text and metadata       |
-| `--dim`           | `#6f796a` | Labels and tertiary text          |
-| `--border`        | `#32382f` | Section and row dividers          |
-| `--border-strong` | `#4a5345` | Outer panel and strong controls   |
-| `--accent`        | `#37d7d2` | Primary CTA, active scanner state |
-| `--accent-strong` | `#8df0ed` | Hover accent                      |
-| `--lime`          | `#c8f05a` | Brand kicker and high-signal tags |
-| `--ok`            | `#62d883` | Success, healthy, completed       |
-| `--warn`          | `#efc75e` | Warnings, caution                 |
-| `--err`           | `#ff7668` | Errors, failures                  |
+| Token             | Value     | Usage                              |
+|-------------------|-----------|------------------------------------|
+| `--bg`            | `#f4f8f3` | Popup/page background              |
+| `--surface`       | `#ffffff` | Main task surfaces                 |
+| `--surface-raised`| `#eef7ef` | Hover and raised controls          |
+| `--surface-soft`  | `#f7fbf6` | Status strips and nested controls  |
+| `--field`         | `#fbfdf9` | Inputs and code blocks             |
+| `--text`          | `#162015` | Primary text                       |
+| `--muted`         | `#5f6f5d` | Secondary text and metadata        |
+| `--dim`           | `#81907e` | Labels and tertiary text           |
+| `--border`        | `#dce7d9` | Section and row dividers           |
+| `--border-strong` | `#c2d2bf` | Outer panel and strong controls    |
+| `--accent`        | `#16a765` | Primary CTA, active scanner state  |
+| `--accent-strong` | `#0f8f56` | Hover/pressed primary action       |
+| `--accent-soft`   | `#e3f6ea` | Active chips and subtle highlights |
+| `--lime`          | `#79b83f` | Brand kicker and high-signal tags  |
+| `--ok`            | `#16a765` | Success, healthy, completed        |
+| `--warn`          | `#b7791f` | Warnings, caution                  |
+| `--err`           | `#d8463f` | Errors, failures                   |
 
 ## Surface Tiers
 
-| Tier       | Background          | Border                         | Usage                          |
-|------------|---------------------|--------------------------------|--------------------------------|
-| Chrome     | `--surface`         | bottom divider                 | Header, health chip, close     |
-| Section    | `--surface`         | `1px solid var(--border)`      | Capture, mode, scanner blocks  |
-| Nested     | `--surface-soft`    | `1px solid var(--border)`      | Status strips, keyword cards   |
-| Field      | `--field`           | `1px solid var(--border)`      | Inputs, code, commands         |
+| Tier       | Background          | Border                         | Usage                         |
+|------------|---------------------|--------------------------------|-------------------------------|
+| Shell      | `--bg`              | `1px solid var(--border-strong)` | Popup/panel container       |
+| Section    | `--surface`         | `1px solid var(--border)`      | Capture, mode, scanner blocks |
+| Nested     | `--surface-soft`    | `1px solid var(--border)`      | Status strips, keyword cards  |
+| Field      | `--field`           | `1px solid var(--border)`      | Inputs, code, commands        |
 
 ## Spacing Scale (4px base)
 
@@ -66,9 +70,9 @@ card cues than the earlier industrial dark panel.
 ## Interaction Patterns
 
 ### Bridge Chip
-Status indicator in header. Shows health dot + label. Click toggles a compact
-bridge summary that only states the current mode. Uses `aria-expanded` /
-`aria-controls`.
+Status indicator in header. Shows health dot + label in a soft green chip when
+healthy and red when offline. Click toggles a compact bridge summary that only
+states the current mode. Uses `aria-expanded` / `aria-controls`.
 
 ### Stepper (Progress)
 Vertical list with `::before` icons: `○` pending, `●` active (pulsing),
@@ -90,10 +94,36 @@ Enter/Space keyboard handler.
 
 ### Scanner Surface
 Scanner pages use one workflow section rather than several unrelated cards:
-source title, status strip, optional source search card, primary scan CTA,
+source title, status strip, optional source search row, primary scan CTA,
 results, pending candidates, and evaluation progress. Built In keyword search
 uses a nested source card with a source badge, all-location meta label, keyword
 input, shortcut chips, and concise helper text.
+
+### Simplify-Inspired Qualities
+
+- Make the next action obvious with one green primary button.
+- Keep secondary actions quiet and readable.
+- Use friendly empty states instead of blank utility text.
+- Use status chips and rows instead of heavy boxed dashboards.
+- Avoid purple gradients, generic feature grids, and decorative icons.
+
+### Application Autofill
+
+The injected panel may show an "Application autofill" section on ordinary job
+application pages. It reads safe profile fields from the authenticated local
+bridge, previews matched empty fields, and fills only after the user clicks
+"Autofill current page".
+
+Autofill is intentionally conservative:
+- It never clicks submit, next, continue, apply, upload, or save controls.
+- It may attach the configured resume PDF to a matched resume/CV file input
+  after the user clicks "Autofill current page"; the actual application upload
+  still requires the user to continue or submit.
+- It never stores profile values in extension state.
+- It fills common visible text, textarea, select, radio/checkbox/button option,
+  and resume/CV file fields only.
+- It reports filled/skipped counts and expects the user to review before
+  submitting.
 
 ## Accessibility
 

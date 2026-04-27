@@ -457,6 +457,76 @@ export function buildServer(args: BuildServerArgs) {
     reply.code(200).send(success(env.requestId, data));
   });
 
+  /* -- POST /v1/autofill/profile ---------------------------------------- */
+
+  const autofillProfileSchema = envelopeSchema(z.object({}));
+
+  fastify.post("/v1/autofill/profile", async (req, reply) => {
+    if (!generalRateLimit.check("general")) {
+      return sendFailure(reply, requestIdFromBody(req.body),
+        bridgeError("RATE_LIMITED", "too many requests"));
+    }
+
+    const parsed = autofillProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendFailure(
+        reply,
+        requestIdFromBody(req.body),
+        bridgeError("BAD_REQUEST", "invalid envelope", {
+          issues: parsed.error.issues,
+        })
+      );
+    }
+    const env = parsed.data as RequestEnvelope<Record<string, never>>;
+    try {
+      assertProtocol(env);
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+
+    try {
+      const data = await adapter.readAutofillProfile();
+      reply.code(200).send(success(env.requestId, data));
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+  });
+
+  /* -- POST /v1/autofill/resume ----------------------------------------- */
+
+  const autofillResumeSchema = envelopeSchema(z.object({}));
+
+  fastify.post("/v1/autofill/resume", async (req, reply) => {
+    if (!generalRateLimit.check("general")) {
+      return sendFailure(reply, requestIdFromBody(req.body),
+        bridgeError("RATE_LIMITED", "too many requests"));
+    }
+
+    const parsed = autofillResumeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendFailure(
+        reply,
+        requestIdFromBody(req.body),
+        bridgeError("BAD_REQUEST", "invalid envelope", {
+          issues: parsed.error.issues,
+        })
+      );
+    }
+    const env = parsed.data as RequestEnvelope<Record<string, never>>;
+    try {
+      assertProtocol(env);
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+
+    try {
+      const data = await adapter.readAutofillResume();
+      reply.code(200).send(success(env.requestId, data));
+    } catch (e) {
+      return sendFailure(reply, env.requestId, toBridgeError(e));
+    }
+  });
+
   /* -- GET /v1/reports/:num ----------------------------------------------- */
 
   fastify.get<{ Params: { num: string } }>(
