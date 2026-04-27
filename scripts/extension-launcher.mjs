@@ -17,7 +17,7 @@ const PRIMARY_ACTIONS = [
   {
     label: "Desktop launchpad (Codex)",
     description: "Build, start the Codex bridge, reveal dist, and open chrome://extensions.",
-    terminalCommand: "npm run ext:start",
+    terminalCommand: "npm run server:dev",
     afterOpen: [
       { type: "path", target: distDir },
       { type: "chrome-extensions" },
@@ -26,7 +26,7 @@ const PRIMARY_ACTIONS = [
   {
     label: "Desktop launchpad (Claude)",
     description: "Build, start the Claude bridge, reveal dist, and open chrome://extensions.",
-    terminalCommand: "npm run ext:start:claude",
+    terminalCommand: "CAREER_OPS_BACKEND=real-claude npm run server:dev",
     afterOpen: [
       { type: "path", target: distDir },
       { type: "chrome-extensions" },
@@ -46,23 +46,23 @@ const ADVANCED_ACTIONS = [
   },
   {
     label: "Start bridge (Codex)",
-    terminalCommand: "npm run ext:bridge",
+    terminalCommand: "npm run server",
   },
   {
     label: "Start bridge (Claude)",
-    terminalCommand: "npm run ext:bridge:claude",
+    terminalCommand: "CAREER_OPS_BACKEND=real-claude npm run server",
   },
   {
     label: "Start bridge (Fake)",
-    terminalCommand: "npm run ext:bridge:fake",
+    terminalCommand: "CAREER_OPS_BACKEND=fake npm run server",
   },
   {
     label: "Build + start (Codex)",
-    terminalCommand: "npm run ext:start",
+    terminalCommand: "npm run server:dev",
   },
   {
     label: "Build + start (Claude)",
-    terminalCommand: "npm run ext:start:claude",
+    terminalCommand: "CAREER_OPS_BACKEND=real-claude npm run server:dev",
   },
   {
     label: "Reveal extension/dist",

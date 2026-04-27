@@ -150,7 +150,7 @@ npm run auto:hourly-scan
 - LinkedIn login/checkpoint: `bb-browser open https://www.linkedin.com/login`
 - Indeed verification: `bb-browser open https://www.indeed.com`
 - Jobright/newgrad login: `npm run newgrad-scan:login`
-- Bridge recovery: `npm run ext:bridge`
+- Bridge recovery: `npm run server`
 
 Complete manual login or verification in the opened browser, close any manual
 scan browser window that uses the same profile, then let the next automation run
@@ -160,7 +160,7 @@ If Codex Automation reports `listen EPERM`, start the bridge once from a normal
 local terminal:
 
 ```bash
-npm run ext:bridge
+npm run server
 ```
 
 Keep that terminal process running. The next hourly automation run will reuse

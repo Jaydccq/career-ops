@@ -37,7 +37,7 @@ Then open the printed local URL, usually `http://127.0.0.1:47329/`.
 4. Tracker rows read quick-screen decisions from report metadata such as
    `**Decision:** manual_review`. `manual_review` rows show a **Full Eval**
    button when the local dashboard server is running. The button queues a
-   default bridge evaluation, so `npm run ext:bridge` must also be running.
+   default bridge evaluation, so `npm run server` must also be running.
 5. Gmail signals are optional derived facts from read-only mailbox review. If
    `data/gmail-signals.jsonl` exists, Tracker matches records by
    `applicationNum` or exact company+role. Unmatched signals render as

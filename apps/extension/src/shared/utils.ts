@@ -62,11 +62,11 @@ export function presetDescription(preset: BridgePreset): string {
 export function presetCommand(preset: BridgePreset): string {
   switch (preset) {
     case "fake":
-      return "npm run ext:bridge:fake";
+      return "CAREER_OPS_BACKEND=fake npm run server";
     case "real-claude":
-      return "npm run ext:bridge:claude";
+      return "CAREER_OPS_BACKEND=real-claude npm run server";
     case "real-codex":
-      return "npm run ext:bridge";
+      return "npm run server";
   }
 }
 

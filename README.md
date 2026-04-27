@@ -23,13 +23,13 @@ me.
 npm install
 npm run verify
 npm run ext:build
-npm run ext:bridge
+npm run server
 npm run dashboard
 ```
 
 Useful entry points:
 
-- `npm run ext:start` builds the extension and starts the bridge.
+- `npm run server:dev` builds the extension and starts the bridge.
 - `npm run ext:launcher` prints the local extension launch instructions.
 - `npm run pending:warm-cache` warms legacy pending-job cache data.
 - `npm run gemini:eval -- "JD text"` runs the upstream Gemini evaluator.

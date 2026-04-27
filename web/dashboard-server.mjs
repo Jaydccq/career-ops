@@ -1588,7 +1588,7 @@ async function setApplicationStatus(body) {
 
 async function readBridgeToken() {
   if (!existsSync(BRIDGE_TOKEN_PATH)) {
-    throw new ClientError('bridge token not found; start with npm run ext:bridge', 503);
+    throw new ClientError('bridge token not found; start with npm run server', 503);
   }
   return (await readFile(BRIDGE_TOKEN_PATH, 'utf8')).trim();
 }
@@ -1615,7 +1615,7 @@ async function postBridge(path, payload) {
       body: JSON.stringify(bridgeEnvelope(payload)),
     });
   } catch (error) {
-    throw new ClientError(`bridge request failed; start npm run ext:bridge. ${error.message}`, 503);
+    throw new ClientError(`bridge request failed; start npm run server. ${error.message}`, 503);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok === false) {
@@ -1632,7 +1632,7 @@ async function getBridge(path) {
       headers: { 'x-career-ops-token': token },
     });
   } catch (error) {
-    throw new ClientError(`bridge request failed; start npm run ext:bridge. ${error.message}`, 503);
+    throw new ClientError(`bridge request failed; start npm run server. ${error.message}`, 503);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok === false) {

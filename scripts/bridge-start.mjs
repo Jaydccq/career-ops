@@ -29,25 +29,43 @@ const MODES = {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-function usage() {
-  console.log(`Usage: node scripts/bridge-start.mjs <mode> [--dry-run]
+const VALID_MODES = Object.keys(MODES);
+const DEFAULT_MODE = "real-codex";
 
-Modes:
-  fake
-  real-claude
-  real-codex`);
+function usage() {
+  console.log(`Usage: node scripts/bridge-start.mjs [<mode>] [--dry-run]
+
+Mode resolution (first match wins):
+  1. positional argument: ${VALID_MODES.join(" | ")}
+  2. CAREER_OPS_BACKEND env var: ${VALID_MODES.join(" | ")}
+  3. default: ${DEFAULT_MODE}`);
 }
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
-const modeArg = args.find((arg) => !arg.startsWith("--"));
+const positionalArg = args.find((arg) => !arg.startsWith("--"));
+const envArg = process.env.CAREER_OPS_BACKEND;
 
-if (!modeArg || !(modeArg in MODES)) {
-  usage();
-  process.exit(modeArg ? 1 : 0);
+let modeKey;
+if (positionalArg) {
+  if (!(positionalArg in MODES)) {
+    usage();
+    process.exit(1);
+  }
+  modeKey = positionalArg;
+} else if (envArg) {
+  if (!(envArg in MODES)) {
+    console.error(
+      `CAREER_OPS_BACKEND must be one of: ${VALID_MODES.join(", ")} (got "${envArg}")`
+    );
+    process.exit(1);
+  }
+  modeKey = envArg;
+} else {
+  modeKey = DEFAULT_MODE;
 }
 
-const mode = MODES[modeArg];
+const mode = MODES[modeKey];
 const env = {
   ...process.env,
   ...mode.env,

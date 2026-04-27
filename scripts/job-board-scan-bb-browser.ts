@@ -525,7 +525,7 @@ async function assertBbBrowserAvailable(): Promise<void> {
 async function readBridgeToken(): Promise<string> {
   const tokenPath = join(repoRoot, "bridge", ".bridge-token");
   if (!existsSync(tokenPath)) {
-    throw new Error("bridge token not found; start the bridge with bun run ext:bridge");
+    throw new Error("bridge token not found; start the bridge with npm run server");
   }
   return (await readFile(tokenPath, "utf8")).trim();
 }

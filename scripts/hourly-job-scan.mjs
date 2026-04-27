@@ -157,7 +157,7 @@ async function prepareBridge() {
   }
 
   if (existing) {
-    const message = `Bridge at ${bridgeBase} is running but is not real/codex. Stop it and run "npm run ext:bridge".`;
+    const message = `Bridge at ${bridgeBase} is running but is not real/codex. Stop it and run "npm run server".`;
     if (requireBridge) throw new Error(message);
     console.warn(message);
     console.warn("Continuing in read-only preview mode.");
@@ -171,14 +171,14 @@ async function prepareBridge() {
   if (!startBridge) {
     const message = `No real/codex bridge is reachable at ${bridgeBase}. Continuing in read-only preview mode.`;
     if (requireBridge) {
-      throw new Error(`${message} Recovery: start the bridge outside the automation sandbox with "npm run ext:bridge".`);
+      throw new Error(`${message} Recovery: start the bridge outside the automation sandbox with "npm run server".`);
     }
     console.warn(message);
-    console.warn('For write/evaluation runs, start the bridge outside the automation sandbox with "npm run ext:bridge".');
+    console.warn('For write/evaluation runs, start the bridge outside the automation sandbox with "npm run server".');
     return {
       writesEnabled: false,
       status: "bridge_unavailable_preview",
-      detail: `${message} Recovery: npm run ext:bridge`,
+      detail: `${message} Recovery: npm run server`,
     };
   }
 
@@ -212,7 +212,7 @@ async function prepareBridge() {
     }
   }
 
-  const message = 'Bridge did not become healthy in real/codex mode. Recovery: run "npm run ext:bridge".';
+  const message = 'Bridge did not become healthy in real/codex mode. Recovery: run "npm run server".';
   if (requireBridge) throw new Error(message);
   console.warn(message);
   console.warn("Continuing in read-only preview mode.");
@@ -452,7 +452,7 @@ function recoveryCommand(label, output) {
     return "npm run newgrad-scan:login";
   }
   if (lower.includes("bridge") && (lower.includes("not reachable") || lower.includes("not real/codex"))) {
-    return "npm run ext:bridge";
+    return "npm run server";
   }
   if (label === "linkedin" && lower.includes("no rows extracted")) {
     return "bb-browser open https://www.linkedin.com/login";
@@ -534,7 +534,7 @@ async function writeSummary(results, bridgeState) {
     "## Blockers and recovery",
     "",
     [
-      ...(bridgeState.writesEnabled ? [] : [`- bridge: ${bridgeState.status}; recovery: \`npm run ext:bridge\``]),
+      ...(bridgeState.writesEnabled ? [] : [`- bridge: ${bridgeState.status}; recovery: \`npm run server\``]),
       ...(blockers.length === 0
         ? ["No login, checkpoint, rate-limit, verification, parsing, or timeout blocker detected from output tails."]
         : blockers.map((item) => `- ${item.label}: ${item.reason || "manual_recovery"}${item.recovery ? `; recovery: \`${item.recovery}\`` : ""}`)),

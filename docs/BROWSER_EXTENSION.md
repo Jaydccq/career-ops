@@ -37,7 +37,7 @@ The repo root now exposes short aliases so you do not have to type env vars by h
 Typical Codex flow:
 
 ```bash
-npm run ext:start
+npm run server:dev
 ```
 
 That does two things from the repo root:
@@ -49,10 +49,9 @@ Other common shortcuts:
 
 ```bash
 npm run ext:build
-npm run ext:bridge
-npm run ext:bridge:claude
-npm run ext:bridge:fake
-ANTHROPIC_API_KEY=... npm run ext:bridge:sdk
+npm run server                                  # real / codex (default)
+CAREER_OPS_BACKEND=real-claude npm run server   # real / claude
+CAREER_OPS_BACKEND=fake npm run server          # fake (UI smoke)
 ```
 
 If you want a simple macOS picker instead of remembering commands:
@@ -65,7 +64,7 @@ That opens a native dialog where you can choose build/start actions.
 
 The new default action is `Desktop launchpad (Codex)`, which will:
 
-- start `npm run ext:start` in Terminal
+- start `npm run server:dev` in Terminal
 - reveal `extension/dist` in Finder
 - open `chrome://extensions` in Chrome
 
