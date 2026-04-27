@@ -277,7 +277,7 @@ export interface ExtensionState {
   bridgePort: number;
   /** User-selected bridge execution preset shown in the popup. */
   preferredBridgePreset: BridgePreset;
-  /** Shared secret, copied from bridge/.bridge-token on setup. */
+  /** Shared secret, copied from apps/server/.bridge-token on setup. */
   bridgeToken: string;
   /** Last health snapshot, for fast popup render. */
   lastHealthAt?: string;

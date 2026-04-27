@@ -3,8 +3,8 @@
  *
  * Responsibilities:
  *   1. Locate the career-ops repo root (the directory containing this
- *      bridge/ directory).
- *   2. Load or generate the shared-secret token at bridge/.bridge-token.
+ *      apps/server/ directory).
+ *   2. Load or generate the shared-secret token at apps/server/.bridge-token.
  *   3. Resolve `claude`, `codex`, and `node` binaries from PATH.
  *   4. Decide which pipeline adapter to use (real vs fake) from env.
  *
@@ -17,7 +17,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -28,7 +28,7 @@ export type RealExecutor = "claude" | "codex";
 export interface BridgeConfig {
   /** Absolute path to career-ops repo root. cwd for every shell-out. */
   repoRoot: string;
-  /** Absolute path to bridge/ directory (inside repoRoot). */
+  /** Absolute path to apps/server/ directory (inside repoRoot). */
   bridgeDir: string;
   /** Host to bind. Always loopback in production. */
   host: string;
@@ -78,19 +78,34 @@ function here(): string {
 }
 
 /**
- * Walk upward from src/runtime until we find bridge/package.json, then
- * one more level up is the repo root.
+ * Walk upward from src/runtime until we find apps/server/package.json
+ * (the @career-ops/server package), then continue walking up to find
+ * the career-ops repo root (identified by cv.md + modes/ + data/).
  */
 function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
   let dir = here();
+  let bridgeDir: string | null = null;
   for (let i = 0; i < 10; i++) {
     const pkg = join(dir, "package.json");
     if (existsSync(pkg)) {
-      const content = JSON.parse(readFileSync(pkg, "utf-8"));
-      if (content.name === "@career-ops/bridge") {
-        const bridgeDir = dir;
-        const repoRoot = resolve(dir, "..");
-        return { repoRoot, bridgeDir };
+      try {
+        const content = JSON.parse(readFileSync(pkg, "utf-8"));
+        if (content.name === "@career-ops/server" && bridgeDir === null) {
+          bridgeDir = dir;
+        }
+      } catch {
+        // ignore unreadable package.json
+      }
+    }
+    if (bridgeDir !== null) {
+      // Once we've found the server package, look for the repo root
+      // (the directory holding cv.md + modes/ + data/).
+      if (
+        existsSync(join(dir, "cv.md")) &&
+        existsSync(join(dir, "modes")) &&
+        existsSync(join(dir, "data"))
+      ) {
+        return { repoRoot: dir, bridgeDir };
       }
     }
     const parent = dirname(dir);
@@ -98,7 +113,7 @@ function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
     dir = parent;
   }
   throw new Error(
-    "bridge bootstrap: could not locate @career-ops/bridge package.json"
+    "bridge bootstrap: could not locate @career-ops/server package.json or career-ops repo root"
   );
 }
 

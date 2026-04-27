@@ -59,8 +59,8 @@ const env = {
   ...process.env,
   ...mode.env,
 };
-const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
-const npmArgs = ["--prefix", "bridge", "run", "start"];
+const npmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const npmArgs = ["--filter", "@career-ops/server", "run", "start"];
 
 if (dryRun) {
   console.log(`Mode: ${mode.label}`);

@@ -49,11 +49,11 @@ bun.lock
 .claude/projects/
 package-lock.json
 
-# Bridge
-bridge/.bridge-token
-bridge/node_modules/
-bridge/dist/
-bridge/package-lock.json
+# Bridge / server (apps/server)
+apps/server/.bridge-token
+apps/server/node_modules/
+apps/server/dist/
+apps/server/package-lock.json
 
 # Extension
 extension/node_modules/

@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 
 const repoRoot = process.cwd();
 const base = "http://127.0.0.1:47319";
-const token = readFileSync(`${repoRoot}/bridge/.bridge-token`, "utf-8").trim();
+const token = readFileSync(`${repoRoot}/apps/server/.bridge-token`, "utf-8").trim();
 const headers = {
   "content-type": "application/json",
   "x-career-ops-token": token,

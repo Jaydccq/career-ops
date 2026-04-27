@@ -1,5 +1,5 @@
 {
-  "name": "@career-ops/bridge",
+  "name": "@career-ops/server",
   "version": "0.1.0-phase1",
   "private": true,
   "description": "Local HTTP companion that bridges the Chrome extension to the career-ops CLI pipeline. Phase 1 = contracts only.",

@@ -1016,7 +1016,7 @@ async function evaluateCurrentScanOffers(offers, options) {
   console.log(`\nCurrent scan offers: total=${entries.length}, evaluating=${candidates.length}`);
   if (candidates.length === 0) return;
 
-  const tokenPath = 'bridge/.bridge-token';
+  const tokenPath = 'apps/server/.bridge-token';
   if (!existsSync(tokenPath)) {
     throw new Error('bridge token not found; start the bridge first with npm run ext:bridge');
   }
@@ -1115,7 +1115,7 @@ function dedupeScanOffers(offers) {
 }
 
 async function evaluateBuiltInPending(options) {
-  const tokenPath = 'bridge/.bridge-token';
+  const tokenPath = 'apps/server/.bridge-token';
   if (!existsSync(tokenPath)) {
     throw new Error('bridge token not found; start the bridge first with npm run ext:bridge');
   }

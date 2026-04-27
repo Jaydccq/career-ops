@@ -2,8 +2,8 @@
  * envelope.ts — shared request/response envelope for the career-ops bridge.
  *
  * CONTRACTS ONLY. No runtime code. Imported by:
- *   • bridge/src/*     — the HTTP server
- *   • extension/src/*  — the Chrome extension (via a mirror re-export file)
+ *   • apps/server/src/*    — the HTTP server
+ *   • apps/extension/src/* — the Chrome extension (via a mirror re-export file)
  *
  * Invariants:
  *   1. Every request and every response carries a `protocol` version.
@@ -113,7 +113,7 @@ export interface BridgeError {
 /**
  * Guard helpers — exported as types so the runtime implementations can
  * be generated from a single source. (Implementations live in
- * bridge/src/runtime/envelope.ts in Phase 2, not here.)
+ * apps/server/src/runtime/envelope.ts in Phase 2, not here.)
  */
 export type IsSuccess = <T>(r: Response<T>) => r is SuccessResponse<T>;
 export type IsFailure = <T>(r: Response<T>) => r is FailureResponse;

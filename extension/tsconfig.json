@@ -23,6 +23,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "../bridge/src/contracts/**/*.ts"
+    "../apps/server/src/contracts/**/*.ts"
   ]
 }

@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, expect, test } from "vitest";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../");
 const MERGE_TRACKER = join(REPO_ROOT, "merge-tracker.mjs");
 
 const tempRoots: string[] = [];

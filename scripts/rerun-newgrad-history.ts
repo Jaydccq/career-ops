@@ -9,11 +9,11 @@ import {
   type NewGradDetail,
   type NewGradRow,
 } from "../extension/src/content/extract-newgrad.ts";
-import { loadNewGradScanConfig } from "../bridge/src/adapters/newgrad-config.ts";
-import { scoreRow } from "../bridge/src/adapters/newgrad-scorer.ts";
-import { scoreEnrichedRowValue } from "../bridge/src/adapters/newgrad-value-scorer.ts";
-import { canonicalizeJobUrl } from "../bridge/src/lib/canonical-job-url.ts";
-import type { ScoreBreakdown, ScoredRow } from "../bridge/src/contracts/newgrad.ts";
+import { loadNewGradScanConfig } from "../apps/server/src/adapters/newgrad-config.ts";
+import { scoreRow } from "../apps/server/src/adapters/newgrad-scorer.ts";
+import { scoreEnrichedRowValue } from "../apps/server/src/adapters/newgrad-value-scorer.ts";
+import { canonicalizeJobUrl } from "../apps/server/src/lib/canonical-job-url.ts";
+import type { ScoreBreakdown, ScoredRow } from "../apps/server/src/contracts/newgrad.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");

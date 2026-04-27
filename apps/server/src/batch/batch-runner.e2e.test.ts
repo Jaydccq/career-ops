@@ -14,7 +14,7 @@ import { afterEach, expect, test } from "vitest";
 
 import { writeJdFile } from "../lib/write-jd-file.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
 const BATCH_RUNNER = join(REPO_ROOT, "batch", "batch-runner.sh");
 const BATCH_PROMPT = join(REPO_ROOT, "batch", "batch-prompt.md");
 const WORKER_RESULT = join(REPO_ROOT, "batch", "worker-result.mjs");

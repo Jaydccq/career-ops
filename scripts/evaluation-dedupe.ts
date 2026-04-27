@@ -1,7 +1,7 @@
-import type { PipelineEntry } from "../bridge/src/contracts/newgrad.ts";
-import { loadEvaluatedJobIdentities } from "../bridge/src/adapters/evaluated-report-urls.ts";
-import { loadTrackedCompanyRoles } from "../bridge/src/adapters/newgrad-config.ts";
-import { jobCompanyRoleKey, normalizeJobUrl } from "../bridge/src/adapters/job-identity.ts";
+import type { PipelineEntry } from "../apps/server/src/contracts/newgrad.ts";
+import { loadEvaluatedJobIdentities } from "../apps/server/src/adapters/evaluated-report-urls.ts";
+import { loadTrackedCompanyRoles } from "../apps/server/src/adapters/newgrad-config.ts";
+import { jobCompanyRoleKey, normalizeJobUrl } from "../apps/server/src/adapters/job-identity.ts";
 
 export interface EvaluationDedupeKeys {
   urls: ReadonlySet<string>;

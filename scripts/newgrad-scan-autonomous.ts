@@ -7,7 +7,7 @@ import {
   createScanRunId,
   createScanRunRecorder,
   type ScanRunRecorder,
-} from "../bridge/src/adapters/newgrad-scan-run-log.ts";
+} from "../apps/server/src/adapters/newgrad-scan-run-log.ts";
 import {
   extractNewGradDetail,
   extractNewGradList,
@@ -20,13 +20,13 @@ import type {
   NewGradScoreResult,
   PipelineEntry,
   ScoredRow,
-} from "../bridge/src/contracts/newgrad.ts";
+} from "../apps/server/src/contracts/newgrad.ts";
 import type {
   EvaluationInput,
   EvaluationResult,
   JobSnapshot,
   StructuredJobSignals,
-} from "../bridge/src/contracts/jobs.ts";
+} from "../apps/server/src/contracts/jobs.ts";
 import {
   filterKnownEvaluationCandidates,
   loadEvaluationDedupeKeys,

@@ -716,7 +716,7 @@ function buildHTML(): string {
     </div>
     <div id="setup" class="section hidden">
       <div class="section-title">First-time setup</div>
-      <p class="setup-hint">Paste your bridge token:<br/><code class="setup-cmd">cat &lt;repo&gt;/bridge/.bridge-token</code></p>
+      <p class="setup-hint">Paste your bridge token:<br/><code class="setup-cmd">cat &lt;repo&gt;/apps/server/.bridge-token</code></p>
       <input type="password" id="setup-token" class="setup-input" placeholder="paste token…" />
       <button class="cta primary" id="setup-save-btn">Save token</button>
     </div>

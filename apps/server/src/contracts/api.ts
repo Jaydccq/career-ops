@@ -50,7 +50,7 @@ export const BRIDGE_DEFAULT_PORT = 47319 as const;
 
 /**
  * Header that carries the shared secret. The secret is generated once
- * on first bridge start and persisted under bridge/.bridge-token (gitignored).
+ * on first bridge start and persisted under apps/server/.bridge-token (gitignored).
  * The extension stores the same value in chrome.storage.local and sends it
  * on every request. No secret in request bodies, no secret in URLs.
  */

@@ -20,14 +20,14 @@ import type {
   NewGradScoreResult,
   PipelineEntry,
   ScoredRow,
-} from "../bridge/src/contracts/newgrad.ts";
+} from "../apps/server/src/contracts/newgrad.ts";
 import type {
   EvaluationInput,
   EvaluationMode,
   EvaluationResult,
   JobSnapshot,
   StructuredJobSignals,
-} from "../bridge/src/contracts/jobs.ts";
+} from "../apps/server/src/contracts/jobs.ts";
 import {
   buildLinkedInSearchPageUrls,
   canonicalLinkedInJobViewUrl,
@@ -35,27 +35,27 @@ import {
   parseLinkedInVisibleJobCardText,
   type LinkedInVisibleJobCard,
   type LinkedInAuthStateInput,
-} from "../bridge/src/adapters/linkedin-scan-normalizer.ts";
+} from "../apps/server/src/adapters/linkedin-scan-normalizer.ts";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
   loadTrackedCompanyRoles,
-} from "../bridge/src/adapters/newgrad-config.ts";
+} from "../apps/server/src/adapters/newgrad-config.ts";
 import {
   isRecentNewGradRow,
   loadNewGradSeenKeys,
   newGradCompanyRoleKey,
   wasNewGradRowSeen,
-} from "../bridge/src/adapters/newgrad-scan-history.ts";
-import { scoreAndFilter } from "../bridge/src/adapters/newgrad-scorer.ts";
-import { scoreEnrichedRowValue } from "../bridge/src/adapters/newgrad-value-scorer.ts";
-import { pickPipelineEntryUrl } from "../bridge/src/adapters/newgrad-links.ts";
-import { parseLinkedInGuestJobPostingHtml } from "../bridge/src/adapters/linkedin-guest-detail.ts";
+} from "../apps/server/src/adapters/newgrad-scan-history.ts";
+import { scoreAndFilter } from "../apps/server/src/adapters/newgrad-scorer.ts";
+import { scoreEnrichedRowValue } from "../apps/server/src/adapters/newgrad-value-scorer.ts";
+import { pickPipelineEntryUrl } from "../apps/server/src/adapters/newgrad-links.ts";
+import { parseLinkedInGuestJobPostingHtml } from "../apps/server/src/adapters/linkedin-guest-detail.ts";
 import {
   createScanRunId,
   createScanRunRecorder,
   type ScanRunRecorder,
-} from "../bridge/src/adapters/newgrad-scan-run-log.ts";
+} from "../apps/server/src/adapters/newgrad-scan-run-log.ts";
 import {
   filterKnownEvaluationCandidates,
   loadEvaluationDedupeKeys,

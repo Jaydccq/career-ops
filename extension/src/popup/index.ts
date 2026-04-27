@@ -583,7 +583,7 @@ function classifyError(code: string, message: string): {
     return {
       category: "Authentication error",
       explanation: "The bridge token is invalid or expired.",
-      recovery: { before: "Re-enter your token:", code: "cat bridge/.bridge-token" },
+      recovery: { before: "Re-enter your token:", code: "cat apps/server/.bridge-token" },
       retryable: false,
     };
   }

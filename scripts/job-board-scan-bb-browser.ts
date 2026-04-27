@@ -16,37 +16,37 @@ import type {
   NewGradScoreResult,
   PipelineEntry,
   ScoredRow,
-} from "../bridge/src/contracts/newgrad.ts";
+} from "../apps/server/src/contracts/newgrad.ts";
 import type {
   EvaluationInput,
   EvaluationMode,
   EvaluationResult,
   JobSnapshot,
   StructuredJobSignals,
-} from "../bridge/src/contracts/jobs.ts";
+} from "../apps/server/src/contracts/jobs.ts";
 import {
   buildBuiltInPageUrl,
   buildIndeedPageUrl,
   normalizeBuiltInAdapterRows,
   normalizeIndeedAdapterRows,
-} from "../bridge/src/adapters/job-board-scan-normalizer.ts";
+} from "../apps/server/src/adapters/job-board-scan-normalizer.ts";
 import {
   htmlToReadableText,
   normalizeJobBoardSalary,
   sanitizeJobBoardDetailText,
-} from "../bridge/src/adapters/job-board-detail-text.ts";
+} from "../apps/server/src/adapters/job-board-detail-text.ts";
 import {
   loadNegativeKeywords,
   loadNewGradScanConfig,
   loadTrackedCompanyRoles,
-} from "../bridge/src/adapters/newgrad-config.ts";
+} from "../apps/server/src/adapters/newgrad-config.ts";
 import {
   isRecentNewGradRow,
   loadNewGradSeenKeys,
   newGradCompanyRoleKey,
   wasNewGradRowSeen,
-} from "../bridge/src/adapters/newgrad-scan-history.ts";
-import { scoreAndFilter } from "../bridge/src/adapters/newgrad-scorer.ts";
+} from "../apps/server/src/adapters/newgrad-scan-history.ts";
+import { scoreAndFilter } from "../apps/server/src/adapters/newgrad-scorer.ts";
 import {
   filterKnownEvaluationCandidates,
   loadEvaluationDedupeKeys,

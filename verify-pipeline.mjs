@@ -74,6 +74,23 @@ function runCommandCheck(label, cwd, args) {
   }
 }
 
+function runPnpmCheck(label, cwd, args) {
+  try {
+    execFileSync('pnpm', args, {
+      cwd,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+    ok(label);
+  } catch (err) {
+    const output = [
+      err?.stdout?.trim?.() ?? '',
+      err?.stderr?.trim?.() ?? '',
+    ].filter(Boolean).join('\n');
+    error(`${label}\n${output || 'command failed'}`);
+  }
+}
+
 // --- Read applications.md ---
 if (!existsSync(APPS_FILE)) {
   console.log('\n📊 No applications.md found. This is normal for a fresh setup.');
@@ -202,14 +219,14 @@ if (!existsSync(APPS_FILE)) {
 
 console.log('\n🧪 Checking bridge and extension\n');
 
-if (existsSync(join(CAREER_OPS, 'bridge/package.json'))) {
-  runCommandCheck('bridge tests', CAREER_OPS, ['--prefix', 'bridge', 'test']);
-  runCommandCheck('bridge typecheck', CAREER_OPS, ['--prefix', 'bridge', 'run', 'typecheck']);
+if (existsSync(join(CAREER_OPS, 'apps/server/package.json'))) {
+  runPnpmCheck('server tests', CAREER_OPS, ['--filter', '@career-ops/server', 'test']);
+  runPnpmCheck('server typecheck', CAREER_OPS, ['--filter', '@career-ops/server', 'typecheck']);
 }
 
-if (existsSync(join(CAREER_OPS, 'extension/package.json'))) {
-  runCommandCheck('extension typecheck', CAREER_OPS, ['--prefix', 'extension', 'run', 'typecheck']);
-  runCommandCheck('extension build', CAREER_OPS, ['--prefix', 'extension', 'run', 'build']);
+if (existsSync(join(CAREER_OPS, 'apps/extension/package.json'))) {
+  runPnpmCheck('extension typecheck', CAREER_OPS, ['--filter', '@career-ops/extension', 'typecheck']);
+  runPnpmCheck('extension build', CAREER_OPS, ['--filter', '@career-ops/extension', 'run', 'build']);
 }
 
 // --- Summary ---
