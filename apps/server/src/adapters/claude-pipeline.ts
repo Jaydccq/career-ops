@@ -243,6 +243,17 @@ export const __internal = {
   shouldUseCodexSearch,
   extractTerminalJsonObject,
   parseReportMarkdown,
+  // Reused by openrouter-pipeline (HTTP path writes the report itself
+  // instead of relying on a CLI agent to drop files in reports/).
+  reserveReportNumber,
+  formatReportNumber,
+  todayDate,
+  slugify,
+  writeReport,
+  buildTrackerRow,
+  writeTrackerAddition,
+  nextTrackerEntryNumber,
+  coerceScore,
 };
 
 export function createClaudePipelineAdapter(
