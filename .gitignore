@@ -80,3 +80,6 @@ docs/exec-plans/*
 !docs/exec-plans/archive/*.md
 !docs/exec-plans/summaries/
 !docs/exec-plans/summaries/*.md
+
+# Git worktrees for parallel feature development
+.worktrees/
