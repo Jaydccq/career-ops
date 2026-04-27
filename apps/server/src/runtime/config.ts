@@ -276,13 +276,6 @@ export function loadConfig(): BridgeConfig {
     );
   }
 
-  if (mode === "real" && realExecutor === "openrouter") {
-    // The OpenRouter adapter resolves the API key lazily at construction
-    // time so the bridge can boot without a key (e.g. for /v1/health
-    // smoke tests). The adapter throws with a helpful message before the
-    // first evaluation if the key is still missing.
-  }
-
   const bridgeVersion = readPackageVersion(join(bridgeDir, "package.json"));
   const careerOpsVersion = readVersion(join(repoRoot, "VERSION"));
 

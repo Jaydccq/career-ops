@@ -193,7 +193,7 @@ export function createOpenRouterPipelineAdapter(
             : "no page text — relying on URL hint",
       });
 
-      const messages = buildOpenRouterMessages({
+      const messages = buildOpenRouterMessages(config.repoRoot, {
         input,
         reportNumberText,
         date,
@@ -403,24 +403,17 @@ interface ChatMessage {
  * authoring stays in one place. We append API-specific instructions
  * that tell the model to emit the report markdown directly as its reply.
  */
-function buildOpenRouterMessages(args: {
-  input: EvaluationInput;
-  reportNumberText: string;
-  date: string;
-  jobId: string;
-}): ChatMessage[] {
+function buildOpenRouterMessages(
+  repoRoot: string,
+  args: {
+    input: EvaluationInput;
+    reportNumberText: string;
+    date: string;
+    jobId: string;
+  }
+): ChatMessage[] {
   const { input, reportNumberText, date, jobId } = args;
-  const systemPromptPath = join(
-    process.cwd(),
-    "batch",
-    "batch-prompt.md"
-  );
-  // process.cwd() is set by the bridge bootstrap to repoRoot, but to be
-  // safe we also accept an absolute path inside the message builder by
-  // letting the caller seed input.url. We read the file from the repo
-  // root via the runtime config in production; in tests the cwd is
-  // already set by the harness or the file is read by the adapter
-  // through the same mechanism.
+  const systemPromptPath = join(repoRoot, "batch", "batch-prompt.md");
   let systemPrompt: string;
   try {
     systemPrompt = readFileSync(systemPromptPath, "utf-8");
@@ -447,7 +440,7 @@ function buildOpenRouterMessages(args: {
     "- Respond with the FULL evaluation report as markdown. No prose before",
     "  the report. No markdown code fences. Start with the `# Evaluation:`",
     "  heading and end with the last block.",
-    "- The header MUST include `**Date:** ${date}`, `**Score:** N.N/5`,",
+    `- The header MUST include \`**Date:** ${date}\`, \`**Score:** N.N/5\`,`,
     "  `**URL:**`, `**Archetype:**`, `**Legitimacy:**`.",
     "- Include a `| TL;DR | ... |` row so downstream parsing succeeds.",
   ].join("\n");
