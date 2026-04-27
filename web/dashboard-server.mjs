@@ -31,9 +31,9 @@ const BRIDGE_BASE = (process.env.CAREER_OPS_BRIDGE_BASE || 'http://127.0.0.1:473
 const BRIDGE_TOKEN_PATH = join(ROOT, 'bridge', '.bridge-token');
 const OUTPUT_DIR = join(ROOT, 'output');
 const WORK_DIR = join(OUTPUT_DIR, '.apply-docs');
-const DOWNLOADS_DIR = join(os.homedir(), 'Downloads');
-const APPLICATIONS_PATH = join(ROOT, 'data', 'applications.md');
-const docStore = new Map();
+export const DOWNLOADS_DIR = join(os.homedir(), 'Downloads');
+export const APPLICATIONS_PATH = join(ROOT, 'data', 'applications.md');
+export const docStore = new Map();
 const TERMINAL_APPLICATION_STATUSES = new Set(['Applied', 'Responded', 'Interview', 'Offer']);
 
 class ClientError extends Error {
@@ -1450,7 +1450,7 @@ function runNodeScript(args) {
   return [result.stdout, result.stderr].filter(Boolean).join('\n');
 }
 
-async function generateDocument(input) {
+export async function generateDocument(input) {
   const type = input.type;
   if (type !== 'cv' && type !== 'cover-letter') {
     throw new ClientError('type must be cv or cover-letter');
@@ -1516,7 +1516,7 @@ async function uniqueDownloadPath(filename) {
   return candidate;
 }
 
-async function copyToDownloads(docId) {
+export async function copyToDownloads(docId) {
   const doc = docStore.get(docId);
   if (!doc) {
     throw new ClientError('document id not found or expired', 404);
@@ -1574,16 +1574,20 @@ function updateApplicationsMarkdownStatus(markdown, rowNum, applied) {
   };
 }
 
-async function setApplicationStatus(body) {
+export async function setApplicationStatusForFile(applicationsPath, body) {
   const result = updateApplicationsMarkdownStatus(
-    await readFile(APPLICATIONS_PATH, 'utf8'),
+    await readFile(applicationsPath, 'utf8'),
     body.num,
     body.applied
   );
   if (result.changed) {
-    await writeFile(APPLICATIONS_PATH, result.markdown, 'utf8');
+    await writeFile(applicationsPath, result.markdown, 'utf8');
   }
   return result;
+}
+
+export async function setApplicationStatus(body) {
+  return setApplicationStatusForFile(APPLICATIONS_PATH, body);
 }
 
 async function readBridgeToken() {
@@ -1679,7 +1683,7 @@ function buildFullEvaluationPageText({ row, url, reportContent, jdContent }) {
   ].filter(Boolean).join('\n\n').slice(0, 50_000);
 }
 
-async function queueFullEvaluation(body) {
+async function queueFullEvaluation(body, opts = {}) {
   if (!body.reportPath) throw new ClientError('reportPath is required');
   if (!body.company || !body.role) throw new ClientError('company and role are required');
   const reportAbs = resolveReportPath(String(body.reportPath));
@@ -1707,16 +1711,19 @@ async function queueFullEvaluation(body) {
       jdContent,
     }),
   };
-  const created = await postBridge('/v1/evaluate', { input });
+  const post = opts.postBridge || postBridge;
+  const bridgeBase = opts.bridgeBase || BRIDGE_BASE;
+  const created = await post('/v1/evaluate', { input });
   return {
     jobId: created.jobId,
-    bridgeBase: BRIDGE_BASE,
+    bridgeBase,
   };
 }
 
-async function readFullEvaluationStatus(body) {
+export async function readFullEvaluationStatus(body, opts = {}) {
   if (!body.jobId) throw new ClientError('jobId is required');
-  const snapshot = await getBridge(`/v1/jobs/${encodeURIComponent(String(body.jobId))}`);
+  const get = opts.getBridge || getBridge;
+  const snapshot = await get(`/v1/jobs/${encodeURIComponent(String(body.jobId))}`);
   return {
     jobId: snapshot.id,
     phase: snapshot.phase,
