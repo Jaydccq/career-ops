@@ -21,20 +21,20 @@ import { z } from "zod";
 import {
   AUTH_HEADER,
   type HealthResult,
-} from "./contracts/api.js";
-import type { NewGradRow, EnrichedRow } from "./contracts/newgrad.js";
+} from "@career-ops/shared";
+import type { NewGradRow, EnrichedRow } from "@career-ops/shared";
 import {
   PROTOCOL_VERSION,
   type BridgeError,
   type RequestEnvelope,
-} from "./contracts/envelope.js";
+} from "@career-ops/shared";
 import {
   type EvaluationResult,
   type EvaluationInput,
   type JobEvent,
   type JobId,
   type JobSnapshot,
-} from "./contracts/jobs.js";
+} from "@career-ops/shared";
 import type { PipelineAdapter } from "./contracts/pipeline.js";
 
 import { type BridgeConfig, inspectClaude, inspectCodex } from "./runtime/config.js";

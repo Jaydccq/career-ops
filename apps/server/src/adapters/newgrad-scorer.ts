@@ -15,7 +15,7 @@ import type {
   NewGradScanConfig,
   ScoreBreakdown,
   ScoredRow,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 import { matchActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
 import { jobCompanyRoleKey } from "./job-identity.js";
 import { findSkillKeywordMatches } from "./newgrad-skill-match.js";

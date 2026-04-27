@@ -32,16 +32,16 @@ import type {
   JobId,
   JobPhase,
   TrackerRow,
-} from "../contracts/jobs.js";
-import type { BridgeError } from "../contracts/envelope.js";
-import type { AutofillProfile, AutofillResumeFile } from "../contracts/autofill.js";
+} from "@career-ops/shared";
+import type { BridgeError } from "@career-ops/shared";
+import type { AutofillProfile, AutofillResumeFile } from "@career-ops/shared";
 import type {
   NewGradRow,
   EnrichedRow,
   NewGradScoreResult,
   NewGradEnrichResult,
   PipelineEntry,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 import { scanSourceForRow } from "./newgrad-source.js";
 
 const DEFAULT_DELAY_MS = 400;

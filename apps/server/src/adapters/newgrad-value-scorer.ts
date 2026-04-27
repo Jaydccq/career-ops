@@ -2,7 +2,7 @@ import type {
   EnrichedRow,
   NewGradScanConfig,
   SponsorshipStatus,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 import { findSkillKeywordMatches } from "./newgrad-skill-match.js";
 
 export interface EnrichedValueScore {

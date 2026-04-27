@@ -1,4 +1,4 @@
-import type { NewGradRow } from "../contracts/newgrad.js";
+import type { NewGradRow } from "@career-ops/shared";
 
 type AdapterJob = Record<string, unknown>;
 

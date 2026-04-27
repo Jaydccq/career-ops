@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { JD_MIN_CHARS } from "../contracts/jobs.js";
+import { JD_MIN_CHARS } from "@career-ops/shared";
 import { jdFilename } from "./jd-filename.js";
 
 export interface WriteJdFileInput {

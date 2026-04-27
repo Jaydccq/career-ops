@@ -10,7 +10,7 @@ import {
   type FailureResponse,
   type RequestEnvelope,
   type SuccessResponse,
-} from "../contracts/envelope.js";
+} from "@career-ops/shared";
 
 function nowIso(): string {
   return new Date().toISOString();

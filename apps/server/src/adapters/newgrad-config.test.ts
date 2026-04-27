@@ -11,7 +11,7 @@ import {
   persistBlockedCompanies,
 } from "./newgrad-config.js";
 
-import type { FilteredRow, NewGradRow } from "../contracts/newgrad.js";
+import type { FilteredRow, NewGradRow } from "@career-ops/shared";
 
 const tempDirs: string[] = [];
 

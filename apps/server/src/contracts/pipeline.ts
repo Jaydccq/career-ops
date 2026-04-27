@@ -21,10 +21,9 @@ import type {
   JobId,
   JobSnapshot,
   PhaseTransition,
-} from "./jobs.js";
-import type { BridgeError } from "./envelope.js";
-import type { AutofillProfile, AutofillResumeFile } from "./autofill.js";
-import type {
+  BridgeError,
+  AutofillProfile,
+  AutofillResumeFile,
   BuiltInPendingResult,
   NewGradRow,
   EnrichedRow,
@@ -33,7 +32,8 @@ import type {
   NewGradPendingResult,
   NewGradPendingCacheBackfillInput,
   NewGradPendingCacheBackfillResult,
-} from "./newgrad.js";
+  TrackerRow,
+} from "@career-ops/shared";
 
 /**
  * Configuration the adapter needs at construction time. Provided once
@@ -132,7 +132,7 @@ export interface PipelineAdapter {
    * Pure filesystem read. Never modifies the tracker.
    */
   readTrackerTail(limit: number): Promise<{
-    rows: readonly import("./jobs.js").TrackerRow[];
+    rows: readonly TrackerRow[];
     totalRows: number;
   }>;
 

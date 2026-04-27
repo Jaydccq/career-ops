@@ -11,7 +11,7 @@ import type {
   NewGradDetail,
   NewGradRow,
   ScoredRow,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 
 test("extractTerminalJsonObject returns the final Claude JSON payload", () => {
   const stdout = [

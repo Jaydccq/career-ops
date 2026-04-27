@@ -26,8 +26,8 @@ import type {
   TrackerMergeSummary,
   TrackerRow,
   TrackerStatus,
-} from "../contracts/jobs.js";
-import type { BridgeError } from "../contracts/envelope.js";
+} from "@career-ops/shared";
+import type { BridgeError } from "@career-ops/shared";
 import type {
   FilteredRow,
   NewGradRow,
@@ -36,7 +36,7 @@ import type {
   NewGradEnrichResult,
   NewGradEnrichSkip,
   PipelineEntry,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 
 import { spawn } from "node:child_process";
 import {
@@ -82,7 +82,7 @@ import { jobCompanyRoleKey } from "./job-identity.js";
 import { pipelineTagForSource, scanSourceForRow } from "./newgrad-source.js";
 import { canonicalizeJobUrl } from "../lib/canonical-job-url.js";
 import { detectActiveSecurityClearanceRequirement } from "../lib/security-clearance.js";
-import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "../contracts/jobs.js";
+import { JD_MIN_CHARS as JD_MIN_CHARS_VALUE } from "@career-ops/shared";
 import { writeJdFile } from "../lib/write-jd-file.js";
 import { readAutofillProfile, readAutofillResume } from "./autofill-profile.js";
 

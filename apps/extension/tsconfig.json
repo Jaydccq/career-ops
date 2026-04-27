@@ -18,11 +18,9 @@
     "declaration": false,
     "sourceMap": true,
     "noEmit": true,
-    "rootDir": "..",
     "types": ["chrome"]
   },
   "include": [
-    "src/**/*.ts",
-    "../server/src/contracts/**/*.ts"
+    "src/**/*.ts"
   ]
 }

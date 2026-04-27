@@ -1,0 +1,40 @@
+{
+  "name": "@career-ops/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./contracts/envelope": {
+      "types": "./src/contracts/envelope.ts",
+      "default": "./src/contracts/envelope.ts"
+    },
+    "./contracts/jobs": {
+      "types": "./src/contracts/jobs.ts",
+      "default": "./src/contracts/jobs.ts"
+    },
+    "./contracts/api": {
+      "types": "./src/contracts/api.ts",
+      "default": "./src/contracts/api.ts"
+    },
+    "./contracts/newgrad": {
+      "types": "./src/contracts/newgrad.ts",
+      "default": "./src/contracts/newgrad.ts"
+    },
+    "./contracts/autofill": {
+      "types": "./src/contracts/autofill.ts",
+      "default": "./src/contracts/autofill.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

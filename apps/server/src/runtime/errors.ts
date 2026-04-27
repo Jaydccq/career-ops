@@ -5,7 +5,7 @@
  * place that is allowed to decide HTTP status codes.
  */
 
-import type { BridgeError, ErrorCode } from "../contracts/envelope.js";
+import type { BridgeError, ErrorCode } from "@career-ops/shared";
 
 export function bridgeError(
   code: ErrorCode,

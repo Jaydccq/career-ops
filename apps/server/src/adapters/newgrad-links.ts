@@ -1,4 +1,4 @@
-import type { NewGradDetail, NewGradRow } from "../contracts/newgrad.js";
+import type { NewGradDetail, NewGradRow } from "@career-ops/shared";
 import {
   canonicalLinkedInJobViewUrl,
   isLinkedInJobsUrl,

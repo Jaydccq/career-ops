@@ -22,6 +22,10 @@ importers:
         version: 1.59.1
 
   apps/extension:
+    dependencies:
+      '@career-ops/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       '@types/chrome':
         specifier: ^0.0.280
@@ -38,6 +42,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.87.0
         version: 0.87.0(zod@3.25.76)
+      '@career-ops/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       fastify:
         specifier: ^5.8.4
         version: 5.8.5
@@ -66,6 +73,12 @@ importers:
       vitest:
         specifier: ^4.1.4
         version: 4.1.5(@types/node@22.19.17)(happy-dom@20.9.0)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/shared:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

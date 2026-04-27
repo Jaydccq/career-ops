@@ -14,8 +14,8 @@ import type {
   JobId,
   JobSnapshot,
   PhaseTransition,
-} from "../contracts/jobs.js";
-import type { BridgeError } from "../contracts/envelope.js";
+} from "@career-ops/shared";
+import type { BridgeError } from "@career-ops/shared";
 import type { JobStore } from "../contracts/pipeline.js";
 
 type Listener = (snap: JobSnapshot) => void;

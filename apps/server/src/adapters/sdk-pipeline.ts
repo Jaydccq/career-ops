@@ -42,8 +42,8 @@ import type {
   TrackerMergeSummary,
   TrackerRow,
   TrackerStatus,
-} from "../contracts/jobs.js";
-import type { BridgeError } from "../contracts/envelope.js";
+} from "@career-ops/shared";
+import type { BridgeError } from "@career-ops/shared";
 import type {
   FilteredRow,
   NewGradRow,
@@ -52,7 +52,7 @@ import type {
   NewGradEnrichResult,
   NewGradEnrichSkip,
   PipelineEntry,
-} from "../contracts/newgrad.js";
+} from "@career-ops/shared";
 
 import {
   appendFileSync,

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTH_HEADER } from "./contracts/api.js";
-import { PROTOCOL_VERSION, type Response } from "./contracts/envelope.js";
+import { AUTH_HEADER } from "@career-ops/shared";
+import { PROTOCOL_VERSION, type Response } from "@career-ops/shared";
 import type {
   EvaluationInput,
   EvaluationResult,
   JobId,
   JobSnapshot,
-} from "./contracts/jobs.js";
+} from "@career-ops/shared";
 import type {
   LivenessCheck,
   MergeReport,

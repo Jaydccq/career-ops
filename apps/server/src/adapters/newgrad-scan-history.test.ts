@@ -13,7 +13,7 @@ import {
   wasNewGradRowSeen,
 } from "./newgrad-scan-history.js";
 
-import type { NewGradRow } from "../contracts/newgrad.js";
+import type { NewGradRow } from "@career-ops/shared";
 
 const tempDirs: string[] = [];
 
