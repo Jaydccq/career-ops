@@ -23,7 +23,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export type BridgeMode = "fake" | "real";
-export type RealExecutor = "claude" | "codex";
+export type RealExecutor = "claude" | "codex" | "openrouter";
 
 export interface BridgeConfig {
   /** Absolute path to career-ops repo root. cwd for every shell-out. */
@@ -193,9 +193,10 @@ function parseMode(raw: string | undefined): BridgeMode {
 function parseRealExecutor(raw: string | undefined): RealExecutor {
   if (raw === "codex") return "codex";
   if (raw === "claude") return "claude";
+  if (raw === "openrouter") return "openrouter";
   if (raw === undefined || raw === "") return "codex";
   throw new Error(
-    `CAREER_OPS_REAL_EXECUTOR must be "claude" or "codex", got "${raw}"`
+    `CAREER_OPS_REAL_EXECUTOR must be "claude", "codex", or "openrouter", got "${raw}"`
   );
 }
 
@@ -273,6 +274,13 @@ export function loadConfig(): BridgeConfig {
       `bridge bootstrap: CAREER_OPS_BRIDGE_MODE=real and CAREER_OPS_REAL_EXECUTOR=codex but 'codex' CLI is not on PATH. ` +
         `Install Codex CLI or switch CAREER_OPS_REAL_EXECUTOR=claude.`
     );
+  }
+
+  if (mode === "real" && realExecutor === "openrouter") {
+    // The OpenRouter adapter resolves the API key lazily at construction
+    // time so the bridge can boot without a key (e.g. for /v1/health
+    // smoke tests). The adapter throws with a helpful message before the
+    // first evaluation if the key is still missing.
   }
 
   const bridgeVersion = readPackageVersion(join(bridgeDir, "package.json"));

@@ -12,6 +12,10 @@ import type { PipelineAdapter, PipelineConfig } from "./contracts/pipeline.js";
 import { loadConfig } from "./runtime/config.js";
 import { createFakePipelineAdapter } from "./adapters/fake-pipeline.js";
 import { createClaudePipelineAdapter } from "./adapters/claude-pipeline.js";
+import {
+  createOpenRouterPipelineAdapter,
+  resolveOpenRouterApiKey,
+} from "./adapters/openrouter-pipeline.js";
 import { buildServer } from "./server.js";
 
 function toPipelineConfig(
@@ -41,7 +45,14 @@ async function main(): Promise<void> {
       adapter = createFakePipelineAdapter(pipelineCfg);
       break;
     case "real":
-      adapter = createClaudePipelineAdapter(pipelineCfg);
+      if (config.realExecutor === "openrouter") {
+        // Resolve the API key at boot so a missing key fails fast rather
+        // than after the user queues their first evaluation.
+        const apiKey = resolveOpenRouterApiKey();
+        adapter = createOpenRouterPipelineAdapter(pipelineCfg, { apiKey });
+      } else {
+        adapter = createClaudePipelineAdapter(pipelineCfg);
+      }
       break;
   }
 

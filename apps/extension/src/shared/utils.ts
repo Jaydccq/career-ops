@@ -7,7 +7,7 @@
 
 import type { JobPhase } from "../contracts/bridge-wire.js";
 
-export type BridgePreset = "fake" | "real-claude" | "real-codex";
+export type BridgePreset = "fake" | "real-claude" | "real-codex" | "real-openrouter";
 
 export function scoreColor(score: number): string {
   if (score >= 4.0) return "#4ecb71";
@@ -45,6 +45,7 @@ export function presetDisplayName(preset: BridgePreset): string {
     case "fake": return "fake";
     case "real-claude": return "real / claude";
     case "real-codex": return "real / codex";
+    case "real-openrouter": return "OpenRouter";
   }
 }
 
@@ -56,6 +57,8 @@ export function presetDescription(preset: BridgePreset): string {
       return "Full checked-in career-ops flow using claude -p as the executor.";
     case "real-codex":
       return "Full checked-in career-ops flow using codex exec as the executor.";
+    case "real-openrouter":
+      return "API-based, no CLI required. Uses OpenRouter for model routing (BYO key).";
   }
 }
 
@@ -67,6 +70,8 @@ export function presetCommand(preset: BridgePreset): string {
       return "CAREER_OPS_BACKEND=real-claude npm run server";
     case "real-codex":
       return "npm run server";
+    case "real-openrouter":
+      return "CAREER_OPS_BACKEND=real-openrouter npm run server";
   }
 }
 
@@ -77,7 +82,9 @@ export interface HealthResultLike {
 export function presetFromHealth(health: HealthResultLike): BridgePreset | null {
   if (health?.execution?.mode === "fake") return "fake";
   if (health?.execution?.mode === "real") {
-    return health?.execution?.realExecutor === "codex" ? "real-codex" : "real-claude";
+    if (health?.execution?.realExecutor === "codex") return "real-codex";
+    if (health?.execution?.realExecutor === "openrouter") return "real-openrouter";
+    return "real-claude";
   }
   return null;
 }

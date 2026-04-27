@@ -105,8 +105,8 @@ export interface HealthResult {
   execution: {
     /** Bridge adapter mode. */
     mode: "fake" | "real";
-    /** Which CLI powers real mode, if applicable. */
-    realExecutor: "claude" | "codex" | null;
+    /** Which executor powers real mode, if applicable. */
+    realExecutor: "claude" | "codex" | "openrouter" | null;
   };
   repo: {
     /** Absolute path to the career-ops repo root the bridge is serving. */

@@ -25,6 +25,13 @@ const MODES = {
       CAREER_OPS_REAL_EXECUTOR: "codex",
     },
   },
+  "real-openrouter": {
+    label: "real / openrouter",
+    env: {
+      CAREER_OPS_BRIDGE_MODE: "real",
+      CAREER_OPS_REAL_EXECUTOR: "openrouter",
+    },
+  },
 };
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");

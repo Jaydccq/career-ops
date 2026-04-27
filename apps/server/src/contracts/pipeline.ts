@@ -52,8 +52,8 @@ export interface PipelineConfig {
   codexReasoningEffort?: string | null;
   /** Absolute path to the `node` CLI binary. */
   nodeBin: string;
-  /** Which CLI powers real mode. */
-  realExecutor?: "claude" | "codex";
+  /** Which executor powers real mode. */
+  realExecutor?: "claude" | "codex" | "openrouter";
   /** Maximum seconds one evaluation is allowed to run. */
   evaluationTimeoutSec: number;
   /** Maximum seconds a Playwright liveness check is allowed to run. */
