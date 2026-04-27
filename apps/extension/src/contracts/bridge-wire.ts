@@ -15,8 +15,8 @@
 
 // Relative path is intentional for Phase 1. Phase 2 build will replace
 // this with a copied-in local path.
-export * from "../../../apps/server/src/contracts/envelope.js";
-export * from "../../../apps/server/src/contracts/jobs.js";
-export * from "../../../apps/server/src/contracts/api.js";
-export * from "../../../apps/server/src/contracts/newgrad.js";
-export * from "../../../apps/server/src/contracts/autofill.js";
+export * from "../../../server/src/contracts/envelope.js";
+export * from "../../../server/src/contracts/jobs.js";
+export * from "../../../server/src/contracts/api.js";
+export * from "../../../server/src/contracts/newgrad.js";
+export * from "../../../server/src/contracts/autofill.js";

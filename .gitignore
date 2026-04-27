@@ -56,9 +56,9 @@ apps/server/dist/
 apps/server/package-lock.json
 
 # Extension
-extension/node_modules/
-extension/dist/
-extension/package-lock.json
+apps/extension/node_modules/
+apps/extension/dist/
+apps/extension/package-lock.json
 
 # Session artifacts
 .agents/

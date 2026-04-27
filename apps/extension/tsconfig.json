@@ -23,6 +23,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "../apps/server/src/contracts/**/*.ts"
+    "../server/src/contracts/**/*.ts"
   ]
 }

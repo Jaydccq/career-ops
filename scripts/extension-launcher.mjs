@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const distDir = resolve(repoRoot, "extension/dist");
+const distDir = resolve(repoRoot, "apps/extension/dist");
 const docsPath = resolve(repoRoot, "docs/BROWSER_EXTENSION.md");
 
 /**

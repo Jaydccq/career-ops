@@ -8,7 +8,7 @@ import {
   extractNewGradDetail,
   type NewGradDetail,
   type NewGradRow,
-} from "../extension/src/content/extract-newgrad.ts";
+} from "../apps/extension/src/content/extract-newgrad.ts";
 import { loadNewGradScanConfig } from "../apps/server/src/adapters/newgrad-config.ts";
 import { scoreRow } from "../apps/server/src/adapters/newgrad-scorer.ts";
 import { scoreEnrichedRowValue } from "../apps/server/src/adapters/newgrad-value-scorer.ts";

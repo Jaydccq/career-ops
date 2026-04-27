@@ -11,7 +11,7 @@ import {
 import {
   extractNewGradDetail,
   extractNewGradList,
-} from "../extension/src/content/extract-newgrad.ts";
+} from "../apps/extension/src/content/extract-newgrad.ts";
 import type {
   EnrichedRow,
   FilteredRow,

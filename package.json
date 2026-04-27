@@ -35,7 +35,7 @@
     "dashboard": "node web/dashboard-server.mjs",
     "dashborad": "node web/dashboard-server.mjs",
     "dashboard:build": "node web/build-dashboard.mjs",
-    "ext:build": "npm --prefix extension run build",
+    "ext:build": "pnpm --filter @career-ops/extension run build",
     "ext:bridge": "node scripts/bridge-start.mjs real-codex",
     "ext:bridge:claude": "node scripts/bridge-start.mjs real-claude",
     "ext:bridge:fake": "node scripts/bridge-start.mjs fake",

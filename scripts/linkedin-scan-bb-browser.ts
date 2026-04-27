@@ -10,7 +10,7 @@ import yaml from "js-yaml";
 import {
   extractLinkedInDetail,
   extractLinkedInList,
-} from "../extension/src/content/extract-linkedin.ts";
+} from "../apps/extension/src/content/extract-linkedin.ts";
 import type {
   EnrichedRow,
   FilteredRow,
