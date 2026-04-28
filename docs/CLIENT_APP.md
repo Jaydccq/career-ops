@@ -55,3 +55,81 @@ curl -s http://127.0.0.1:47319/dashboard/ | head -5
 
 If `app:status` says NOT INSTALLED, run `npm run app:install`. If it
 says LOADED but not running, check logs with `npm run app:logs:err`.
+
+## Building the .app bundle (Electron desktop app)
+
+Stage 5 added an Electron-based desktop app at `apps/desktop/` that
+embeds the bridge server in-process and surfaces a menu-bar tray plus a
+settings window. For personal use (no codesigning), build it with:
+
+```bash
+pnpm --filter @career-ops/desktop run package
+```
+
+This produces:
+- `apps/desktop/release/mac-arm64/Career Ops.app` (the bundle)
+- `apps/desktop/release/Career Ops-0.1.0-phase1-arm64.dmg` (drag installer)
+
+For a faster iteration loop (skip DMG, just the .app):
+
+```bash
+pnpm --filter @career-ops/desktop run package:dir
+```
+
+Drag `Career Ops.app` to `/Applications/`. The bundle is unsigned, so
+macOS Gatekeeper will warn the first time — right-click the .app and
+choose **Open** to bypass. To run on other Macs, you'd need an Apple
+Developer ID and signing/notarization (out of scope here).
+
+### Updating the bundled app
+
+The bundle includes a snapshot of the workspace's bundled `dist/main.js`
+and the resolved node_modules. After landing changes on `main`, rebuild
+with the same command and replace the .app in `/Applications/`.
+
+### Configuring the repo root
+
+The packaged app needs to know where your career-ops checkout lives so
+the in-process server can read `cv.md`, `data/applications.md`, etc.
+The launcher first checks `CAREER_OPS_REPO_ROOT`, then falls back to
+`~/Desktop/career-ops`. If your checkout is elsewhere, launch with:
+
+```bash
+CAREER_OPS_REPO_ROOT=$HOME/path/to/career-ops open "/Applications/Career Ops.app"
+```
+
+You can also set this once at the user level via `launchctl setenv` so
+double-clicking the .app from Finder picks it up.
+
+### Logs
+
+The packaged app mirrors `console.log` / `console.error` to
+`~/Library/Logs/Career Ops/main.log`. The tray menu's "View Logs" item
+opens the same directory. Use this when debugging launch failures —
+Electron's stdout is otherwise captured by macOS's window-server and
+hard to read.
+
+### Known concern: workspace TypeScript at runtime (BLOCKED)
+
+`@career-ops/server` and the `web/*.mjs` dashboard helpers ship as
+TypeScript / cross-package source files via pnpm workspace symlinks.
+At dev time this is fine because `pnpm run dev` uses `--import tsx` to
+transform on the fly. **Inside the packaged .app, Electron's Node has
+no `tsx` available**, so the bundled server fails to import its own
+sources at startup.
+
+The package step (`package:dir`) successfully produces a launchable
+`Career Ops.app` on disk, but the embedded server does not start. A
+follow-up task needs one of:
+
+1. Pre-compile `apps/server/src/**/*.ts` and the `web/*.mjs` cross-
+   imports to plain ESM JavaScript, ship the JS, and update server's
+   `package.json` `main` to point at the compiled output.
+2. Bundle the entire server source tree (incl. `web/*.mjs`) into the
+   Electron main bundle via esbuild with explicit handling of the
+   dashboard CLI guards in `web/build-dashboard.mjs`.
+
+Either path is multi-day work and was scoped out of Stage 5.5 per the
+plan's stuck-handling guidance. The packaging plumbing (electron-builder
+config, icon, tray, settings window, scripts) is in place and ready for
+that follow-up.

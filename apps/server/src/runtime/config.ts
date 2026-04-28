@@ -81,10 +81,17 @@ function here(): string {
  * Walk upward from src/runtime until we find apps/server/package.json
  * (the @career-ops/server package), then continue walking up to find
  * the career-ops repo root (identified by cv.md + modes/ + data/).
+ *
+ * If CAREER_OPS_REPO_ROOT is set, it overrides the repo-root search —
+ * required for the packaged Electron app, where the server source is
+ * inside the .app bundle but the user's data lives in their home dir.
+ * The bridgeDir (for the .bridge-token) still comes from the walk-up.
  */
 function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
+  const override = parseOptionalString(process.env.CAREER_OPS_REPO_ROOT);
   let dir = here();
   let bridgeDir: string | null = null;
+  let walkedRepoRoot: string | null = null;
   for (let i = 0; i < 10; i++) {
     const pkg = join(dir, "package.json");
     if (existsSync(pkg)) {
@@ -97,7 +104,7 @@ function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
         // ignore unreadable package.json
       }
     }
-    if (bridgeDir !== null) {
+    if (bridgeDir !== null && walkedRepoRoot === null) {
       // Once we've found the server package, look for the repo root
       // (the directory holding cv.md + modes/ + data/).
       if (
@@ -105,15 +112,26 @@ function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
         existsSync(join(dir, "modes")) &&
         existsSync(join(dir, "data"))
       ) {
-        return { repoRoot: dir, bridgeDir };
+        walkedRepoRoot = dir;
       }
     }
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
+
+  if (override) {
+    // Allow override even when bridgeDir wasn't found (packaged app);
+    // fall back to repoRoot/apps/server for token storage in that case.
+    const resolvedBridgeDir = bridgeDir ?? join(override, "apps/server");
+    return { repoRoot: override, bridgeDir: resolvedBridgeDir };
+  }
+  if (bridgeDir !== null && walkedRepoRoot !== null) {
+    return { repoRoot: walkedRepoRoot, bridgeDir };
+  }
   throw new Error(
-    "bridge bootstrap: could not locate @career-ops/server package.json or career-ops repo root"
+    "bridge bootstrap: could not locate @career-ops/server package.json or career-ops repo root. " +
+      "Set CAREER_OPS_REPO_ROOT to point at your career-ops checkout if running from a packaged app."
   );
 }
 

@@ -14,10 +14,68 @@
  */
 
 import { app, BrowserWindow, shell } from "electron";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { createServer, type ServerHandle, type AdapterMode } from "@career-ops/server";
 import { createTray, type TrayController, type TrayState } from "./tray.js";
 import { loadSettings, type Backend } from "./settings.js";
 import { openSettingsWindow } from "./settings-window.js";
+
+// File logger: when the app is packaged, console output disappears, so
+// mirror it to ~/Library/Logs/Career Ops/main.log for debuggability.
+const logFile = join(homedir(), "Library/Logs/Career Ops/main.log");
+function flog(msg: string): void {
+  try {
+    mkdirSync(dirname(logFile), { recursive: true });
+    appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {
+    // ignore — logger failures should never crash the app
+  }
+}
+const origLog = console.log.bind(console);
+const origErr = console.error.bind(console);
+console.log = (...args: unknown[]) => {
+  origLog(...args);
+  flog(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+};
+console.error = (...args: unknown[]) => {
+  origErr(...args);
+  flog(
+    "[error] " + args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
+  );
+};
+process.on("uncaughtException", (err) => {
+  flog(`[uncaughtException] ${err.stack ?? err.message ?? String(err)}`);
+});
+process.on("unhandledRejection", (reason) => {
+  flog(`[unhandledRejection] ${String(reason)}`);
+});
+
+// When running from a packaged .app, the server source lives inside the
+// bundle's resources, so the server's repo-root walk-up won't find the
+// user's career-ops checkout. Honor an explicit env override, otherwise
+// guess the conventional location at ~/Desktop/career-ops.
+function ensureRepoRoot(): void {
+  if (process.env.CAREER_OPS_REPO_ROOT) return;
+  if (!app.isPackaged) return;
+  const guess = join(homedir(), "Desktop/career-ops");
+  if (
+    existsSync(join(guess, "cv.md")) &&
+    existsSync(join(guess, "modes")) &&
+    existsSync(join(guess, "data"))
+  ) {
+    process.env.CAREER_OPS_REPO_ROOT = guess;
+    console.log(`[career-ops] using repo root: ${guess}`);
+  } else {
+    console.warn(
+      `[career-ops] CAREER_OPS_REPO_ROOT not set and ${guess} doesn't look like a career-ops checkout. ` +
+        `Set CAREER_OPS_REPO_ROOT before launching for the in-process server to find your data.`,
+    );
+  }
+}
+
+ensureRepoRoot();
 
 let server: ServerHandle | null = null;
 let window: BrowserWindow | null = null;
