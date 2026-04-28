@@ -60,6 +60,11 @@ apps/extension/node_modules/
 apps/extension/dist/
 apps/extension/package-lock.json
 
+# Desktop (Electron)
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/package-lock.json
+
 # Session artifacts
 .agents/
 **/CLAUDE.md

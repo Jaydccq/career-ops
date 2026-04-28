@@ -1,0 +1,25 @@
+{
+  "name": "@career-ops/desktop",
+  "private": true,
+  "version": "0.1.0-phase1",
+  "description": "Career Ops desktop app — Electron shell that embeds the bridge server and opens the dashboard.",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --packages=external --outfile=dist/main.js --format=esm --sourcemap",
+    "dev": "NODE_OPTIONS=\"--import tsx\" electron src/main.ts",
+    "start": "NODE_OPTIONS=\"--import tsx\" electron src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@career-ops/server": "workspace:*",
+    "@career-ops/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "electron": "^33.0.0",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
