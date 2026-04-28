@@ -1,21 +1,27 @@
 /**
  * main.ts — Electron main process for the Career Ops desktop app.
  *
- * Tasks 5.1 + 5.2 of the client-app-delivery plan:
+ * Tasks 5.1, 5.2, 5.3 of the client-app-delivery plan:
  *   - Boot a single BrowserWindow pointed at the dashboard.
  *   - Embed the bridge server in-process via createServer() — no child
  *     subprocess.
  *   - Cleanly stop the server when the app quits.
+ *   - Add a menu-bar tray icon that exposes status / restart / open
+ *     dashboard / view logs / quit. The tray is the persistent UI — the
+ *     app does not quit when the last window closes.
  *
- * Tray menu (5.3), settings UI (5.4), and electron-builder packaging
- * (5.5) are intentionally out of scope here.
+ * Settings UI (5.4) and electron-builder packaging (5.5) are wired in
+ * separate dispatches.
  */
 
 import { app, BrowserWindow, shell } from "electron";
 import { createServer, type ServerHandle, type AdapterMode } from "@career-ops/server";
+import { createTray, type TrayController, type TrayState } from "./tray.js";
 
 let server: ServerHandle | null = null;
 let window: BrowserWindow | null = null;
+let trayController: TrayController | null = null;
+let trayState: TrayState = "idle";
 
 const PORT = Number(process.env.CAREER_OPS_BRIDGE_PORT) || 47319;
 const HOST = process.env.CAREER_OPS_BRIDGE_HOST || "127.0.0.1";
@@ -33,13 +39,38 @@ function resolveBackend(): AdapterMode {
   return "real-codex";
 }
 
+let currentBackend: AdapterMode = resolveBackend();
+
 async function startServer(): Promise<void> {
-  const backend = resolveBackend();
-  server = createServer({ backend });
-  const info = await server.start({ port: PORT, host: HOST });
-  console.log(
-    `[career-ops] server listening on http://${info.host}:${info.port} (backend=${backend})`
-  );
+  trayState = "idle";
+  trayController?.rebuild();
+  try {
+    server = createServer({ backend: currentBackend });
+    const info = await server.start({ port: PORT, host: HOST });
+    console.log(
+      `[career-ops] server listening on http://${info.host}:${info.port} (backend=${currentBackend})`,
+    );
+    trayState = "running";
+  } catch (err) {
+    trayState = "errored";
+    throw err;
+  } finally {
+    trayController?.rebuild();
+  }
+}
+
+async function restartServer(): Promise<void> {
+  if (server) {
+    try {
+      await server.stop();
+    } catch (err) {
+      console.warn("[career-ops] error stopping server during restart:", err);
+    }
+    server = null;
+  }
+  trayState = "stopped";
+  trayController?.rebuild();
+  await startServer();
 }
 
 function createWindow(): void {
@@ -72,13 +103,37 @@ function createWindow(): void {
   });
 }
 
+function openDashboardWindow(): void {
+  if (!window || window.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+function openSettingsPlaceholder(): void {
+  // Task 5.4 will replace this with a real settings BrowserWindow.
+  console.log("[career-ops] Settings… (placeholder — 5.4 will wire the window)");
+}
+
 app.whenReady().then(async () => {
+  trayController = createTray({
+    getStatus: () => trayState,
+    getBackend: () => currentBackend,
+    onOpenDashboard: openDashboardWindow,
+    onRestart: restartServer,
+    onOpenSettings: openSettingsPlaceholder,
+  });
+
   try {
     await startServer();
     createWindow();
   } catch (err) {
     console.error("[career-ops] failed to start:", err);
-    app.exit(1);
+    // Don't exit — the tray is still up so the user can retry via
+    // "Restart Server".
   }
 });
 
@@ -114,11 +169,7 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  // Tray (5.3) will keep the app alive on macOS once it's added. Until
-  // then, closing the only window quits the app like a typical Mac app.
-  if (process.platform !== "darwin") {
-    app.quit();
-  } else {
-    app.quit();
-  }
+  // Tray keeps the app alive on every platform now — quit only via the
+  // tray's "Quit" item (which calls app.quit()). This matches standard
+  // macOS menu-bar app behavior.
 });
