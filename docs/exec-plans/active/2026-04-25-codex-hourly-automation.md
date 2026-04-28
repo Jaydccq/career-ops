@@ -359,6 +359,17 @@ through 22:00 America/New_York, and document the Codex App setup steps.
   evaluations, rebuilt the dashboard with 376 reports, 264 applications, 593
   pipeline rows, and 1416 scan-history rows, and left only existing duplicate
   warnings in `npm run verify`.
+- 2026-04-27: Changed hourly scan defaults so `CAREER_OPS_SCAN_EVALUATE_LIMIT`
+  and `CAREER_OPS_SCAN_ENRICH_LIMIT` are optional caps instead of built-in
+  defaults. When unset, the orchestrator no longer passes `--evaluate-limit` or
+  `--enrich-limit`, so scanner defaults remain uncapped. Updated
+  `docs/codex-hourly-scan-automation.md` to document the uncapped default.
+- 2026-04-27: Investigated a `0` evaluation hourly summary. The run did scan
+  sources successfully, but all enriched candidates were duplicates or skipped
+  before evaluation (`already_evaluated_report`, sponsorship, site-match,
+  clearance, or experience filters). Re-applied the Codex Automation prompt as
+  a reporting-only summary task because the app automation had drifted back to a
+  long embedded setup document with stale cap examples.
 
 ## Key decisions
 
@@ -389,6 +400,12 @@ through 22:00 America/New_York, and document the Codex App setup steps.
   `f_TPR=r86400` 24-hour window.
 - Keep user-selected Indeed filters as a full URL in profile config, because
   query/location reconstruction drops SERP filters such as entry-level `sc=`.
+- Keep hourly enrichment/evaluation uncapped by default; use
+  `CAREER_OPS_SCAN_ENRICH_LIMIT` and `CAREER_OPS_SCAN_EVALUATE_LIMIT` only as
+  explicit operator caps.
+- Keep Codex App Automation as a concise reporting layer. The prompt should not
+  embed the full setup guide or stale tuning examples, because host launchd owns
+  the live scan.
 
 ## Risks and blockers
 

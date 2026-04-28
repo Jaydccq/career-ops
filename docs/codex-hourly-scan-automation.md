@@ -103,7 +103,8 @@ live scanner.
 - For Indeed automation runs, reads `config/profile.yml ->
   indeed_scan.search_url` or `CAREER_OPS_INDEED_URL` as the full search URL, so
   filters such as entry-level `sc=` are preserved.
-- Uses `newgrad_quick` by default with `CAREER_OPS_SCAN_EVALUATE_LIMIT=3`.
+- Uses `newgrad_quick` by default. Evaluation and enrichment are uncapped unless
+  `CAREER_OPS_SCAN_EVALUATE_LIMIT` or `CAREER_OPS_SCAN_ENRICH_LIMIT` is set.
 - Runs tracker/dashboard maintenance after successful live scans.
 - Writes `data/automation/hourly-scan-*.md` with source status, completed
   evaluation count, blocker recovery commands, high-fit roles, and output tails.
@@ -115,8 +116,8 @@ Set these in the automation environment only when needed:
 ```bash
 CAREER_OPS_SCAN_SOURCES=newgrad,builtin,linkedin,indeed
 CAREER_OPS_SCAN_EVAL_MODE=newgrad_quick
-CAREER_OPS_SCAN_EVALUATE_LIMIT=3
-CAREER_OPS_SCAN_ENRICH_LIMIT=10
+CAREER_OPS_SCAN_EVALUATE_LIMIT=3  # optional cap; unset means no cap
+CAREER_OPS_SCAN_ENRICH_LIMIT=10    # optional cap; unset means no cap
 CAREER_OPS_SCAN_STEP_TIMEOUT_MS=2700000
 CAREER_OPS_SCAN_IGNORE_WINDOW=1
 CAREER_OPS_SCAN_DRY_RUN=1
@@ -140,7 +141,6 @@ For an occasional deeper manual run:
 ```bash
 CAREER_OPS_SCAN_IGNORE_WINDOW=1 \
 CAREER_OPS_SCAN_EVAL_MODE=default \
-CAREER_OPS_SCAN_EVALUATE_LIMIT=5 \
 CAREER_OPS_SCAN_SOURCES=newgrad,builtin,linkedin,indeed \
 npm run auto:hourly-scan
 ```

@@ -33,8 +33,8 @@ const sources = (process.env.CAREER_OPS_SCAN_SOURCES ?? "scan,newgrad,builtin,li
   .filter(Boolean);
 
 const evalMode = process.env.CAREER_OPS_SCAN_EVAL_MODE ?? "newgrad_quick";
-const defaultEvalLimit = process.env.CAREER_OPS_SCAN_EVALUATE_LIMIT ?? "3";
-const defaultEnrichLimit = process.env.CAREER_OPS_SCAN_ENRICH_LIMIT ?? "10";
+const evalLimit = optionalEnvValue(process.env.CAREER_OPS_SCAN_EVALUATE_LIMIT);
+const enrichLimit = optionalEnvValue(process.env.CAREER_OPS_SCAN_ENRICH_LIMIT);
 const waitTimeout = process.env.CAREER_OPS_SCAN_EVAL_WAIT_MS ?? "900000";
 
 const indeedQuery = process.env.CAREER_OPS_INDEED_QUERY ?? "software engineer, AI engineer";
@@ -255,6 +255,12 @@ function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
+function optionalEnvValue(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 async function linkedinAutomationUrl() {
   const explicitUrl = process.env.CAREER_OPS_LINKEDIN_URL;
   const baseUrl = explicitUrl?.trim() || (await readLinkedinProfileUrl());
@@ -297,8 +303,7 @@ async function commandForSource(source, writesEnabled) {
   const preview = dryRun || !writesEnabled;
   const indeedLocationArgs = indeedLocation.trim() ? ["--location", indeedLocation] : [];
   const sharedEvalArgs = [
-    "--evaluate-limit",
-    defaultEvalLimit,
+    ...(evalLimit ? ["--evaluate-limit", evalLimit] : []),
     "--evaluation-mode",
     evalMode,
     "--evaluation-wait-timeout-ms",
@@ -313,8 +318,7 @@ async function commandForSource(source, writesEnabled) {
           "scan",
           "--",
           "--evaluate",
-          "--evaluate-limit",
-          defaultEvalLimit,
+          ...(evalLimit ? ["--evaluate-limit", evalLimit] : []),
           "--evaluation-mode",
           evalMode,
           "--evaluation-wait-timeout-ms",
@@ -325,13 +329,13 @@ async function commandForSource(source, writesEnabled) {
   if (source === "newgrad") {
     return preview
       ? ["run", "newgrad-scan", "--", "--score-only", "--limit", "50"]
-      : ["run", "newgrad-scan", "--", "--enrich-limit", defaultEnrichLimit, ...sharedEvalArgs];
+      : ["run", "newgrad-scan", "--", ...(enrichLimit ? ["--enrich-limit", enrichLimit] : []), ...sharedEvalArgs];
   }
 
   if (source === "builtin") {
     return preview
       ? ["run", "builtin-scan", "--", "--score-only", "--pages", "1", "--limit", "50"]
-      : ["run", "builtin-scan", "--", "--pages", "1", "--limit", "50", "--enrich-limit", defaultEnrichLimit, ...sharedEvalArgs];
+      : ["run", "builtin-scan", "--", "--pages", "1", "--limit", "50", ...(enrichLimit ? ["--enrich-limit", enrichLimit] : []), ...sharedEvalArgs];
   }
 
   if (source === "linkedin") {
@@ -348,8 +352,7 @@ async function commandForSource(source, writesEnabled) {
           "3",
           "--limit",
           "75",
-          "--enrich-limit",
-          defaultEnrichLimit,
+          ...(enrichLimit ? ["--enrich-limit", enrichLimit] : []),
           ...sharedEvalArgs,
         ];
   }
@@ -378,8 +381,7 @@ async function commandForSource(source, writesEnabled) {
           "1",
           "--limit",
           "50",
-          "--enrich-limit",
-          defaultEnrichLimit,
+          ...(enrichLimit ? ["--enrich-limit", enrichLimit] : []),
           ...sharedEvalArgs,
         ];
   }
