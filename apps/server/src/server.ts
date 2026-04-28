@@ -954,14 +954,18 @@ export function buildServer(args: BuildServerArgs) {
   });
 
   /* -- dashboard routes (HTML + reports) -------------------------------- */
-  // Routes are registered synchronously inside this async helper before any
-  // await, so the returned promise resolves once they're all attached. We
-  // intentionally do not await here since buildServer is sync; Fastify's
-  // route table is updated by the time registerDashboardRoutes returns.
-  void registerDashboardRoutes(fastify, {
-    token: config.token,
-    repoRoot: config.repoRoot,
-    ...(args.dashboardOverrides ?? {}),
+  // registerDashboardRoutes is now async (it dynamically imports the web
+  // .mjs handler modules at registration time so the path resolves at
+  // runtime — required for the packaged Electron app where static
+  // relative imports to <repoRoot>/web/ no longer survive). We wrap it in
+  // a Fastify plugin so `await fastify.ready()` / `fastify.listen()`
+  // properly waits for routes to be attached before accepting requests.
+  void fastify.register(async (instance) => {
+    await registerDashboardRoutes(instance, {
+      token: config.token,
+      repoRoot: config.repoRoot,
+      ...(args.dashboardOverrides ?? {}),
+    });
   });
 
   return { fastify, store };

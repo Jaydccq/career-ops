@@ -11,7 +11,11 @@
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
-    "noEmit": true
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "noEmit": false
   },
   "include": ["src/**/*.ts"]
 }

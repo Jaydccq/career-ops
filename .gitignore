@@ -66,6 +66,11 @@ apps/desktop/dist/
 apps/desktop/release/
 apps/desktop/package-lock.json
 
+# Shared package (built JS for production consumers)
+packages/shared/node_modules/
+packages/shared/dist/
+packages/shared/package-lock.json
+
 # Session artifacts
 .agents/
 **/CLAUDE.md

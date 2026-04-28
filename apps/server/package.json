@@ -4,19 +4,27 @@
   "private": true,
   "description": "Local HTTP companion that bridges the Chrome extension to the career-ops CLI pipeline. Phase 1 = contracts only.",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build:js": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --sourcemap --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "build": "pnpm run build:types && pnpm run build:js",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^22.19.17",
+    "esbuild": "^0.24.2",
     "happy-dom": "^20.9.0",
     "tsx": "^4.21.0",
     "typescript": "^5.6.3",

@@ -8,9 +8,10 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
+    "build:server": "pnpm --filter @career-ops/shared run build && pnpm --filter @career-ops/server run build",
     "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --packages=external --outfile=dist/main.js --format=esm --sourcemap",
     "build:preload": "esbuild src/settings-preload.ts --bundle --platform=node --target=node20 --external:electron --outfile=dist/settings-preload.js --format=cjs --sourcemap",
-    "build": "pnpm run build:preload && pnpm run build:main",
+    "build": "pnpm run build:server && pnpm run build:preload && pnpm run build:main",
     "dev": "pnpm run build:preload && NODE_OPTIONS=\"--import tsx\" electron src/main.ts",
     "start": "pnpm run build:preload && NODE_OPTIONS=\"--import tsx\" electron src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

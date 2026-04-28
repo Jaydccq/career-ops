@@ -121,10 +121,21 @@ function findRepoRoot(): { repoRoot: string; bridgeDir: string } {
   }
 
   if (override) {
-    // Allow override even when bridgeDir wasn't found (packaged app);
-    // fall back to repoRoot/apps/server for token storage in that case.
-    const resolvedBridgeDir = bridgeDir ?? join(override, "apps/server");
-    return { repoRoot: override, bridgeDir: resolvedBridgeDir };
+    // Always prefer a writable bridgeDir under the override. In a
+    // packaged Electron app, the walked bridgeDir lands inside the
+    // read-only app.asar (e.g. .../app.asar/node_modules/@career-ops/
+    // server), which the token writer can't open.
+    //
+    // Prefer (in order):
+    //   1. <override>/apps/server      — current workspace layout
+    //   2. <override>/bridge           — legacy pre-restructure layout
+    //   3. <override>                  — last resort, write at repo root
+    // The chosen dir is created on demand so loadOrGenerateToken can
+    // write .bridge-token without the caller needing to mkdir first.
+    const candidates = [join(override, "apps/server"), join(override, "bridge")];
+    const writableBridgeDir =
+      candidates.find((p) => existsSync(p)) ?? candidates[0]!;
+    return { repoRoot: override, bridgeDir: writableBridgeDir };
   }
   if (bridgeDir !== null && walkedRepoRoot !== null) {
     return { repoRoot: walkedRepoRoot, bridgeDir };
@@ -179,6 +190,10 @@ function loadOrGenerateToken(bridgeDir: string): string {
       return existing;
     }
   }
+  // Ensure the directory exists. In the packaged-app case bridgeDir may
+  // be <repoRoot>/apps/server even though the user's repo predates the
+  // workspace restructure — creating it keeps bootstrap from crashing.
+  mkdirSync(bridgeDir, { recursive: true });
   const fresh = randomBytes(32).toString("base64url");
   writeFileSync(tokenPath, fresh + "\n", { mode: 0o600 });
   return fresh;

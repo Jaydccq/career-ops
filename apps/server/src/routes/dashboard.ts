@@ -24,25 +24,23 @@
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
-// @ts-expect-error — .mjs module without types; runtime resolution only.
-import { renderDashboardHtml } from "../../../../web/build-dashboard.mjs";
-// @ts-expect-error — .mjs module without types; runtime resolution only.
-// eslint-disable-next-line import/no-unresolved
-import * as dashboardServerImpl from "../../../../web/dashboard-handlers.mjs";
-
-const {
-  APPLICATIONS_PATH: DEFAULT_APPLICATIONS_PATH,
-  DOWNLOADS_DIR: DEFAULT_DOWNLOADS_DIR,
-  copyToDownloads: defaultCopyToDownloads,
-  generateDocument: defaultGenerateDocument,
-  queueFullEvaluation: defaultQueueFullEvaluation,
-  readFullEvaluationStatus: defaultReadFullEvaluationStatus,
-  setApplicationStatusForFile: defaultSetApplicationStatusForFile,
-} = dashboardServerImpl as {
+/**
+ * Web-impl modules live in <repoRoot>/web/ and are loaded at route-
+ * registration time via dynamic import. They were previously static
+ * imports keyed off the source-tree layout (../../../../web/...), but
+ * that path doesn't survive packaging — the bundled .app's compiled
+ * dashboard.js can't reach the user's repo via static relative paths.
+ *
+ * Resolving via repoRoot at runtime works in dev (tsx/vitest), in the
+ * compiled dist tree, and in the packaged Electron app, as long as
+ * CAREER_OPS_REPO_ROOT points at a real career-ops checkout.
+ */
+type DashboardServerImpl = {
   APPLICATIONS_PATH: string;
   DOWNLOADS_DIR: string;
   copyToDownloads: (id: string) => Promise<unknown>;
@@ -60,6 +58,66 @@ const {
     body: unknown,
   ) => Promise<{ status: string | null; changed: boolean }>;
 };
+
+type RenderDashboardHtmlFn = (opts: {
+  extraHead?: string;
+  includeGmailSignals?: boolean;
+  includeProfile?: boolean;
+}) => { html: string };
+
+/**
+ * Resolve the directory containing web/build-dashboard.mjs and
+ * web/dashboard-handlers.mjs.
+ *
+ * Lookup order:
+ *   1. CAREER_OPS_WEB_DIR env var — explicit override, set by the
+ *      desktop app to point at its bundled extraResources/web.
+ *   2. <repoRoot>/web/ — the production path. Both required files
+ *      must be present; user repos that predate the dashboard-handlers
+ *      split fail this check and fall through.
+ *   3. Source-tree fallback relative to this module's file URL. Used
+ *      by tests that pass a tmp repoRoot and by `pnpm --filter X test`.
+ */
+function resolveWebDir(repoRoot: string): string {
+  const envOverride = process.env.CAREER_OPS_WEB_DIR;
+  if (
+    envOverride &&
+    existsSync(resolve(envOverride, "dashboard-handlers.mjs"))
+  ) {
+    return envOverride;
+  }
+  const fromRepo = resolve(repoRoot, "web");
+  if (
+    existsSync(resolve(fromRepo, "build-dashboard.mjs")) &&
+    existsSync(resolve(fromRepo, "dashboard-handlers.mjs"))
+  ) {
+    return fromRepo;
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  // src/routes/dashboard.ts  → 4 up  → repo root /web
+  // dist/routes/dashboard.js → 4 up  → repo root /web (mirror layout)
+  return resolve(here, "..", "..", "..", "..", "web");
+}
+
+async function loadWebImpls(repoRoot: string): Promise<{
+  renderDashboardHtml: RenderDashboardHtmlFn;
+  serverImpl: DashboardServerImpl;
+}> {
+  const webDir = resolveWebDir(repoRoot);
+  const buildDashboardUrl = pathToFileURL(
+    resolve(webDir, "build-dashboard.mjs"),
+  ).href;
+  const dashboardHandlersUrl = pathToFileURL(
+    resolve(webDir, "dashboard-handlers.mjs"),
+  ).href;
+  const [{ renderDashboardHtml }, serverImpl] = await Promise.all([
+    import(buildDashboardUrl) as Promise<{
+      renderDashboardHtml: RenderDashboardHtmlFn;
+    }>,
+    import(dashboardHandlersUrl) as Promise<DashboardServerImpl>,
+  ]);
+  return { renderDashboardHtml, serverImpl };
+}
 
 export interface DashboardRouteOptions {
   /** Bridge auth token. Injected into the dashboard HTML via <meta> tag. */
@@ -127,6 +185,17 @@ export async function registerDashboardRoutes(
 ): Promise<void> {
   const { token, repoRoot } = options;
 
+  const { renderDashboardHtml, serverImpl } = await loadWebImpls(repoRoot);
+  const {
+    APPLICATIONS_PATH: DEFAULT_APPLICATIONS_PATH,
+    DOWNLOADS_DIR: DEFAULT_DOWNLOADS_DIR,
+    copyToDownloads: defaultCopyToDownloads,
+    generateDocument: defaultGenerateDocument,
+    queueFullEvaluation: defaultQueueFullEvaluation,
+    readFullEvaluationStatus: defaultReadFullEvaluationStatus,
+    setApplicationStatusForFile: defaultSetApplicationStatusForFile,
+  } = serverImpl;
+
   const renderHtml = (): string => {
     const metaTag =
       `<meta name="career-ops-token" content="${escapeHtmlAttr(token)}">`;
@@ -134,7 +203,7 @@ export async function registerDashboardRoutes(
       extraHead: metaTag,
       includeGmailSignals: true,
       includeProfile: true,
-    }) as { html: string };
+    });
     return html;
   };
 

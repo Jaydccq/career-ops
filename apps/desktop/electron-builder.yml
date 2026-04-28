@@ -11,20 +11,38 @@ directories:
   output: release
   buildResources: build
 
-# Files included in app.asar (the bundled JS + workspace package sources).
-# electron-builder follows the pnpm workspace symlinks under node_modules
-# and pulls @career-ops/server + @career-ops/shared in automatically, so
-# we don't need extraResources — but we do exclude tests and the dev
-# bridge token to keep the bundle clean.
+# Files included in app.asar.
+#
+# We bundle only the compiled dist/ trees of @career-ops/* (not the
+# .ts source) because Node in the packaged Electron app can't load
+# TypeScript without tsx. The server itself is bundled at build time
+# (esbuild -> apps/server/dist/index.js) so its fastify + transitive
+# deps are inlined and no runtime lookups under node_modules/fastify/
+# are needed.
 files:
   - "dist/**/*"
   - "src/settings-window.html"
   - "icons/**/*"
   - "package.json"
+  - "!node_modules/@career-ops/*/src/**/*"
   - "!node_modules/@career-ops/*/.bridge-token"
   - "!node_modules/@career-ops/*/**/*.test.ts"
   - "!node_modules/@career-ops/*/**/*.test.js"
+  - "!node_modules/@career-ops/*/tsconfig*.json"
   - "!node_modules/@career-ops/*/vitest.config.ts"
+
+# Ship the dashboard handler .mjs modules from the workspace `web/`
+# alongside the bundled server. The server's resolveWebDir() looks
+# here when the user's repo is on a revision that predates the
+# dashboard-handlers.mjs split.
+extraResources:
+  - from: "../../web"
+    to: "web"
+    filter:
+      - "build-dashboard.mjs"
+      - "dashboard-handlers.mjs"
+      - "template.html"
+
 
 mac:
   category: public.app-category.productivity

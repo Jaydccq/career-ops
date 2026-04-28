@@ -75,7 +75,27 @@ function ensureRepoRoot(): void {
   }
 }
 
+/**
+ * Tell the bundled server where to find the dashboard helper .mjs
+ * modules (web/build-dashboard.mjs + web/dashboard-handlers.mjs) when
+ * the user's repo predates the dashboard-handlers split.
+ *
+ * electron-builder's extraResources places these at
+ *   <app>.app/Contents/Resources/web/
+ * which is process.resourcesPath/web in the packaged app.
+ */
+function ensureWebDirFallback(): void {
+  if (process.env.CAREER_OPS_WEB_DIR) return;
+  if (!app.isPackaged) return;
+  const bundledWebDir = join(process.resourcesPath, "web");
+  if (existsSync(join(bundledWebDir, "dashboard-handlers.mjs"))) {
+    process.env.CAREER_OPS_WEB_DIR = bundledWebDir;
+    console.log(`[career-ops] using bundled web dir: ${bundledWebDir}`);
+  }
+}
+
 ensureRepoRoot();
+ensureWebDirFallback();
 
 let server: ServerHandle | null = null;
 let window: BrowserWindow | null = null;

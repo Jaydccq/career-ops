@@ -56,6 +56,10 @@ async function main() {
     minify: false,
     logLevel: "info",
     define: sharedDefine,
+    // Use the "development" condition so workspace package exports
+    // resolve to TypeScript source — esbuild can transpile .ts directly,
+    // so we don't need @career-ops/shared/dist/ to exist.
+    conditions: ["development", "import", "node", "default"],
   });
 
   // Panel content script: IIFE (injected into pages, must be self-contained)
