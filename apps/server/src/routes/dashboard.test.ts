@@ -495,7 +495,7 @@ describe("dashboard routes", () => {
     });
 
     it("returns 202 + bridge result and calls postBridge with /v1/evaluate", async () => {
-      // queueFullEvaluation (in web/dashboard-server.mjs) resolves reportPath
+      // queueFullEvaluation (in web/dashboard-handlers.mjs) resolves reportPath
       // relative to its own ROOT — the actual worktree root, not tmpRepoRoot.
       // Write a fixture report into the real reports/ dir so the helper finds
       // it; remove it after the test.

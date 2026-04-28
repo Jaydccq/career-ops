@@ -1869,6 +1869,48 @@ npm run verify
   - Commit 6 `<sha>`: live smoke verified (HTML 200, API 401/200, bridge 200, 1 meta tag) + extension build green.
   - Out of scope (deferred): gmail-refresh startup hook, in-process loopback (currently fetches itself over 127.0.0.1), dashboard-server.mjs body fully removed.
 
+- 2026-04-27 (Stage 4 complete): macOS LaunchAgent infrastructure landed
+  on `feat/client-app-restructure`. Commits 711843f + 5335aea added
+  `templates/io.hongxi.career-ops.plist.template`, install/uninstall/
+  status/logs scripts, and `npm run app:*` targets. Not actually loaded
+  yet — user runs `npm run app:install` when ready.
+
+- 2026-04-27 (Stage 5 complete): Electron desktop app on
+  `feat/client-app-restructure`.
+  - 5.1 + 5.2 (commit 72ace28): apps/desktop scaffolded; in-process
+    server via `createServer()` factory; sandboxed BrowserWindow at
+    /dashboard/. Window-close stops server cleanly.
+  - 5.3 (commit 5dfd259): menu-bar tray with Status / Backend / Open
+    Dashboard / Restart / View Logs / Settings / Quit. window-all-closed
+    no longer quits the app — tray is the persistent UI.
+  - 5.4 (commit 6a8e5a7): settings window (backend dropdown,
+    OpenRouter API key, Start at login). Settings persist to
+    `~/.config/career-ops/settings.json`. IPC via contextBridge preload.
+  - 5.5 (commits 290ab6b + b691a3f): electron-builder packaging.
+    Initial commit produced a non-launching .app due to TypeScript
+    source in @career-ops/server's main field; b691a3f fixed by
+    adding tsc/esbuild build outputs to dist/ and using `exports`
+    with a `development` condition so dev/test tools still resolve
+    src/ while the packaged app reads dist/. Bundled .app launches,
+    bridge listens on 47319, quit cleanly releases the port.
+
+- 2026-04-27 (Stage 6 complete): mechanical cleanup. Live bridge/web
+  references swept where actually broken (six `bridge/.bridge-token`
+  paths in scripts + web/dashboard-handlers.mjs now point at
+  `apps/server/.bridge-token`); `docs/BROWSER_EXTENSION.md` paths and
+  backend-mode names updated to the post-restructure layout;
+  `CLAUDE.md` Main Files table now lists `apps/server`, `apps/extension`,
+  `apps/desktop`, `packages/shared`, and a new "Running the system"
+  section documents the three valid setups (desktop app, LaunchAgent,
+  manual); `README.md` gained a Quick start block. LaunchAgent
+  infrastructure intentionally KEPT (Stage 6 plan revised) — desktop app
+  and LaunchAgent serve different use cases (visual vs headless).
+
+- 2026-04-27 (Stage final state): 267 server tests passing, all 4
+  workspace projects typecheck clean, extension build green, .app
+  bundle launches and serves dashboard. Branch ready for review on
+  `feat/client-app-restructure`.
+
 ## Final Outcome
 
 Planning complete; not started. Next step is decision confirmation:

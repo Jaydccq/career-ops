@@ -396,7 +396,7 @@ async function main(): Promise<void> {
 
     await assertBbBrowserAvailable();
     scanRun.record("bb_browser_available");
-    const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
+    const token = (await readFile(join(repoRoot, "apps", "server", ".bridge-token"), "utf8")).trim();
     scanRun.record("bridge_health_check_started", { bridgeBase });
     await assertBridgeHealthy(bridgeBase, token);
 

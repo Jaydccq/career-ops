@@ -17,10 +17,21 @@ me.
 - Keeps durable execution context in `docs/exec-plans/`.
 - Keeps upstream Gemini CLI and LaTeX CV export entry points available.
 
+## Quick start
+
+```bash
+pnpm install
+pnpm run server                                  # bridge + dashboard on 47319
+# or:
+pnpm --filter @career-ops/desktop run package    # produce Career Ops.app
+```
+
+See `CLAUDE.md` for all setup options (desktop app, LaunchAgent, manual).
+
 ## Daily Commands
 
 ```bash
-npm install
+pnpm install
 npm run verify
 npm run ext:build
 npm run server
@@ -30,6 +41,8 @@ npm run dashboard
 Useful entry points:
 
 - `npm run server:dev` builds the extension and starts the bridge.
+- `npm run app:install` registers the macOS LaunchAgent for headless always-on mode.
+- `pnpm --filter @career-ops/desktop run package` builds the Electron `Career Ops.app`.
 - `npm run ext:launcher` prints the local extension launch instructions.
 - `npm run pending:warm-cache` warms legacy pending-job cache data.
 - `npm run gemini:eval -- "JD text"` runs the upstream Gemini evaluator.

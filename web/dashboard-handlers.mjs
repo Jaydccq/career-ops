@@ -23,7 +23,7 @@ import yaml from 'js-yaml';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const BRIDGE_BASE = (process.env.CAREER_OPS_BRIDGE_BASE || 'http://127.0.0.1:47319').replace(/\/+$/, '');
-const BRIDGE_TOKEN_PATH = join(ROOT, 'bridge', '.bridge-token');
+const BRIDGE_TOKEN_PATH = join(ROOT, 'apps', 'server', '.bridge-token');
 const OUTPUT_DIR = join(ROOT, 'output');
 const WORK_DIR = join(OUTPUT_DIR, '.apply-docs');
 export const DOWNLOADS_DIR = join(os.homedir(), 'Downloads');

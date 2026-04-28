@@ -4,18 +4,16 @@ This workflow lets you evaluate a job posting directly from Chrome without dupli
 
 ## What It Includes
 
-- `extension/`: Chrome Manifest V3 popup, background worker, and page extraction logic
-- `bridge/`: local Fastify companion with health, liveness, evaluate, jobs, stream, tracker, reports, and merge endpoints
-- Shared contracts in `bridge/src/contracts/*` and re-exported types in the extension
+- `apps/extension/`: Chrome Manifest V3 popup, background worker, and page extraction logic
+- `apps/server/`: local Fastify companion with health, liveness, evaluate, jobs, stream, tracker, reports, dashboard, and merge endpoints
+- Shared contracts in `packages/shared/src/contracts/*` (re-exported by both server and extension)
 
 ## Prerequisites
 
-- Root dependencies installed: `npm install`
-- Bridge dependencies installed: `npm --prefix bridge install`
-- Extension dependencies installed: `npm --prefix extension install`
+- Workspace dependencies installed: `pnpm install` (root)
 - Playwright Chromium installed if you want live liveness checks: `npx playwright install chromium`
-- For `CAREER_OPS_BRIDGE_MODE=real`: Claude Code CLI on `PATH`
-- For `CAREER_OPS_BRIDGE_MODE=sdk`: `ANTHROPIC_API_KEY` in the environment
+- For `CAREER_OPS_BACKEND=real-codex` (default) or `real-claude`: the matching CLI on `PATH`
+- For `CAREER_OPS_BACKEND=real-openrouter`: `OPENROUTER_API_KEY` in the environment
 
 ## Verify Everything
 
@@ -27,8 +25,8 @@ npm run verify
 
 That now runs the existing tracker integrity checks plus:
 
-- `bridge`: tests + typecheck
-- `extension`: typecheck + build
+- `apps/server`: tests + typecheck
+- `apps/extension`: typecheck + build
 
 ## Start the Bridge
 
@@ -42,8 +40,8 @@ npm run server:dev
 
 That does two things from the repo root:
 
-- builds `extension/dist`
-- starts the bridge in `real / codex` mode
+- builds `apps/extension/dist`
+- starts the bridge in `real-codex` mode
 
 Other common shortcuts:
 
@@ -65,7 +63,7 @@ That opens a native dialog where you can choose build/start actions.
 The new default action is `Desktop launchpad (Codex)`, which will:
 
 - start `npm run server:dev` in Terminal
-- reveal `extension/dist` in Finder
+- reveal `apps/extension/dist` in Finder
 - open `chrome://extensions` in Chrome
 
 The first screen is now intentionally short:
@@ -79,16 +77,16 @@ Less common maintenance actions live under `Advanced tools…` so the main launc
 Default mode is `fake`, which is safe for UI and integration testing.
 
 ```bash
-npm --prefix bridge run start
+pnpm --filter @career-ops/server run start
 ```
 
-Optional modes:
+Optional modes (set `CAREER_OPS_BACKEND` to pick the adapter):
 
 ```bash
-CAREER_OPS_BRIDGE_MODE=real npm --prefix bridge run start
-CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=codex npm --prefix bridge run start
-CAREER_OPS_BRIDGE_MODE=real CAREER_OPS_REAL_EXECUTOR=claude npm --prefix bridge run start
-CAREER_OPS_BRIDGE_MODE=sdk ANTHROPIC_API_KEY=... npm --prefix bridge run start
+CAREER_OPS_BACKEND=real-codex pnpm --filter @career-ops/server run start
+CAREER_OPS_BACKEND=real-claude pnpm --filter @career-ops/server run start
+CAREER_OPS_BACKEND=real-openrouter OPENROUTER_API_KEY=... pnpm --filter @career-ops/server run start
+CAREER_OPS_BACKEND=fake pnpm --filter @career-ops/server run start
 ```
 
 The raw commands above still work; the root aliases are just shorter wrappers around them.
@@ -96,16 +94,16 @@ The raw commands above still work; the root aliases are just shorter wrappers ar
 Bridge notes:
 
 - Binds to `127.0.0.1:47319` by default
-- Generates or reuses `bridge/.bridge-token`
+- Generates or reuses `apps/server/.bridge-token`
 - Rejects requests without `x-career-ops-token`
-- Refuses to boot `sdk` mode unless `ANTHROPIC_API_KEY` is present
-- `real` mode defaults to `codex`; set `CAREER_OPS_REAL_EXECUTOR=claude` to run the same bridge flow through `claude -p`
+- Refuses to boot `real-openrouter` mode unless `OPENROUTER_API_KEY` is present
+- Default backend is `real-codex`; set `CAREER_OPS_BACKEND=real-claude` to run the same bridge flow through `claude -p`
 - Codex bridge evaluations default to `CAREER_OPS_CODEX_MODEL=gpt-5.4-mini` and `CAREER_OPS_CODEX_REASONING_EFFORT=medium`, overriding user-level Codex defaults for stable cost/latency.
 
 Quick health check:
 
 ```bash
-curl -s -H "x-career-ops-token: $(cat bridge/.bridge-token)" http://127.0.0.1:47319/v1/health
+curl -s -H "x-career-ops-token: $(cat apps/server/.bridge-token)" http://127.0.0.1:47319/v1/health
 ```
 
 ## Build and Load the Extension
@@ -119,14 +117,14 @@ Then in Chrome:
 1. Open `chrome://extensions`
 2. Enable Developer Mode
 3. Click `Load unpacked`
-4. Select `extension/dist`
+4. Select `apps/extension/dist`
 
 `chrome://extensions` is only for loading or reloading the unpacked extension.
 The toolbar action cannot open the in-page panel on Chrome's own pages. After
 loading, switch to a regular `http` or `https` job posting tab, then click the
 career-ops toolbar icon or press `Alt+Shift+C`.
 
-The popup will ask for the bridge token on first use. Paste the contents of `bridge/.bridge-token`.
+The popup will ask for the bridge token on first use. Paste the contents of `apps/server/.bridge-token`.
 
 ## Typical Flow
 
@@ -146,25 +144,22 @@ Artifacts still land in the normal career-ops locations:
 ## Mode Guidance
 
 - `fake`: best for UI work, popup QA, and contract-level smoke tests
-- `real`: best when you want the bridge to reuse the checked-in career-ops pipeline with a real CLI agent
-- `real` + default / `CAREER_OPS_REAL_EXECUTOR=codex`: uses `codex exec` as a CLI wrapper around the same batch prompt and artifact flow
-- `real` + `CAREER_OPS_REAL_EXECUTOR=claude`: uses `claude -p` as the legacy fallback
-- `sdk`: best when you want direct Anthropic API calls without spawning the Claude CLI
+- `real-codex` (default): uses `codex exec` as a CLI wrapper around the batch prompt and artifact flow
+- `real-claude`: uses `claude -p` as the alternate CLI path
+- `real-openrouter`: direct OpenRouter HTTP API call using `OPENROUTER_API_KEY` (no CLI auth needed)
 
 ## Current Limits
 
 - The extension does not submit applications
 - The bridge writes tracker TSV additions, not direct tracker merges
-- `sdk` mode returns report + tracker TSV, but currently does not generate PDFs
-- `sdk` mode should be treated as code-complete but still lightly validated compared with the `real` path
-- `real` + Codex is the fastest integration path; it reuses the existing prompt/output contract but has not been hardened to the same degree as the long-standing Claude path
+- `real-codex` is the fastest integration path; it reuses the existing prompt/output contract but has not been hardened to the same degree as the long-standing Claude path
 
 ## Troubleshooting
 
 - Toolbar icon does nothing on `chrome://extensions`: switch to a normal web page or job posting first. Chrome blocks panel injection on browser-owned pages.
-- `UNAUTHORIZED`: token in the popup does not match `bridge/.bridge-token`
+- `UNAUTHORIZED`: token in the popup does not match `apps/server/.bridge-token`
 - `BRIDGE_NOT_READY`: required local files like `cv.md` or `config/profile.yml` are missing
 - `RATE_LIMITED`: the bridge allows 3 evaluations per minute
-- Health works but evaluation fails in `sdk` mode: verify `ANTHROPIC_API_KEY`
-- Health works but default `real` mode fails: verify the `codex` CLI is installed, authenticated, and on `PATH`
-- Health works but `real` + Claude fails: verify the `claude` CLI is installed and on `PATH`
+- Health works but evaluation fails in `real-openrouter` mode: verify `OPENROUTER_API_KEY`
+- Health works but default `real-codex` mode fails: verify the `codex` CLI is installed, authenticated, and on `PATH`
+- Health works but `real-claude` fails: verify the `claude` CLI is installed and on `PATH`

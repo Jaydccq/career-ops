@@ -8,6 +8,10 @@ The portfolio that goes with this system is also open source: [cv-santiago](http
 
 **It will work out of the box, but it's designed to be made yours.** If the archetypes don't match your career, the modes are in the wrong language, or the scoring doesn't fit your priorities -- just ask. You (AI Agent) can edit the user's files. The user says "change the archetypes to data engineering roles" and you do it. That's the whole point.
 
+This is Hongxi's personal Career-Ops workspace, originally forked from
+santifer/career-ops. Architecture has been restructured into a pnpm
+workspace (`apps/server`, `apps/extension`, `apps/desktop`, `packages/shared`).
+
 ## Data Contract (CRITICAL)
 
 There are two layers. Read `DATA_CONTRACT.md` for the full list.
@@ -47,14 +51,19 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 
 ### Main Files
 
-| File | Function |
+| Path | Function |
 |------|----------|
+| `apps/server/` | Local Fastify bridge + dashboard server (`@career-ops/server`). Listens on `127.0.0.1:47319`. |
+| `apps/extension/` | Chrome MV3 extension (`@career-ops/extension`); talks to the local bridge. |
+| `apps/desktop/` | Electron desktop wrapper (`@career-ops/desktop`); bundles the bridge in-process and renders the dashboard. |
+| `packages/shared/` | `@career-ops/shared` contracts shared between server, extension, and desktop. |
 | `data/applications.md` | Application tracker |
 | `data/pipeline.md` | Inbox of pending URLs |
 | `data/scan-history.tsv` | Scanner dedup history |
 | `portals.yml` | Query and company config |
 | `templates/cv-template.html` | HTML template for CVs |
 | `templates/cv-template.tex` | LaTeX/Overleaf template for CVs |
+| `templates/io.hongxi.career-ops.plist.template` | Source for the macOS LaunchAgent plist |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
 | `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |
 | `article-digest.md` | Compact proof points from portfolio (optional) |
@@ -218,6 +227,43 @@ This system is designed to be customized by YOU (AI Agent). When the user asks y
 - "Change the CV template design" → edit `templates/cv-template.html`
 - "Adjust the scoring weights" → edit `modes/_profile.md` for user-specific weighting, or edit `modes/_shared.md` and `batch/batch-prompt.md` only when changing the shared system defaults for everyone
 
+### Running the system
+
+Three valid setups depending on how you use career-ops:
+
+**A. Desktop app** (visual users)
+
+```bash
+pnpm --filter @career-ops/desktop run package
+open "apps/desktop/release/mac-arm64/Career Ops.app"
+```
+
+Tray icon + dashboard window. Chrome extension talks to it on
+`127.0.0.1:47319`. Settings panel switches backends (Codex CLI / Claude
+CLI / OpenRouter / Fake).
+
+**B. LaunchAgent** (headless / always-on)
+
+```bash
+npm run app:install     # one-time, registers io.hongxi.career-ops plist
+npm run app:status      # check if running
+npm run app:logs        # tail logs
+npm run app:restart     # restart server
+npm run app:uninstall   # remove
+```
+
+Server runs in the background at login. No window. Extension still works.
+
+**C. Manual** (development)
+
+```bash
+pnpm run server                                       # default real-codex
+CAREER_OPS_BACKEND=fake pnpm run server               # fake backend for tests
+CAREER_OPS_BACKEND=real-openrouter pnpm run server    # OpenRouter API
+```
+
+Then visit `http://127.0.0.1:47319/dashboard/`.
+
 ### Skill Modes
 
 | If the user... | Mode |
@@ -283,8 +329,9 @@ This system is designed to be customized by YOU (AI Agent). When the user asks y
 
 ## Stack and Conventions
 
-- Node.js (mjs modules), Playwright (PDF + scraping), YAML (config), HTML/CSS (template), Markdown (data), Canva MCP (optional visual CV)
-- Scripts in `.mjs`, configuration in YAML
+- pnpm workspaces (`apps/server`, `apps/extension`, `apps/desktop`, `packages/shared`)
+- Node.js (mjs scripts at repo root, TypeScript inside `apps/*` and `packages/*`), Playwright (PDF + scraping), YAML (config), HTML/CSS (template), Markdown (data), Canva MCP (optional visual CV)
+- Root-level scripts in `.mjs`, configuration in YAML
 - Output in `output/` (gitignored), Reports in `reports/`
 - JDs in `jds/` (referenced as `local:jds/{file}` in pipeline.md)
 - Batch in `batch/` (gitignored except scripts and prompt)

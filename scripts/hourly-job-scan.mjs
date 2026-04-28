@@ -105,7 +105,7 @@ async function acquireLock() {
 }
 
 async function readBridgeToken() {
-  const tokenPath = join(repoRoot, "bridge", ".bridge-token");
+  const tokenPath = join(repoRoot, "apps", "server", ".bridge-token");
   if (!existsSync(tokenPath)) return null;
   return (await readFile(tokenPath, "utf8")).trim();
 }

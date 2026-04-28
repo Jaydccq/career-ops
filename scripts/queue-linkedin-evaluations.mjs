@@ -115,7 +115,7 @@ async function main() {
     throw new Error("missing --source-log");
   }
 
-  const token = (await readFile(join(repoRoot, "bridge", ".bridge-token"), "utf8")).trim();
+  const token = (await readFile(join(repoRoot, "apps", "server", ".bridge-token"), "utf8")).trim();
   const sourceLog = resolve(repoRoot, options.sourceLog);
   const queueRunId = createRunId();
   const queueLog = join(repoRoot, "data", "scan-runs", `${queueRunId}.jsonl`);
