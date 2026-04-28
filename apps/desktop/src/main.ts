@@ -1,22 +1,23 @@
 /**
  * main.ts — Electron main process for the Career Ops desktop app.
  *
- * Tasks 5.1, 5.2, 5.3 of the client-app-delivery plan:
+ * Tasks 5.1 – 5.4 of the client-app-delivery plan:
  *   - Boot a single BrowserWindow pointed at the dashboard.
  *   - Embed the bridge server in-process via createServer() — no child
  *     subprocess.
  *   - Cleanly stop the server when the app quits.
- *   - Add a menu-bar tray icon that exposes status / restart / open
- *     dashboard / view logs / quit. The tray is the persistent UI — the
- *     app does not quit when the last window closes.
+ *   - Menu-bar tray icon (status, restart, open dashboard, view logs,
+ *     settings, quit). The tray is the persistent UI.
+ *   - Settings window for backend / OpenRouter key / start-at-login.
  *
- * Settings UI (5.4) and electron-builder packaging (5.5) are wired in
- * separate dispatches.
+ * Electron-builder packaging (5.5) is wired separately.
  */
 
 import { app, BrowserWindow, shell } from "electron";
 import { createServer, type ServerHandle, type AdapterMode } from "@career-ops/server";
 import { createTray, type TrayController, type TrayState } from "./tray.js";
+import { loadSettings, type Backend } from "./settings.js";
+import { openSettingsWindow } from "./settings-window.js";
 
 let server: ServerHandle | null = null;
 let window: BrowserWindow | null = null;
@@ -27,6 +28,7 @@ const PORT = Number(process.env.CAREER_OPS_BRIDGE_PORT) || 47319;
 const HOST = process.env.CAREER_OPS_BRIDGE_HOST || "127.0.0.1";
 
 function resolveBackend(): AdapterMode {
+  // env var wins; otherwise fall back to whatever's saved in settings.
   const raw = process.env.CAREER_OPS_BACKEND;
   if (
     raw === "fake" ||
@@ -36,7 +38,7 @@ function resolveBackend(): AdapterMode {
   ) {
     return raw;
   }
-  return "real-codex";
+  return loadSettings().backend as Backend;
 }
 
 let currentBackend: AdapterMode = resolveBackend();
@@ -113,9 +115,18 @@ function openDashboardWindow(): void {
   window.focus();
 }
 
-function openSettingsPlaceholder(): void {
-  // Task 5.4 will replace this with a real settings BrowserWindow.
-  console.log("[career-ops] Settings… (placeholder — 5.4 will wire the window)");
+function handleOpenSettings(): void {
+  openSettingsWindow(async (next) => {
+    if (next.backend !== currentBackend) {
+      currentBackend = next.backend as AdapterMode;
+      try {
+        await restartServer();
+      } catch (err) {
+        console.error("[career-ops] failed to restart after settings change:", err);
+      }
+    }
+    trayController?.rebuild();
+  });
 }
 
 app.whenReady().then(async () => {
@@ -124,7 +135,7 @@ app.whenReady().then(async () => {
     getBackend: () => currentBackend,
     onOpenDashboard: openDashboardWindow,
     onRestart: restartServer,
-    onOpenSettings: openSettingsPlaceholder,
+    onOpenSettings: handleOpenSettings,
   });
 
   try {
